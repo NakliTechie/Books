@@ -163,8 +163,100 @@ body { display: flex; flex-direction: column; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .reader-header .status { font-size: 11px; color: var(--muted); }
-.reader-content { flex: 1 1 auto; overflow: hidden; position: relative; min-height: 0; }
+.reader-header .sidebar-toggle {
+  background: transparent; color: var(--ink); border: 1px solid var(--line);
+  padding: 6px 10px; border-radius: 6px; cursor: pointer;
+  font-size: 16px; line-height: 1; font-family: inherit;
+}
+.reader-header .sidebar-toggle:hover { background: var(--row); border-color: var(--brand); }
+.reader-header .sidebar-toggle.is-active { background: var(--brand); color: var(--panel); border-color: var(--brand); }
+
+.reader-body {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+.reader-content { position: absolute; inset: 0; overflow: hidden; }
 .reader-content > * { position: absolute; inset: 0; }
+
+/* Sidebar — slides in from right, overlays the engine view */
+.sidebar {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 320px;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 20px 22px 24px;
+  transform: translateX(100%);
+  transition: transform 0.18s ease-out;
+  z-index: 2;
+  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.06);
+}
+.sidebar.is-open { transform: translateX(0); }
+.sidebar-section { margin-bottom: 24px; }
+.sidebar-section:last-child { margin-bottom: 0; }
+.sidebar-label {
+  display: block;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+  margin-bottom: 10px;
+}
+.add-bookmark {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--brand);
+  color: var(--panel);
+  border: none; border-radius: 6px; cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 600;
+}
+.add-bookmark:hover { opacity: 0.92; }
+.add-bookmark:disabled { opacity: 0.4; cursor: not-allowed; }
+.bookmarks { list-style: none; margin: 14px 0 0; padding: 0; }
+.bookmarks .bm-empty {
+  color: var(--muted); font-size: 12px; font-style: italic;
+  padding: 8px 2px;
+}
+.bookmarks li:not(.bm-empty) {
+  display: flex; align-items: center; gap: 6px;
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.bookmarks li:not(.bm-empty):hover { background: var(--row); }
+.bookmarks li .bm-label {
+  flex: 1 1 auto;
+  font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bookmarks li .bm-meta {
+  font-size: 10px; color: var(--muted);
+  flex: 0 0 auto;
+}
+.bookmarks li .bm-btn {
+  background: none; border: none;
+  color: var(--muted); cursor: pointer;
+  font-size: 13px; padding: 2px 6px; line-height: 1;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+.bookmarks li .bm-btn:hover { color: var(--brand); background: rgba(0,0,0,0.04); }
+.note-area {
+  width: 100%;
+  min-height: 200px;
+  padding: 12px 14px;
+  background: var(--body);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  resize: vertical;
+  font-family: Georgia, "Iowan Old Style", serif;
+  font-size: 14px; line-height: 1.55;
+  box-sizing: border-box;
+}
+.note-area:focus { outline: 2px solid color-mix(in srgb, var(--brand) 50%, transparent); outline-offset: -1px; }
 
 .loading {
   position: absolute; inset: 0;
@@ -196,8 +288,21 @@ body { display: flex; flex-direction: column; }
     <button class="back" id="back-btn" type="button">← Library</button>
     <div class="reader-title" id="reader-title">…</div>
     <div class="status" id="reader-status"></div>
+    <button class="sidebar-toggle" id="sidebar-toggle" type="button" hidden aria-label="Notes &amp; bookmarks">≡</button>
   </div>
-  <div class="reader-content" id="reader-content"><!-- engine renders here --></div>
+  <div class="reader-body">
+    <div class="reader-content" id="reader-content"><!-- engine renders here --></div>
+    <aside class="sidebar" id="sidebar" aria-hidden="true">
+      <div class="sidebar-section">
+        <button class="add-bookmark" id="add-bookmark-btn" type="button">＋ Bookmark this spot</button>
+        <ul class="bookmarks" id="bookmarks-list"></ul>
+      </div>
+      <div class="sidebar-section">
+        <label class="sidebar-label" for="note-area">Note</label>
+        <textarea class="note-area" id="note-area" placeholder="Your thoughts on this book…"></textarea>
+      </div>
+    </aside>
+  </div>
 </div>
 
 <!--
@@ -316,6 +421,11 @@ const readerContent = document.getElementById('reader-content');
 const readerTitle = document.getElementById('reader-title');
 const readerStatus = document.getElementById('reader-status');
 const backBtn = document.getElementById('back-btn');
+const sidebar = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebar-toggle');
+const bookmarksList = document.getElementById('bookmarks-list');
+const addBookmarkBtn = document.getElementById('add-bookmark-btn');
+const noteArea = document.getElementById('note-area');
 
 let activeEngine = null;
 let activeSidecar = null;    // sidecar object for the currently-open book; null if not persisted
@@ -795,6 +905,7 @@ async function openBookFromFile(file, persistInfo) {
   activeSidecar = null;
   activeBookId = null;
   readerContent.innerHTML = '';
+  deactivateSidebar();
 
   try {
     activeEngine = new (ENGINES[key])(readerContent);
@@ -833,6 +944,9 @@ async function openBookFromFile(file, persistInfo) {
       activeSidecar.lastOpened = new Date().toISOString();
       activeSidecar.position = activeEngine.getPosition();
       writeSidecarDebounced(activeBookId, activeSidecar);
+
+      // Show + populate the bookmarks/note sidebar
+      activateSidebarForCurrentBook();
     }
 
     activeEngine.onRelocate((pos) => {
@@ -860,6 +974,121 @@ function describePosition(engineKey, pos) {
 }
 
 // ============================================================
+// Bookmarks + per-book note (A9) — sidebar
+// ============================================================
+
+function renderBookmarks() {
+  if (!activeSidecar) {
+    bookmarksList.innerHTML = '<li class="bm-empty">No book open</li>';
+    return;
+  }
+  if (!Array.isArray(activeSidecar.bookmarks)) activeSidecar.bookmarks = [];
+  if (activeSidecar.bookmarks.length === 0) {
+    bookmarksList.innerHTML = '<li class="bm-empty">No bookmarks yet</li>';
+    return;
+  }
+  // Most-recently-added first.
+  const list = activeSidecar.bookmarks.slice().sort((a, b) =>
+    String(b.ts || '').localeCompare(String(a.ts || '')));
+  const engineKey = activeSidecar.engine || 'text';
+  bookmarksList.innerHTML = list.map((bm) => {
+    const meta = describePosition(engineKey, bm.position) || '';
+    const label = bm.label && bm.label.trim() ? bm.label.trim() : meta || 'Bookmark';
+    return '<li data-id="' + escapeHtml(bm.id) + '">' +
+             '<span class="bm-label">' + escapeHtml(label) + '</span>' +
+             (bm.label && bm.label.trim() && meta ? '<span class="bm-meta">' + escapeHtml(meta) + '</span>' : '') +
+             '<button class="bm-btn" data-action="rename" type="button" title="Rename">✎</button>' +
+             '<button class="bm-btn" data-action="remove" type="button" title="Remove">×</button>' +
+           '</li>';
+  }).join('');
+}
+
+function handleAddBookmark() {
+  if (!activeEngine || !activeSidecar || !activeBookId) return;
+  const pos = activeEngine.getPosition();
+  if (!Array.isArray(activeSidecar.bookmarks)) activeSidecar.bookmarks = [];
+  activeSidecar.bookmarks.push({
+    id: 'bm_' + Math.random().toString(36).slice(2, 10),
+    label: '',
+    ts: new Date().toISOString(),
+    position: pos,
+  });
+  writeSidecarDebounced(activeBookId, activeSidecar);
+  renderBookmarks();
+}
+
+async function handleBookmarkClick(e) {
+  if (!activeSidecar || !activeEngine || !activeBookId) return;
+  const li = e.target.closest('li[data-id]');
+  if (!li) return;
+  const id = li.dataset.id;
+  const bm = (activeSidecar.bookmarks || []).find((b) => b.id === id);
+  if (!bm) return;
+
+  const action = e.target.dataset.action;
+  if (action === 'remove') {
+    activeSidecar.bookmarks = activeSidecar.bookmarks.filter((b) => b.id !== id);
+    writeSidecarDebounced(activeBookId, activeSidecar);
+    renderBookmarks();
+    return;
+  }
+  if (action === 'rename') {
+    const label = prompt('Bookmark label:', bm.label || '');
+    if (label != null) {
+      bm.label = String(label).trim();
+      writeSidecarDebounced(activeBookId, activeSidecar);
+      renderBookmarks();
+    }
+    return;
+  }
+  // Bare row click → jump
+  try { await activeEngine.jumpTo(bm.position); } catch (_) {}
+}
+
+function handleNoteInput() {
+  if (!activeSidecar || !activeBookId) return;
+  activeSidecar.note = noteArea.value;
+  writeSidecarDebounced(activeBookId, activeSidecar);
+}
+
+function openSidebarPanel() {
+  sidebar.classList.add('is-open');
+  sidebar.setAttribute('aria-hidden', 'false');
+  sidebarToggle.classList.add('is-active');
+}
+function closeSidebarPanel() {
+  sidebar.classList.remove('is-open');
+  sidebar.setAttribute('aria-hidden', 'true');
+  sidebarToggle.classList.remove('is-active');
+}
+function toggleSidebarPanel() {
+  if (sidebar.classList.contains('is-open')) closeSidebarPanel();
+  else openSidebarPanel();
+}
+
+// Populate the sidebar surfaces for the currently-active book. Called from openBookFromFile.
+function activateSidebarForCurrentBook() {
+  sidebarToggle.hidden = false;
+  noteArea.value = (activeSidecar && typeof activeSidecar.note === 'string') ? activeSidecar.note : '';
+  noteArea.disabled = false;
+  addBookmarkBtn.disabled = false;
+  renderBookmarks();
+}
+function deactivateSidebar() {
+  closeSidebarPanel();
+  sidebarToggle.hidden = true;
+  noteArea.value = '';
+  noteArea.disabled = true;
+  addBookmarkBtn.disabled = true;
+  bookmarksList.innerHTML = '';
+}
+
+sidebarToggle.addEventListener('click', toggleSidebarPanel);
+addBookmarkBtn.addEventListener('click', handleAddBookmark);
+bookmarksList.addEventListener('click', handleBookmarkClick);
+noteArea.addEventListener('input', handleNoteInput);
+
+// ============================================================
 // Reader-view UX
 // ============================================================
 
@@ -884,6 +1113,7 @@ function exitReaderView() {
   activeSidecar = null;
   activeBookId = null;
   readerContent.innerHTML = '';
+  deactivateSidebar();
   reader.classList.remove('is-open');
   reader.setAttribute('aria-hidden', 'true');
   topbar.style.display = '';
