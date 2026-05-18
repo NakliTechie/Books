@@ -277,6 +277,49 @@ body { display: flex; flex-direction: column; }
 }
 .toc .toc-item:hover { background: var(--row); color: var(--brand); }
 
+/* Library header — "+ Add book" affordance above the row list */
+.library-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.add-btn {
+  background: var(--brand); color: var(--panel);
+  border: none; border-radius: 6px;
+  padding: 8px 14px; font-size: 13px; font-weight: 600;
+  cursor: pointer; font-family: inherit;
+}
+.add-btn:hover { opacity: 0.92; }
+.add-btn.compact { padding: 7px 12px; font-size: 12px; }
+.add-btn-secondary {
+  background: transparent; color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 16px; font-size: 13px; font-weight: 600;
+  cursor: pointer; font-family: inherit;
+  margin-top: 14px;
+}
+.add-btn-secondary:hover { background: var(--row); border-color: var(--brand); }
+
+/* Full-window drop overlay — visible while user is dragging a file in */
+.drop-overlay {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--brand) 25%, var(--body));
+  z-index: 50;
+  pointer-events: none;
+}
+.drop-overlay-card {
+  padding: 40px 60px;
+  background: var(--panel);
+  border: 3px dashed var(--brand);
+  border-radius: 16px;
+  text-align: center;
+  max-width: 420px;
+}
+.drop-overlay .glyph { font-size: 44px; margin-bottom: 14px; color: var(--brand); line-height: 1; }
+.drop-overlay .msg { font-size: 17px; color: var(--ink); font-weight: 600; }
+.drop-overlay .sub { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+
 .loading {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -294,6 +337,19 @@ body { display: flex; flex-direction: column; }
 </style>
 </head>
 <body>
+
+<!-- Persistent file picker — triggered from "Add book" buttons in any view -->
+<input type="file" id="library-fileinput" multiple
+       accept=".epub,.pdf,.mobi,.azw3,.fb2,.txt,.md,.html,.htm" hidden>
+
+<!-- Full-window drop overlay — appears on drag-enter outside the reader -->
+<div class="drop-overlay" id="drop-overlay" hidden>
+  <div class="drop-overlay-card">
+    <div class="glyph">＋</div>
+    <div class="msg" id="drop-msg">Drop to add to your library</div>
+    <div class="sub">ePub · PDF · MOBI · AZW3 · FB2 · TXT · MD · HTML</div>
+  </div>
+</div>
 
 <div class="topbar" id="topbar">
   <div class="title"><span class="glyph">📖</span> Books</div>
@@ -925,8 +981,12 @@ function renderLibraryEmpty() {
   root.innerHTML =
     '<div class="center"><div class="card">' +
       '<h2>📖 Your library is empty</h2>' +
-      "<p>Drop ePub, PDF, MOBI, AZW3, FB2, or text files (<code>.txt</code> / <code>.md</code> / <code>.html</code>) into <code>apps/books/library/</code> in your nakliOS folder. They'll appear here.</p>" +
+      '<p>Add books from your computer to start reading. Supported: <code>.epub</code>, <code>.pdf</code>, <code>.mobi</code>, <code>.azw3</code>, <code>.fb2</code>, <code>.txt</code>, <code>.md</code>, <code>.html</code>.</p>' +
+      '<button class="add-btn-secondary" id="add-book-btn-empty" type="button">＋ Add book…</button>' +
+      "<p style=\"font-size:11px; margin-top:18px;\">Or drag files onto this window. You can also sideload by dropping files into <code>apps/books/library/</code> in your nakliOS folder via Finder &mdash; they'll appear next time you focus this window.</p>" +
     '</div></div>';
+  const btn = document.getElementById('add-book-btn-empty');
+  if (btn) btn.addEventListener('click', openLibraryFilePicker);
 }
 
 function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
@@ -947,16 +1007,83 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
              '</div>' +
            '</div>';
   }).join('');
-  root.innerHTML = '<div class="library">' + rows + '</div>';
+  root.innerHTML =
+    '<div class="library-header">' +
+      '<button class="add-btn compact" id="add-book-btn" type="button">＋ Add book…</button>' +
+    '</div>' +
+    '<div class="library">' + rows + '</div>';
+  const addBtn = document.getElementById('add-book-btn');
+  if (addBtn) addBtn.addEventListener('click', openLibraryFilePicker);
   Array.prototype.forEach.call(root.querySelectorAll('.row'), (r) => {
     r.addEventListener('click', () => openBookFromLibrary(r.getAttribute('data-filename')));
   });
 }
 
 // ============================================================
-// Drop zone (standalone)
+// Adding books — unified path
+// Three entry points: standalone-dropzone, full-window drop, library "+ Add" button.
+// Behavior:
+//   - Standalone:        first supported file → openBookFromFile (preview-only, A4)
+//   - Hosted, no folder: ignored — there's no library to write to
+//   - Hosted + folder:   write all supported files to apps/books/library/<name>,
+//                        re-list, and auto-open the just-added file when there's only one
 // ============================================================
 
+const libraryFileInput = document.getElementById('library-fileinput');
+const dropOverlay = document.getElementById('drop-overlay');
+const dropMsg = document.getElementById('drop-msg');
+
+function openLibraryFilePicker() {
+  libraryFileInput.click();
+}
+
+async function handlePickedFiles(fileList) {
+  if (!fileList || fileList.length === 0) return;
+  const all = Array.from(fileList);
+
+  if (!naklios.capabilities.hosted || !naklios.capabilities.fs) {
+    // Standalone (or hosted without a folder) — preview the first supported file.
+    const first = all.find((f) => engineKeyFor(f.name));
+    if (first) await openBookFromFile(first, null);
+    return;
+  }
+
+  // Hosted with fs — add to library.
+  const supported = all.filter((f) => engineKeyFor(f.name));
+  if (supported.length === 0) return;
+
+  const added = await addBooksToLibrary(supported);
+  await listLibrary();
+  if (added.length === 1) {
+    // Single file: jump straight into it.
+    openBookFromLibrary(added[0]);
+  }
+}
+
+async function addBooksToLibrary(files) {
+  const added = [];
+  for (const f of files) {
+    try {
+      const buf = await f.arrayBuffer();
+      // Host accepts ArrayBuffer / typed-array / string. Use Uint8Array.
+      await naklios.fs.write('library/' + f.name, new Uint8Array(buf));
+      added.push(f.name);
+    } catch (err) {
+      console.warn('Books: write failed for', f.name, err);
+    }
+  }
+  return added;
+}
+
+// File picker change → unified handler. Reset input so picking the same file twice fires again.
+libraryFileInput.addEventListener('change', (e) => {
+  if (e.target.files) handlePickedFiles(e.target.files);
+  e.target.value = '';
+});
+
+// Standalone preview card has its own inline dropzone (initialised when that view renders).
+// Wired by the standalone view itself for visual affordance; the actual drop event also
+// falls through to the document-level handler below (which preview-only-handles).
 function wireDropZone() {
   const dz = document.getElementById('dropzone');
   const fi = document.getElementById('fileinput');
@@ -968,11 +1095,61 @@ function wireDropZone() {
   dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
   dz.addEventListener('drop', (e) => {
     e.preventDefault();
+    e.stopPropagation();    // don't double-fire with the document-level handler
     dz.classList.remove('drag-over');
     const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
     if (f) openBookFromFile(f, null);
   });
 }
+
+// ============================================================
+// Document-level drag-drop — works in any view except the reader.
+// Shows a full-window overlay during drag, processes drop via handlePickedFiles.
+// ============================================================
+
+let dragDepth = 0;
+function isFileDrag(e) {
+  // dataTransfer.types is a DOMStringList in Firefox, array-like in others
+  const types = e.dataTransfer && e.dataTransfer.types;
+  if (!types) return false;
+  return Array.from(types).includes('Files');
+}
+function setDropMsgForCurrentMode() {
+  if (!naklios.capabilities.hosted || !naklios.capabilities.fs) {
+    dropMsg.textContent = 'Drop to read (preview only)';
+  } else {
+    dropMsg.textContent = 'Drop to add to your library';
+  }
+}
+
+document.addEventListener('dragenter', (e) => {
+  if (!isFileDrag(e)) return;
+  if (reader.classList.contains('is-open')) return;   // don't disturb reading
+  dragDepth++;
+  if (dragDepth === 1) {
+    setDropMsgForCurrentMode();
+    dropOverlay.hidden = false;
+  }
+});
+document.addEventListener('dragover', (e) => {
+  if (!isFileDrag(e)) return;
+  if (reader.classList.contains('is-open')) return;
+  e.preventDefault();   // required so the drop event fires
+});
+document.addEventListener('dragleave', (e) => {
+  if (!isFileDrag(e)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) dropOverlay.hidden = true;
+});
+document.addEventListener('drop', (e) => {
+  if (!isFileDrag(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  dropOverlay.hidden = true;
+  if (reader.classList.contains('is-open')) return;
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (files && files.length) handlePickedFiles(files);
+});
 
 // ============================================================
 // Open / close — convergence point for library clicks and standalone drops

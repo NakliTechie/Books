@@ -38,8 +38,15 @@ Scan-on-load: `naklios.fs.list('library/')` at launch + on window-focus (500ms d
 ### A7. Reading-position schema (Q4)
 Engine-discriminated position object. The full sidecar shape is in [Schema additions](#schema-additions) below.
 
-### A8. Adding books (Q5)
-Sideload only for v1. Users drop files into `apps/books/library/` via Finder / Files.app / etc. In-app drag-drop deferred to v1.1.
+### A8. Adding books (Q5) — revised post-v1
+Three paths in hosted mode, two in standalone:
+- **Drop a file** onto the window → in hosted+fs, written to `apps/books/library/<name>` via `naklios.fs.write` then opened if single, just-added if multiple; in standalone, opened as in-memory preview (A4).
+- **Click "+ Add book"** in the library view (or the empty state) → opens the file picker (`<input type="file" multiple accept="…">`); same behavior as drop.
+- **Sideload via Finder/Files.app** into the user's `apps/books/library/` folder → picked up on next scan (window-focus debounced) per A6.
+
+Drop overlay appears on any drag-enter (when not already in the reader view) as a visual "drop to add" prompt covering the whole window. Reader-view drag-drop is intentionally disabled — drops while reading shouldn't replace the current book.
+
+The original Q5 lock ("sideload only for v1") was reversed when the user reported that drag-drop didn't work inside the nakliOS iframe — there was no drop zone in hosted mode at all, and no in-app pick-a-file path either. The revised behavior is what should have shipped in v1.
 
 ### A9. Notes v1 scope (Q6)
 - **Bookmarks**: array on sidecar, `{id, label?, ts, position}` per entry. Position shape matches the book's engine.
