@@ -1,6 +1,6 @@
 # books
 
-> **Lifecycle:** `draft` — initiative scaffolded 2026-05-18. Will flip to `living` once SPEC.md locks.
+> **Lifecycle:** `living` — SPEC.md locked 2026-05-18; implementation begins on `booksv1`.
 
 Books is a single-file browser-native reader for ePub and PDF, slotted into nakliOS as the `books` app. Books live in the user's connected nakliOS folder (`apps/books/library/*.{epub,pdf}`) and reading position + notes persist back to that folder as sidecar JSON — so the library is portable across devices and outlives the launcher.
 
@@ -27,23 +27,23 @@ Eventually this folder will also hold `index.html` (the app itself) + `LICENSE` 
 
 **Decisions locked:**
 - [x] Slug + ID = `books`; folder = `naklios-universe/Books/`; branch = `booksv1`
-- [x] A0–A3: mount point, single-file ethos, data-path convention, SDK contract (see [SPEC.md](SPEC.md))
-- [ ] Q1 — Standalone behavior
-- [ ] Q2 — Book identity
-- [ ] Q3 — Library index
-- [ ] Q4 — Reading-position schema *(shape depends on Q7)*
-- [ ] Q5 — Adding books
-- [ ] Q6 — Notes v1 scope
-- [ ] Q7 — Reader engine *(upstream of Q4 and Q8)*
-- [ ] Q8 — Format scope for v1
+- [x] A0–A3: mount point, single-file ethos, data-path convention, SDK contract
+- [x] A4 (Q1) — Standalone = preview-only
+- [x] A5 (Q2) — Book identity = slugified filename
+- [x] A6 (Q3) — Library = scan-on-load
+- [x] A7 (Q4) — Position schema = engine-discriminated
+- [x] A8 (Q5) — Add books = sideload only
+- [x] A9 (Q6) — Notes = bookmarks + per-book note
+- [x] A10 (Q7) — Reader engine = hybrid (foliate-js + pdf.js)
+- [x] A11 (Q8) — v1 formats = EPUB, PDF, MOBI, AZW3, FB2, TXT, MD, HTML
 
 **Build status:**
 - [x] Initiative scaffolded
-- [ ] Walkthroughs locked
-- [ ] Phase 1 — Foundation (shell, SDK wire-up, empty state)
-- [ ] Phase 2 — Reader (ePub then PDF)
-- [ ] Phase 3 — Persistence + reopen-flow
-- [ ] Phase 4 — Notes + polish + stub-replacement
+- [x] Walkthroughs locked (2026-05-18)
+- [ ] Phase 1 — Foundation (shell, SDK wire-up, capability branch, empty state)
+- [ ] Phase 2 — Engine adapter + readers (foliate-js + pdf.js, 8-format smoke test)
+- [ ] Phase 3 — Persistence + reopen-flow (sidecar JSON)
+- [ ] Phase 4 — Notes + polish + stub-replacement (bookmarks, free-text note, manifest entry, theme)
 
 See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
 

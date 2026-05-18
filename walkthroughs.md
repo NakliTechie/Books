@@ -1,268 +1,218 @@
 # books — Walkthroughs
 
-> **Lifecycle:** `draft` — open design questions. Each question moves from `🟡 OPEN` to `✅ LOCKED <date>` as it's settled. The doc flips to `locked` when every question is closed.
+> **Lifecycle:** `locked` — all questions closed 2026-05-18. Locked decisions are summarised below; each is folded into [SPEC.md](SPEC.md) as an A-numbered architectural decision (A4–A11).
 
-These are the *scope-defining* questions for Books — not implementation details. Many decisions the stub copy already implies (library view, epub.js/pdf.js, `apps/books/library/*` layout) are baked into [SPEC.md](SPEC.md). The questions below are the genuinely-open ones that could swing the design.
+## Locked questions (index)
 
-## Open questions
-
-1. **Standalone behavior — what happens when there's no nakliOS host?** — 🟡 OPEN
-2. **Book identity — what's the stable key?** — 🟡 OPEN
-3. **Library index — scan-on-load or maintained file?** — 🟡 OPEN
-4. **Reading-position schema — one shape across formats?** — 🟡 OPEN *(shape depends on Q7)*
-5. **Adding books — sideload only, drag-drop in app, or both?** — 🟡 OPEN
-6. **Notes v1 scope — bookmark, free-text, or full highlights?** — 🟡 OPEN
-7. **Reader engine — `epub.js + pdf.js`, `foliate-js`, or hybrid?** — 🟡 OPEN *(upstream of Q4 and Q8)*
-8. **Format scope for v1 — which formats does the loader switch enable?** — 🟡 OPEN *(answered by Q7's lock)*
-
-Add questions as they emerge. Number stably — never renumber.
+1. **Standalone behavior** — ✅ LOCKED 2026-05-18. Preview-only outside nakliOS — drag-drop one file, in-memory render, no persistence.
+2. **Book identity** — ✅ LOCKED 2026-05-18. Slugified filename. Collisions get numeric suffixes.
+3. **Library index** — ✅ LOCKED 2026-05-18. Scan-on-load via `naklios.fs.list('library/')`. No maintained index in v1.
+4. **Reading-position schema** — ✅ LOCKED 2026-05-18. Engine-discriminated: foliate-engine formats use `{fraction, cfi?, sectionIndex}`; PDF uses `{page, scrollY}`.
+5. **Adding books** — ✅ LOCKED 2026-05-18. Sideload only for v1.
+6. **Notes v1 scope** — ✅ LOCKED 2026-05-18. Bookmarks list + per-book free-text note. Inline highlights deferred.
+7. **Reader engine** — ✅ LOCKED 2026-05-18. Hybrid (`foliate-js` + `pdf.js`), with internal `Engine` adapter to insulate from upstream churn.
+8. **Format scope for v1** — ✅ LOCKED 2026-05-18. EPUB, PDF, MOBI, AZW3, FB2, TXT, MD, HTML. CBZ deferred to v1.1.
 
 ---
 
 ## Question 1 — Standalone behavior
 
-> **Status:** 🟡 OPEN
+> **Status:** ✅ LOCKED 2026-05-18. Preview-only outside nakliOS; full library + persistence only when hosted.
 
-When Books is opened outside nakliOS (directly via `naklitechie.github.io/Books/` or the GitHub Pages mirror), `naklios.capabilities.fs` is `false` and the `fs.*` RPCs reject. What should the app do?
+### Locked decisions
 
-### Options being considered
+1. **Standalone is preview-only.** When `naklios.capabilities.fs === false`, the app renders a single drag-drop zone. One file at a time, in-memory render, no persistence, no library, no notes.
+2. **Library view is host-only.** Library grid and per-book sidebars only appear when the host has a folder connected.
+3. **Empty-state copy in standalone:** "Books works fully inside nakliOS — your library, position, and notes persist to your folder. Standalone, you can read one file at a time. Drop a book here to read."
 
-| Option | How | Pros | Cons |
-|---|---|---|---|
-| A. Refuse outside host | Show a "Books is part of nakliOS — open it from naklios.dev" card. | Simplest. No dual code path. | Breaks the "every app works standalone" series-wide pattern. Bad first-impression for someone landing on the canonical URL. |
-| B. Preview-only | Drag-drop a single file → render in memory, **no persistence**. No library view. | Honors single-file ethos. Lets people try the reader without nakliOS. | Two distinct UX flows in one file. Reading position lost on close. |
-| C. Self-pickered (Tijori pattern) | Call `showDirectoryPicker()` on first run, save handle to IndexedDB, write files into the picked folder directly. | Full feature parity standalone. Tijori already proves the shape. | Adds ~80 LOC and a second code path. Lock-in risk: standalone-picked folder ≠ host-connected folder, library splits across two locations if user does both. |
+### Build sequence delta
 
-### My recommendation
-
-**B (preview-only).** A naklOS app's job is to feel native inside nakliOS first. Preview-only is honest — it says "this works fully when you mount it in nakliOS, but here's a taste." Tradeoff: drops standalone persistence (you'd reopen the book and lose position). Tripwire that would flip to C: if you actually want Books to be usable as a stand-alone reader on someone else's machine without the launcher.
-
-### Decisions to lock
-
-1. Standalone behavior (one of A/B/C).
-2. If B or C, how the single-file drag-drop UX surfaces in standalone but is hidden in hosted mode.
+Phase 1 gets a capability-detection branch at boot. If `capabilities.fs === false` after subscribing via `naklios.onCapabilitiesChange` (with a brief listen window for late-arriving capabilities messages), render the standalone drag-drop UI. Otherwise render the library shell.
 
 ---
 
 ## Question 2 — Book identity
 
-> **Status:** 🟡 OPEN
+> **Status:** ✅ LOCKED 2026-05-18. Filename, extension stripped, slugified. Collisions get numeric suffixes.
 
-The sidecar at `apps/books/notes/<book-id>.json` needs a stable key. Filename-based breaks when the user renames a file. Content-hash is stable but renders the file unreadable until hashed (slow on a 50 MB PDF). ePub's `<dc:identifier>` is stable but only exists in ePub (PDF has no equivalent).
+### Locked decisions
 
-### Options being considered
+1. **`bookId` is derived from filename**, per the function:
+   ```js
+   function bookIdFor(filename) {
+     return filename
+       .replace(/\.[a-z0-9]{2,5}$/i, '')   // strip extension
+       .replace(/[^a-zA-Z0-9-]+/g, '_')    // non-alnum → underscore
+       .replace(/^_+|_+$/g, '');           // trim leading/trailing _
+   }
+   ```
+2. **Collision rule**: if `notes/<id>.json` already exists for a *different* source filename (recorded as `sourceFilename` field in the sidecar), the new book gets `<id>_2`, `<id>_3`, etc. First-come, first-served.
+3. **Rename recovery**: if a sidecar's `sourceFilename` no longer matches any file in `library/`, the sidecar is treated as orphaned. Surface in a v1.1 "rebind orphaned notes" flow (deferred). For v1, orphans are quietly visible in the library if they have `lastOpened` data; user can ignore.
 
-| Option | How | Pros | Cons |
-|---|---|---|---|
-| A. Filename (extension stripped) | `Pride_and_Prejudice.epub` → `Pride_and_Prejudice` | Trivial. Human-readable sidecars. | Rename = orphaned notes. Two files with same stem collide. |
-| B. Content hash (sha256 of first N MB) | Hash on first open, cache in library index | Stable across renames. | Slow for big PDFs. Bytes-identical re-downloads keep notes; identical-content-different-file does not. |
-| C. Format-native ID with filename fallback | ePub: `<dc:identifier>` (parsed from META-INF). PDF: filename. | Best identifier per format. | Two code paths. PDF still has filename-fragility problem. |
-| D. UUID assigned at first scan | Maintained index `{filename → uuid}` | Survives renames if the index is updated when filename changes. | Index becomes load-bearing — if it's lost, all notes orphan. |
+### Build sequence delta
 
-### My recommendation
-
-**A (filename, extension stripped, slugified).** Simplest, most readable on-disk. Users editing their library know what each sidecar belongs to at a glance. Tradeoff: renames orphan notes. Tripwire that would flip to C or D: if real users rename books often (likelier on imported library content from Calibre etc.).
-
-If we go A: a tiny "Notes orphaned — pick the book they belong to" recovery flow could mitigate without changing the identity scheme.
-
-### Decisions to lock
-
-1. The identity function (which option).
-2. Collision behavior if two files slug to the same id (suffix? error?).
+Phase 3: every sidecar carries a `sourceFilename` field for collision detection and future rename-recovery.
 
 ---
 
 ## Question 3 — Library index
 
-> **Status:** 🟡 OPEN
+> **Status:** ✅ LOCKED 2026-05-18. Scan-on-load. No `apps/books/index.json` in v1.
 
-How does Books discover the books in `apps/books/library/`? Every app launch calls `naklios.fs.list('library/')` (fast, no per-file metadata), or we maintain `apps/books/index.json` with extracted metadata (title, author, last-read, optional cover).
+### Locked decisions
 
-### Options being considered
+1. **Library list** comes from `naklios.fs.list('library/')` at launch and on window-focus (debounced 500ms).
+2. **Sort order**: by `lastOpened` from sidecars (descending) for books that have been opened, then by filename mtime (descending) for the rest. New books bubble to the top.
+3. **Display**: filename (extension trimmed). If the sidecar exists and has a `title` field (populated on first open), show that instead.
+4. **No covers in v1.** Deferred. Text-only list.
 
-| Option | How | Pros | Cons |
-|---|---|---|---|
-| A. Scan-on-load only | Each launch: `fs.list('library/')` → list filenames. Cross-reference notes/ for "last read" indicator. | No write side-effect. Library is just files. | No author/title (you see filenames). No covers. |
-| B. Maintained `apps/books/index.json` | First-sight of new file: parse metadata, append to index. Library view reads index. | Rich metadata. Fast load. | Index becomes load-bearing — out-of-sync if user adds files via Finder. Need reconcile pass. |
-| C. Hybrid — index as cache, scan reconciles | Index is opportunistically maintained; missing entries trigger lazy parse. | Best of both. | Most code. Most edge cases (deletes, renames, partial-index). |
+### Build sequence delta
 
-### My recommendation
-
-**A for v1 (scan-on-load).** Show filenames in the library, sort by mtime descending. When you open a book, parse its metadata once (epub.js gives you title/author free during render init) and update the sidecar's `title` field — that's enough metadata for the "last read" stripe. Tradeoff: library view is filename-based, looks rougher than Calibre. Tripwire: when "I can't find a book by title" becomes a friction point, move to C.
-
-### Decisions to lock
-
-1. Scan vs maintained vs hybrid.
-2. If scan-only: what's shown in the library (filename only, or filename + sidecar-derived "title" when available?).
+Phase 1: library shell calls `naklios.fs.list('library/')` and renders a flat list. Phase 3: list rows decorated with `lastOpened` timestamp + title (from sidecar) once those exist.
 
 ---
 
 ## Question 4 — Reading-position schema
 
-> **Status:** 🟡 OPEN — exact shape locks AFTER Q7 (reader engine), since foliate-js exposes a unified `relocate` event with its own location primitive that differs from raw epub.js CFI.
+> **Status:** ✅ LOCKED 2026-05-18. Engine-discriminated position object.
 
-Different formats have different position primitives. ePub: a Canonical Fragment Identifier (CFI) string, precise to a character offset in a chapter. PDF: page number + intra-page scroll offset (typically `0..1`). MOBI/AZW3: internal section index + offset. CBZ: page-image index. The sidecar JSON should express all needed formats without any format needing another's knowledge.
+### Locked decisions
 
-### Options being considered
+1. **Sidecar shape** — `apps/books/notes/<bookId>.json`:
+   ```json
+   {
+     "bookId": "pride_and_prejudice",
+     "sourceFilename": "Pride and Prejudice.epub",
+     "title": "Pride and Prejudice",
+     "author": "Jane Austen",
+     "format": "epub",
+     "engine": "foliate",
+     "position": {
+       "fraction": 0.34,
+       "cfi": "epubcfi(/6/12!/4/2/2[chap03]:147)",
+       "sectionIndex": 5
+     },
+     "lastOpened": "2026-05-18T12:34:56Z",
+     "note": "",
+     "bookmarks": []
+   }
+   ```
+2. **Position shape varies by `engine`**, not by `format`:
+   - `engine: "foliate"` → `position: { fraction, cfi?, sectionIndex }`. `cfi` only populated for EPUB; other foliate formats use `{fraction, sectionIndex}` only.
+   - `engine: "pdf"` → `position: { page, scrollY }` where `scrollY` is `0..1` fraction within the page.
+3. **`lastOpened`** is used for library sort order (Q3) and is updated on every relocate-debounced write (Phase 3).
+4. **`title` and `author`** are populated lazily — on first open they're extracted from the file's metadata (foliate-js exposes both; pdf.js requires reading the PDF info dict).
+5. **Migration**: shape is versioned implicitly via field presence. If we add a `schemaVersion` later, missing field = v1.
 
-| Option | How | Pros | Cons |
-|---|---|---|---|
-| A. Format-discriminated nested object | `position.epub = { cfi: "..." }` or `position.pdf = { page, scrollY }` | Each format owns its shape. Type-safe per format. | Slightly verbose. Format detection on read. |
-| B. Single flat field, opaque string | `position: "epub:epubcfi(..." \| "pdf:47:0.32"` | One field. Easy to debug visually. | String parsing on read. No type-safety on shape. |
-| C. Percentage-of-document | `position: 0.34` for both formats | Cross-format, trivially comparable. | Lossy: percentage in a paginated PDF reflows differently than ePub. Reopen lands "approximately." |
+### Build sequence delta
 
-### My recommendation
-
-**A (discriminated nested).** Honest about the difference between the two formats. ePub readers downstream can ignore `position.pdf` and vice versa. Tradeoff: slight verbosity. Tripwire to flip to C: if we ever want to share reading position across formats of the same book (probably never).
-
-Schema draft (locks here once chosen):
-```json
-{
-  "bookId": "...",
-  "format": "epub",
-  "position": { "cfi": "epubcfi(/6/12!/4/2/2[chap03]:147)" },
-  "lastOpened": "2026-05-18T...Z"
-}
-```
-
-### Decisions to lock
-
-1. Schema variant (A/B/C).
-2. What `lastOpened` is used for in v1 (sort order? "continue reading" rail? both?).
+Phase 2: each `Engine` implementation returns `getPosition()` in the shape matching its engine field. Phase 3: write/read sidecar using this exact structure.
 
 ---
 
 ## Question 5 — Adding books
 
-> **Status:** 🟡 OPEN
+> **Status:** ✅ LOCKED 2026-05-18. Sideload only for v1. In-app drag-drop deferred.
 
-The library starts empty. How does the user populate it?
+### Locked decisions
 
-### Options being considered
+1. **Books are added by dropping files into `apps/books/library/` via the user's file manager** (Finder, Files.app, etc.). Books re-scans on next launch and on window-focus.
+2. **Empty-state copy** (when library is empty):
+   > "Drop ePub, PDF, MOBI, AZW3, FB2, or text files (.txt/.md/.html) into `apps/books/library/` in your nakliOS folder. They'll appear here."
+3. **No in-app file-write code path in v1.** When Books is run standalone, the drag-drop zone reads in-memory only (per Q1's preview-only lock) — it does not write to any folder.
 
-| Option | How | Pros | Cons |
-|---|---|---|---|
-| A. Sideload only (Finder → folder) | User drags `.epub`/`.pdf` into their nakliOS folder's `apps/books/library/` from Finder. Books reflects on next open. | Zero in-app code. Users with existing libraries (Calibre etc.) just point. | Discovery: how does a new user know? Needs onboarding empty state. |
-| B. In-app drag-drop | Drop a file onto the library view → write to `library/` via `naklios.fs.write` (binary). | First-class UX. Onboarding obvious. | Adds binary-write code path. Big PDFs (50+ MB) over postMessage RPC might be slow. |
-| C. Both A + B | Default is sideload (just files in a folder), but drag-drop also works in-app. | Convenience without sacrificing the file-folder mental model. | Most code. |
+### Build sequence delta
 
-### My recommendation
-
-**A for v1, B in v1.1.** Ship the smaller surface first. Empty state copy: "Drop ePub or PDF files into `apps/books/library/` in your nakliOS folder." Tradeoff: less convenient for first-time users on a fresh setup. Tripwire to add B: when 3+ people ask "how do I add a book?" within the first launch.
-
-### Decisions to lock
-
-1. Sideload-only / in-app-only / both.
-2. Empty-state copy (if sideload).
+Phase 1: empty-state component renders the locked copy when `naklios.fs.list('library/')` returns an empty array.
 
 ---
 
 ## Question 6 — Notes v1 scope
 
-> **Status:** 🟡 OPEN
+> **Status:** ✅ LOCKED 2026-05-18. Bookmarks + per-book free-text note. Inline highlights deferred to v1.1+.
 
-Stub copy promises "Highlights + margin notes." That's ambitious for v1. What's the minimum that ships?
+### Locked decisions
 
-### Options being considered
+1. **Bookmarks** — array on sidecar:
+   ```json
+   { "bookmarks": [
+     { "id": "bm_<random8>", "label": "", "ts": "2026-05-18T...Z",
+       "position": { "fraction": 0.34, "cfi": "...", "sectionIndex": 5 } }
+   ]}
+   ```
+   - `label` optional; empty means "unlabeled bookmark." UI shows label or fallback like "p.47 · 34%."
+   - Position shape matches the book's `engine` (Q4 lock).
+2. **Free-text note** — `note: string` (single textarea per book). Markdown-ish but rendered as `<pre>` in v1.
+3. **Inline highlights deferred.** Stub copy at `naklOS/apps/books/index.html` currently says "Highlights + margin notes" — needs updating to "Bookmarks + notes" to match what v1 ships. This is part of Phase 4's stub-replacement step.
 
-| Option | How | Pros | Cons |
-|---|---|---|---|
-| A. Bookmarks only | Click bookmark icon → record `{ cfi or page, ts, label? }` in sidecar. Sidebar lists bookmarks, click to jump. | Smallest scope. No selection-handling complexity. | Doesn't deliver on "highlights + notes" promise from stub. |
-| B. Bookmarks + free-text-per-book note | Above + a textarea-style "my note on this book" — one blob, not per-position. | Tiny addition. Useful for "what did I think of this book?" reflection. | Still doesn't deliver inline highlights. |
-| C. Inline highlights with notes | Select text → highlight + optional note. Persist with CFI / page+offset. Render highlights when reopening. | Delivers stub promise. The marquee feature. | Substantial UX: text selection across pages, persistence of overlays, ePub iframe coordination. Could double the build effort. |
+### Build sequence delta
 
-### My recommendation
-
-**B for v1, C in v1.1.** Ships the smallest "real" notes feature (bookmarks + a per-book note) in Phase 4 of the build. Tradeoff: stub copy is aspirational for v1. Update stub copy to match what v1 actually delivers, queue C in DEFERRED.md. Tripwire to skip B and go straight to C: if you'd rather Books-v1 be late-and-complete than early-and-spartan.
-
-### Decisions to lock
-
-1. Notes scope for v1 (A/B/C).
-2. Update stub copy to match if B is chosen.
+Phase 4: bookmarks panel UI (list, add-here button, remove, click-to-jump), free-text-note textarea, both wired to sidecar via debounced write. Update naklOS stub copy.
 
 ---
 
 ## Question 7 — Reader engine
 
-> **Status:** 🟡 OPEN — upstream of Q4 (position schema) and Q8 (format scope).
+> **Status:** ✅ LOCKED 2026-05-18. Hybrid — foliate-js for everything except PDF; pdf.js for PDF. Internal `Engine` adapter insulates the app from upstream churn.
 
-What library does the actual rendering? The naive plan was `epub.js + pdf.js` (one per format). But [foliate-js](https://github.com/johnfactotum/foliate-js) (the engine behind the Foliate desktop reader) renders ePub, MOBI, KF8/AZW3, FB2, CBZ, and experimental PDF — all from a single unified `<foliate-view>` element. That's a real architectural fork.
+### Locked decisions
 
-### Options being considered
+1. **Engine assignment by file extension**:
+   - `.epub` `.mobi` `.azw3` `.fb2` `.txt` `.md` `.html` `.htm` → **FoliateEngine** (wraps foliate-js)
+   - `.pdf` → **PdfEngine** (wraps pdf.js)
+2. **Internal `Engine` interface** — all engine wrappers implement:
+   ```
+   class Engine {
+     async load(file)             // file is File | Blob
+     getPosition()                // returns the position object matching this engine's shape
+     async jumpTo(position)       // accepts the same shape
+     onRelocate(callback)         // fires on user scroll/page-turn; debounced internally
+     destroy()                    // cleanup
+   }
+   ```
+3. **Pinned dependencies**:
+   - `foliate-js`: pinned to a tagged release (latest stable, currently 1.0.1) via CDN with SRI hash. Manual upgrade after smoke-test.
+   - `pdf.js`: pinned to a stable release via CDN with SRI hash.
+4. **Vendoring strategy**: CDN loads, not inline vendoring. Reasoning: foliate-js + pdf.js together are ~600 KB; inlining them blows the single-file index.html size to a point where editing is painful. We accept a CDN dependency for these two; the rest of the app (UI, persistence, engine adapter) stays inline.
+5. **Adapter layer is the abstraction**: the rest of Books only talks to the `Engine` interface. If foliate-js's API breaks (their README warns it might), only the FoliateEngine wrapper file changes.
 
-| Option | How | Pros | Cons |
-|---|---|---|---|
-| A. `epub.js` + `pdf.js` (separate) | One library per format, custom loader switch. Add formats by adding libraries. | Each library is mature, stable, well-known. pdf.js is the de facto PDF renderer. epub.js has been stable for years. | Adding a new format = adding a library. CBR/CBZ/MOBI each need their own thing. Two scroll-position models. |
-| B. `foliate-js` (unified) | One ES-module library, format-detection at load time, single `relocate` event for position. | EPUB + MOBI + KF8 + FB2 + CBZ free out of the box. PDF too (experimental). One codepath. Modern ES modules, no build step. | foliate-js's own README warns: "library is not stable and users should expect it to break with API changes at any time." PDF is experimental. Smaller ecosystem. |
-| C. Hybrid — foliate-js for text+image, pdf.js for PDF | foliate-js handles EPUB/MOBI/AZW3/FB2/CBZ; pdf.js handles PDF. Loader switch picks engine by file extension. | Best of both: foliate's breadth without trusting its experimental PDF; pdf.js's PDF maturity. | Two libraries on the page. Two scroll-position abstractions to reconcile in Q4's schema. Bigger bundle. |
+### Build sequence delta
 
-### My recommendation
-
-**C (hybrid).** Single-file ethos says minimize libraries, but the alternative is either trusting foliate-js for PDF (still experimental) or losing the multi-format breadth entirely. The two engines are non-overlapping (foliate-js does everything except PDF; pdf.js does only PDF), so the integration is a clean format-extension switch — no coordination needed.
-
-Mitigations for foliate-js's "unstable API" warning:
-1. **Pin to a tagged release** by URL (e.g. `https://cdn.jsdelivr.net/npm/foliate-js@1.0.1/...`) with an SRI hash; manual upgrade after smoke-test.
-2. **Adapter layer**: Books's reader code talks to a thin internal `Engine` interface (load, relocate, getPosition, jumpToPosition), and the foliate-js/pdf.js wrappers implement it. Engine churn doesn't ripple to the rest of the app.
-
-Tripwire that would flip to A: if foliate-js breaks twice in six months requiring our code to change, ditch it and write per-format ourselves.
-Tripwire that would flip to B: if foliate-js's PDF support reaches parity with pdf.js (would shrink bundle, simplify code).
-
-### Decisions to lock
-
-1. Engine choice (A / B / C).
-2. If C: pin version of foliate-js + adapter shape (or defer adapter to Phase 2 spike).
-3. Loading strategy — CDN with SRI vs vendor source inline. (Single-file ethos pulls toward vendoring; bundle size pulls toward CDN.)
+Phase 2 (revised):
+1. Define the `Engine` interface in `index.html` (no external file).
+2. Write `FoliateEngine` wrapper. Smoke-test against one EPUB.
+3. Write `PdfEngine` wrapper. Smoke-test against one PDF.
+4. Format-detection at load: dispatch to the correct engine based on extension.
 
 ---
 
 ## Question 8 — Format scope for v1
 
-> **Status:** 🟡 OPEN — directly downstream of Q7. Numbers below assume Q7 locks to C (hybrid).
-
-Given the engine, which formats does v1's loader switch actually accept? Enabling each format adds: one extension to the file-picker filter, one branch in the loader switch, one Q4 schema variant, one empty-state copy update, at least one test book in the test corpus.
-
-### Options being considered
-
-| Option | Formats in v1 | Notes |
-|---|---|---|
-| A. Minimum — original stub scope | EPUB + PDF | Honors the stub's exact promise. Smallest test surface. |
-| B. + plain-text family | EPUB + PDF + TXT/MD/HTML | TXT/MD/HTML share one renderer (markdown-to-html, plain-text-to-html, raw-html). ~150 LOC. |
-| C. + foliate breadth | EPUB + PDF + TXT/MD/HTML + MOBI + AZW3 + FB2 | If Q7 = C, these are essentially free in code terms (one switch branch each). The cost is test-corpus and edge-case discovery. |
-| D. + CBZ | C + CBZ | Adds an image-paginated UI mode (different from text-reflow). ~200 LOC for the comic UX. |
-
-**Rejected outright (don't ship in any v1):**
-- **CBR** — rar.js (the available pure-JS RAR library) doesn't implement decompression and has been stale since 2018. No viable path. Document the workaround: convert CBR → CBZ with WinRAR / `unar` / Calibre.
-- **DjVu** — heavyweight WASM library (djvu.js); niche audience; not worth the bundle.
-- **AZW (legacy, pre-AZW3)** — predates KF8; not supported by foliate-js. Practically obsolete.
-
-### My recommendation
-
-**C.** If we adopt foliate-js (Q7=C), MOBI/AZW3/FB2 become essentially free — denying them just to hold scope tight is silly. **Defer CBZ to v1.1** because its image-paginated UI is a meaningfully different reader surface (different controls, different position model, different empty-state). Including CBZ in v1 doubles UX-design effort for a feature with a smaller audience.
-
-Tradeoff: each enabled format adds at least one empty-state copy update + one test book in the test corpus. Tripwire: if MOBI usage logs (via simple telemetry — out of scope for naklOS today) stay at zero through v1, drop it in v1.1's deprecation pass.
-
-### Decisions to lock
-
-1. Format set (A / B / C / D, or custom selection).
-2. Test corpus: which books we use to verify each format renders correctly (one DRM-free public-domain book per format).
-3. Empty-state copy update — what extensions to mention in the "drop ePub or PDF files…" message.
-
----
-
-## Pattern: locked sections look like this
-
-When a question locks, edit its section to:
-
-```
-## Question N — <title>
-
-> **Status:** ✅ LOCKED <YYYY-MM-DD>. <one-sentence summary of the decision>
+> **Status:** ✅ LOCKED 2026-05-18. v1 ships EPUB + PDF + MOBI + AZW3 + FB2 + TXT + MD + HTML. CBZ deferred to v1.1.
 
 ### Locked decisions
 
-1. **<sub-decision>** — locked. <reasoning + implication>
+1. **v1 enabled formats**: `.epub`, `.pdf`, `.mobi`, `.azw3`, `.fb2`, `.txt`, `.md`, `.html`, `.htm` (the last two share one engine path).
+2. **Deferred to v1.1**: `.cbz` (image-paginated UX is a separate track — see [DEFERRED.md](DEFERRED.md)).
+3. **Rejected** (with documented workarounds in [DEFERRED.md](DEFERRED.md)):
+   - `.cbr` — no usable JS RAR-decompression library. Workaround: convert to `.cbz`.
+   - `.djvu` — heavyweight WASM. Workaround: convert to PDF.
+   - Legacy `.azw` (pre-AZW3) — obsolete; foliate-js doesn't support. Workaround: convert via Calibre.
+4. **Test corpus** (smoke-test books for Phase 2):
+   - EPUB: Project Gutenberg's *Pride and Prejudice* (canonical EPUB test text)
+   - PDF: any DRM-free public-domain technical PDF
+   - MOBI: a Gutenberg MOBI export
+   - AZW3: a Gutenberg KF8 export (or a Calibre-converted EPUB → AZW3)
+   - FB2: a Gutenberg FB2 export
+   - TXT/MD/HTML: synthetic test files (small)
+5. **Sideload empty-state copy** (from Q5) explicitly lists the enabled formats so users know what works.
 
 ### Build sequence delta
 
-What this lock adds to SPEC.md's build sequence. (Update SPEC.md to match.)
-```
+Phase 2: format-detection switch covers all 8 extensions (mapping them to engines per Q7). Phase 4: empty-state copy and any "supported formats" help text reflect this list.
+
+---
+
+## Pattern reference: locked sections follow this shape
+
+Status banner → numbered locked decisions → build sequence delta. The "Options being considered" tables from the draft phase live in git history (commit `a02eddc` for Q1–Q6, `ccdbcce` for Q7–Q8). Not duplicated here.
