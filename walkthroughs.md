@@ -157,9 +157,10 @@ Phase 4: bookmarks panel UI (list, add-here button, remove, click-to-jump), free
 
 ### Locked decisions
 
-1. **Engine assignment by file extension**:
-   - `.epub` `.mobi` `.azw3` `.fb2` `.txt` `.md` `.html` `.htm` → **FoliateEngine** (wraps foliate-js)
-   - `.pdf` → **PdfEngine** (wraps pdf.js)
+1. **Engine assignment by file extension** *(refined during Phase 2 — foliate-js doesn't natively support plain-text formats, so a third TextEngine was added)*:
+   - `.epub` `.mobi` `.azw3` `.fb2` → **FoliateEngine** (wraps foliate-js's `<foliate-view>`)
+   - `.pdf` → **PdfEngine** (wraps pdf.js, continuous-scroll canvas viewer)
+   - `.txt` `.md` `.html` `.htm` → **TextEngine** (inline; no library — `<pre>` for TXT/MD, sandboxed `srcdoc` iframe for HTML)
 2. **Internal `Engine` interface** — all engine wrappers implement:
    ```
    class Engine {

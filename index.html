@@ -96,10 +96,7 @@ body { display: flex; flex-direction: column; }
 .dropzone input[type=file] { display: none; }
 .dropzone .formats { font-size: 11px; margin-top: 6px; opacity: 0.8; }
 
-.library {
-  display: grid;
-  gap: 6px;
-}
+.library { display: grid; gap: 6px; }
 .library .row {
   display: flex; align-items: baseline; justify-content: space-between;
   padding: 12px 14px;
@@ -114,8 +111,7 @@ body { display: flex; flex-direction: column; }
   border-color: color-mix(in srgb, var(--brand) 30%, var(--line));
 }
 .library .row .name {
-  font-size: 14px;
-  flex: 1 1 auto;
+  font-size: 14px; flex: 1 1 auto;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding-right: 12px;
 }
@@ -124,24 +120,66 @@ body { display: flex; flex-direction: column; }
   text-transform: uppercase; letter-spacing: 0.05em;
   flex: 0 0 auto;
 }
+
+/* === Reader view === */
+.reader { position: fixed; inset: 0; background: var(--body); display: none; flex-direction: column; z-index: 10; }
+.reader.is-open { display: flex; }
+.reader-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border-bottom: 1px solid var(--line);
+  background: var(--panel); flex: 0 0 auto;
+}
+.reader-header .back {
+  background: transparent; color: var(--ink); border: 1px solid var(--line);
+  padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
+}
+.reader-header .back:hover { background: var(--row); border-color: var(--brand); }
+.reader-header .reader-title {
+  flex: 1 1 auto; font-size: 14px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.reader-header .status { font-size: 11px; color: var(--muted); }
+.reader-content { flex: 1 1 auto; overflow: hidden; position: relative; min-height: 0; }
+.reader-content > * { position: absolute; inset: 0; }
+
+.loading {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 13px;
+}
+.reader-error {
+  padding: 40px 20px; max-width: 520px; margin: 0 auto;
+  color: var(--muted); line-height: 1.55;
+}
+.reader-error h3 { color: var(--ink); margin: 0 0 10px; }
+.reader-error code {
+  background: var(--row); padding: 1px 5px; border-radius: 3px;
+  font-family: ui-monospace, monospace; font-size: 12px; color: var(--ink);
+}
 </style>
 </head>
 <body>
 
-<div class="topbar">
+<div class="topbar" id="topbar">
   <div class="title"><span class="glyph">📖</span> Books</div>
   <div class="status" id="topbar-status">Loading…</div>
 </div>
 
-<div class="main" id="main">
-  <!-- View rendered by JS -->
+<div class="main" id="main"><!-- view rendered by JS --></div>
+
+<div class="reader" id="reader" aria-hidden="true">
+  <div class="reader-header">
+    <button class="back" id="back-btn" type="button">← Library</button>
+    <div class="reader-title" id="reader-title">…</div>
+    <div class="status" id="reader-status"></div>
+  </div>
+  <div class="reader-content" id="reader-content"><!-- engine renders here --></div>
 </div>
 
 <!--
   naklios.js — cooperative SDK for apps hosted inside nakliOS (Immersive mode).
   Vendored inline per the single-file ethos. Standalone-safe (no-ops when not hosted).
-  Canonical source: https://naklios.dev/sdk/naklios.js (and naklOS/sdk/naklios.js in the repo).
-  License: MIT.
+  Canonical source: https://naklios.dev/sdk/naklios.js. License: MIT.
 -->
 <script>
 (function () {
@@ -232,193 +270,518 @@ body { display: flex; flex-direction: column; }
 })();
 </script>
 
-<!-- Books app boot -->
-<script>
-(function () {
-  'use strict';
+<!-- Books app boot + engines -->
+<script type="module">
+'use strict';
 
-  var root = document.getElementById('main');
-  var topbarStatus = document.getElementById('topbar-status');
+const VENDOR_FOLIATE = './vendor/foliate-js@1.0.1/';
+const VENDOR_PDFJS   = './vendor/pdfjs-dist@5.7.284/';
 
-  // A11 — v1 format scope. Foliate-engine extensions + PDF.
-  var SUPPORTED_EXTS = ['epub','pdf','mobi','azw3','fb2','txt','md','html','htm'];
+const SUPPORTED_EXTS = ['epub','pdf','mobi','azw3','fb2','txt','md','html','htm'];
+const ENGINE_BY_EXT = {
+  epub:'foliate', mobi:'foliate', azw3:'foliate', fb2:'foliate',
+  pdf:'pdf',
+  txt:'text', md:'text', html:'text', htm:'text',
+};
 
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+const root = document.getElementById('main');
+const topbar = document.getElementById('topbar');
+const topbarStatus = document.getElementById('topbar-status');
+const reader = document.getElementById('reader');
+const readerContent = document.getElementById('reader-content');
+const readerTitle = document.getElementById('reader-title');
+const readerStatus = document.getElementById('reader-status');
+const backBtn = document.getElementById('back-btn');
+
+let activeEngine = null;
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function extOf(name) {
+  const m = String(name || '').match(/\.([a-z0-9]+)$/i);
+  return m ? m[1].toLowerCase() : '';
+}
+function engineKeyFor(filename) {
+  return ENGINE_BY_EXT[extOf(filename)] || null;
+}
+
+// ============================================================
+// Engine adapters — all three implement the same informal interface:
+//   async load(file)         file is File | Blob (must have .name + .arrayBuffer())
+//   getPosition()            engine-shaped position object
+//   async jumpTo(position)
+//   onRelocate(cb)
+//   destroy()
+// ============================================================
+
+class FoliateEngine {
+  static engineKey = 'foliate';
+  constructor(container) {
+    this.container = container;
+    this.view = null;
+    this._cb = null;
   }
-
-  function extOf(name) {
-    var m = String(name).match(/\.([a-z0-9]+)$/i);
-    return m ? m[1].toLowerCase() : '';
+  async load(file) {
+    await import(VENDOR_FOLIATE + 'view.js');
+    this.view = document.createElement('foliate-view');
+    Object.assign(this.view.style, { display: 'block', width: '100%', height: '100%' });
+    this.container.appendChild(this.view);
+    this.view.addEventListener('relocate', () => {
+      if (this._cb) this._cb(this.getPosition());
+    });
+    await this.view.open(file);
   }
-
-  // ===== Views =====
-
-  function renderStandalonePreview() {
-    topbarStatus.textContent = 'Preview mode';
-    root.innerHTML =
-      '<div class="center"><div class="card">' +
-        '<div class="tag">Preview mode</div>' +
-        '<h2>📖 Books</h2>' +
-        "<p>Books works fully inside nakliOS — your library, position, and notes persist to your folder. Standalone, you can read one file at a time.</p>" +
-        '<label class="dropzone" id="dropzone">' +
-          '<input type="file" id="fileinput" accept=".epub,.pdf,.mobi,.azw3,.fb2,.txt,.md,.html,.htm">' +
-          '<div>Drop a book here, or click to choose</div>' +
-          '<div class="formats">ePub · PDF · MOBI · AZW3 · FB2 · TXT · MD · HTML</div>' +
-        '</label>' +
-        '<p style="font-size:11px; margin-top:18px;">Open at <code>naklios.dev/apps/books/</code> for the full experience.</p>' +
-      '</div></div>';
-    wireDropZone();
+  getPosition() {
+    const loc = this.view && this.view.lastLocation;
+    if (!loc) return { fraction: 0, sectionIndex: 0 };
+    const idx = (loc.tocItem && typeof loc.tocItem.index === 'number')
+      ? loc.tocItem.index : (loc.index || 0);
+    const out = { fraction: loc.fraction || 0, sectionIndex: idx };
+    if (loc.cfi) out.cfi = loc.cfi;
+    return out;
   }
-
-  function renderHostedNoFolder() {
-    topbarStatus.textContent = 'No folder connected';
-    root.innerHTML =
-      '<div class="center"><div class="card">' +
-        '<h2>📖 No folder connected</h2>' +
-        "<p>Connect a folder via nakliOS settings (⚙ in the top bar) → Folder sync → Connect folder. That's where your books, reading position, and notes will live.</p>" +
-      '</div></div>';
+  async jumpTo(position) {
+    if (!this.view || !position) return;
+    if (position.cfi) {
+      try { await this.view.goTo(position.cfi); return; } catch (_) {}
+    }
+    if (typeof position.fraction === 'number') {
+      try { await this.view.goToFraction(position.fraction); } catch (_) {}
+    }
   }
-
-  function renderLibraryEmpty() {
-    topbarStatus.textContent = 'Library empty';
-    root.innerHTML =
-      '<div class="center"><div class="card">' +
-        '<h2>📖 Your library is empty</h2>' +
-        '<p>Drop ePub, PDF, MOBI, AZW3, FB2, or text files (<code>.txt</code> / <code>.md</code> / <code>.html</code>) into <code>apps/books/library/</code> in your nakliOS folder. They\'ll appear here.</p>' +
-      '</div></div>';
+  onRelocate(cb) { this._cb = cb; }
+  destroy() {
+    if (this.view) {
+      try { this.container.removeChild(this.view); } catch (_) {}
+      this.view = null;
+    }
+    this._cb = null;
   }
+}
 
-  function renderLibrary(books) {
-    topbarStatus.textContent = books.length + ' book' + (books.length === 1 ? '' : 's');
-    var rows = books.map(function (name) {
-      var ext = extOf(name);
-      var displayName = name.replace(/\.[a-z0-9]+$/i, '');
-      return '<div class="row" data-filename="' + escapeHtml(name) + '">' +
-               '<div class="name">' + escapeHtml(displayName) + '</div>' +
-               '<div class="meta">' + escapeHtml(ext) + '</div>' +
-             '</div>';
-    }).join('');
-    root.innerHTML = '<div class="library">' + rows + '</div>';
-    Array.prototype.forEach.call(root.querySelectorAll('.row'), function (r) {
-      r.addEventListener('click', function () {
-        var fn = r.getAttribute('data-filename');
-        // Phase 2 will replace this with engine.load() → reader view.
-        alert('Phase 2 will open: ' + fn);
+class PdfEngine {
+  static engineKey = 'pdf';
+  constructor(container) {
+    this.container = container;
+    this.viewer = null;
+    this.pdfDoc = null;
+    this.numPages = 0;
+    this.currentPage = 1;
+    this.scrollY = 0;
+    this._cb = null;
+    this._scrollT = null;
+  }
+  async load(file) {
+    const pdfjs = await import(VENDOR_PDFJS + 'build/pdf.min.mjs');
+    pdfjs.GlobalWorkerOptions.workerSrc = VENDOR_PDFJS + 'build/pdf.worker.min.mjs';
+    const data = await file.arrayBuffer();
+    this.pdfDoc = await pdfjs.getDocument({
+      data: data,
+      cMapUrl: VENDOR_PDFJS + 'cmaps/',
+      cMapPacked: true,
+      standardFontDataUrl: VENDOR_PDFJS + 'standard_fonts/',
+    }).promise;
+    this.numPages = this.pdfDoc.numPages;
+
+    this.viewer = document.createElement('div');
+    Object.assign(this.viewer.style, {
+      overflowY: 'auto', overflowX: 'hidden',
+      height: '100%', width: '100%',
+      padding: '20px 0', background: 'var(--body)',
+    });
+    this.container.appendChild(this.viewer);
+
+    // Render pages sequentially. For very large PDFs this can be slow;
+    // Phase 3 may introduce lazy rendering. v1 keeps it simple.
+    for (let i = 1; i <= this.numPages; i++) {
+      await this._renderPage(i);
+    }
+
+    this.viewer.addEventListener('scroll', () => this._onScroll());
+  }
+  async _renderPage(num) {
+    const page = await this.pdfDoc.getPage(num);
+    const dpr = window.devicePixelRatio || 1;
+    const baseVp = page.getViewport({ scale: 1 });
+    const avail = Math.max(320, this.viewer.clientWidth - 40);
+    const scale = (avail / baseVp.width) * dpr;
+    const vp = page.getViewport({ scale: scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = vp.width;
+    canvas.height = vp.height;
+    canvas.dataset.pageNum = String(num);
+    Object.assign(canvas.style, {
+      display: 'block', margin: '8px auto',
+      width: (vp.width / dpr) + 'px', height: (vp.height / dpr) + 'px',
+      boxShadow: '0 2px 12px rgba(0,0,0,0.4)', background: '#fff',
+    });
+    this.viewer.appendChild(canvas);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+  }
+  _onScroll() {
+    const canvases = this.viewer.querySelectorAll('canvas[data-page-num]');
+    const top = this.viewer.scrollTop;
+    for (let i = 0; i < canvases.length; i++) {
+      const c = canvases[i];
+      const bottom = c.offsetTop + c.offsetHeight;
+      if (bottom > top) {
+        this.currentPage = Number(c.dataset.pageNum);
+        const h = c.offsetHeight || 1;
+        this.scrollY = Math.max(0, Math.min(1, (top - c.offsetTop) / h));
+        break;
+      }
+    }
+    if (this._scrollT) clearTimeout(this._scrollT);
+    this._scrollT = setTimeout(() => {
+      if (this._cb) this._cb(this.getPosition());
+    }, 300);
+  }
+  getPosition() { return { page: this.currentPage, scrollY: this.scrollY }; }
+  async jumpTo(position) {
+    if (!this.viewer || !position) return;
+    const page = Math.max(1, Math.min(this.numPages || 1, position.page || 1));
+    const scrollY = Math.max(0, Math.min(1, position.scrollY || 0));
+    const canvas = this.viewer.querySelector('canvas[data-page-num="' + page + '"]');
+    if (!canvas) return;
+    this.viewer.scrollTop = canvas.offsetTop + (scrollY * canvas.offsetHeight);
+  }
+  onRelocate(cb) { this._cb = cb; }
+  destroy() {
+    if (this.pdfDoc) { try { this.pdfDoc.destroy(); } catch (_) {} this.pdfDoc = null; }
+    if (this.viewer) { try { this.container.removeChild(this.viewer); } catch (_) {} this.viewer = null; }
+    this._cb = null;
+  }
+}
+
+class TextEngine {
+  static engineKey = 'text';
+  constructor(container) {
+    this.container = container;
+    this.viewer = null;
+    this._cb = null;
+    this._scrollT = null;
+  }
+  async load(file) {
+    const ext = extOf(file.name);
+    const text = await file.text();
+    this.viewer = document.createElement('div');
+    Object.assign(this.viewer.style, {
+      overflowY: 'auto', height: '100%', width: '100%',
+      background: 'var(--panel)', color: 'var(--ink)',
+    });
+    if (ext === 'html' || ext === 'htm') {
+      const iframe = document.createElement('iframe');
+      // Strict sandbox: no scripts, no same-origin, no top navigation.
+      iframe.setAttribute('sandbox', '');
+      Object.assign(iframe.style, { width: '100%', height: '100%', border: 'none', background: '#fff' });
+      iframe.srcdoc = text;
+      this.viewer.appendChild(iframe);
+    } else {
+      const inner = document.createElement('div');
+      Object.assign(inner.style, {
+        maxWidth: '720px', margin: '0 auto', padding: '40px 20px 80px',
       });
-    });
-  }
-
-  // ===== Drop zone (standalone preview) =====
-
-  function wireDropZone() {
-    var dz = document.getElementById('dropzone');
-    var fi = document.getElementById('fileinput');
-    if (!dz || !fi) return;
-    fi.addEventListener('change', function () {
-      if (fi.files && fi.files[0]) handlePreviewFile(fi.files[0]);
-    });
-    dz.addEventListener('dragover', function (e) {
-      e.preventDefault();
-      dz.classList.add('drag-over');
-    });
-    dz.addEventListener('dragleave', function () { dz.classList.remove('drag-over'); });
-    dz.addEventListener('drop', function (e) {
-      e.preventDefault();
-      dz.classList.remove('drag-over');
-      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) handlePreviewFile(f);
-    });
-  }
-
-  function handlePreviewFile(file) {
-    var ext = extOf(file.name);
-    if (SUPPORTED_EXTS.indexOf(ext) === -1) {
-      alert('Unsupported format: .' + ext);
-      return;
-    }
-    // Phase 2 wires the engine adapter here. For now, acknowledge.
-    alert('Phase 2 will render: ' + file.name + ' (' + ext.toUpperCase() + ')');
-  }
-
-  // ===== Library listing (hosted) =====
-
-  async function listLibrary() {
-    try {
-      var entries = await naklios.fs.list('library/');
-      // Host returns an array of strings; trailing '/' marks directories.
-      var books = (Array.isArray(entries) ? entries : []).filter(function (name) {
-        if (typeof name !== 'string' || !name) return false;
-        if (name.charAt(name.length - 1) === '/') return false;
-        var ext = extOf(name);
-        return SUPPORTED_EXTS.indexOf(ext) !== -1;
+      const pre = document.createElement('pre');
+      Object.assign(pre.style, {
+        whiteSpace: 'pre-wrap', wordWrap: 'break-word',
+        fontFamily: 'Georgia, "Iowan Old Style", "Palatino Linotype", serif',
+        fontSize: '17px', lineHeight: '1.7', margin: '0', color: 'var(--ink)',
       });
-      if (books.length === 0) renderLibraryEmpty();
-      else renderLibrary(books);
-    } catch (err) {
-      console.error('Books: library listing failed', err);
-      renderLibraryEmpty();
+      pre.textContent = text;
+      inner.appendChild(pre);
+      this.viewer.appendChild(inner);
     }
+    this.container.appendChild(this.viewer);
+    this.viewer.addEventListener('scroll', () => this._onScroll());
   }
-
-  // ===== Theme =====
-
-  function applyHostTheme(theme) {
-    if (!theme || !theme.colors) return;
-    var c = theme.colors;
-    var s = document.documentElement.style;
-    if (c.body)  s.setProperty('--body',  c.body);
-    if (c.panel) s.setProperty('--panel', c.panel);
-    if (c.ink)   s.setProperty('--ink',   c.ink);
-    if (c.brand) s.setProperty('--brand', c.brand);
-    if (c.row)   s.setProperty('--row',   c.row);
-    if (c.line)  s.setProperty('--line',  c.line);
+  _onScroll() {
+    if (this._scrollT) clearTimeout(this._scrollT);
+    this._scrollT = setTimeout(() => {
+      if (this._cb) this._cb(this.getPosition());
+    }, 300);
   }
+  getPosition() {
+    if (!this.viewer) return { fraction: 0 };
+    const total = this.viewer.scrollHeight - this.viewer.clientHeight;
+    const f = total > 0 ? this.viewer.scrollTop / total : 0;
+    return { fraction: Math.max(0, Math.min(1, f)) };
+  }
+  async jumpTo(position) {
+    if (!this.viewer || !position) return;
+    const f = Math.max(0, Math.min(1, position.fraction || 0));
+    const total = this.viewer.scrollHeight - this.viewer.clientHeight;
+    this.viewer.scrollTop = f * total;
+  }
+  onRelocate(cb) { this._cb = cb; }
+  destroy() {
+    if (this.viewer) { try { this.container.removeChild(this.viewer); } catch (_) {} this.viewer = null; }
+    this._cb = null;
+  }
+}
 
-  // ===== Boot =====
+const ENGINES = { foliate: FoliateEngine, pdf: PdfEngine, text: TextEngine };
+function newEngineFor(filename, container) {
+  const key = engineKeyFor(filename);
+  if (!key) return null;
+  return new (ENGINES[key])(container);
+}
 
-  function boot() {
-    naklios.ready();
-    naklios.title('Books');
+// ============================================================
+// Views
+// ============================================================
 
-    if (!naklios.capabilities.hosted) {
-      renderStandalonePreview();
-      return;
-    }
+function renderStandalonePreview() {
+  topbarStatus.textContent = 'Preview mode';
+  root.innerHTML =
+    '<div class="center"><div class="card">' +
+      '<div class="tag">Preview mode</div>' +
+      '<h2>📖 Books</h2>' +
+      "<p>Books works fully inside nakliOS — your library, position, and notes persist to your folder. Standalone, you can read one file at a time.</p>" +
+      '<label class="dropzone" id="dropzone">' +
+        '<input type="file" id="fileinput" accept=".epub,.pdf,.mobi,.azw3,.fb2,.txt,.md,.html,.htm">' +
+        '<div>Drop a book here, or click to choose</div>' +
+        '<div class="formats">ePub · PDF · MOBI · AZW3 · FB2 · TXT · MD · HTML</div>' +
+      '</label>' +
+    '</div></div>';
+  wireDropZone();
+}
 
-    var decided = false;
-    function decide() {
-      if (decided) return;
-      decided = true;
-      if (!naklios.capabilities.fs) renderHostedNoFolder();
-      else listLibrary();
-    }
-    naklios.onCapabilitiesChange(function (caps) {
-      if (caps.fs && !decided) decide();
+function renderHostedNoFolder() {
+  topbarStatus.textContent = 'No folder connected';
+  root.innerHTML =
+    '<div class="center"><div class="card">' +
+      '<h2>📖 No folder connected</h2>' +
+      "<p>Connect a folder via nakliOS settings (⚙ in the top bar) → Folder sync → Connect folder. That's where your books, reading position, and notes will live.</p>" +
+    '</div></div>';
+}
+
+function renderLibraryEmpty() {
+  topbarStatus.textContent = 'Library empty';
+  root.innerHTML =
+    '<div class="center"><div class="card">' +
+      '<h2>📖 Your library is empty</h2>' +
+      "<p>Drop ePub, PDF, MOBI, AZW3, FB2, or text files (<code>.txt</code> / <code>.md</code> / <code>.html</code>) into <code>apps/books/library/</code> in your nakliOS folder. They'll appear here.</p>" +
+    '</div></div>';
+}
+
+function renderLibrary(books) {
+  topbarStatus.textContent = books.length + ' book' + (books.length === 1 ? '' : 's');
+  const rows = books.map((name) => {
+    const ext = extOf(name);
+    const displayName = name.replace(/\.[a-z0-9]+$/i, '');
+    return '<div class="row" data-filename="' + escapeHtml(name) + '">' +
+             '<div class="name">' + escapeHtml(displayName) + '</div>' +
+             '<div class="meta">' + escapeHtml(ext) + '</div>' +
+           '</div>';
+  }).join('');
+  root.innerHTML = '<div class="library">' + rows + '</div>';
+  Array.prototype.forEach.call(root.querySelectorAll('.row'), (r) => {
+    r.addEventListener('click', () => {
+      openBookFromLibrary(r.getAttribute('data-filename'));
     });
-    naklios.requestCapabilities();
-    // Fallback if the host doesn't reply (older nakliOS or no folder ever connected).
-    setTimeout(decide, 1500);
+  });
+}
 
-    naklios.theme.onChange(applyHostTheme);
-    naklios.theme.request();
+// ============================================================
+// Drop zone (standalone)
+// ============================================================
 
-    // Re-scan on window focus (A6 — scan-on-load + on focus, debounced).
-    var rescanT = null;
-    window.addEventListener('focus', function () {
-      if (!naklios.capabilities.fs) return;
-      clearTimeout(rescanT);
-      rescanT = setTimeout(listLibrary, 500);
+function wireDropZone() {
+  const dz = document.getElementById('dropzone');
+  const fi = document.getElementById('fileinput');
+  if (!dz || !fi) return;
+  fi.addEventListener('change', () => {
+    if (fi.files && fi.files[0]) openBookFromFile(fi.files[0]);
+  });
+  dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dz.classList.remove('drag-over');
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) openBookFromFile(f);
+  });
+}
+
+// ============================================================
+// Open book — both library row click and standalone drop converge here
+// ============================================================
+
+async function openBookFromLibrary(filename) {
+  enterReaderView(filename);
+  setReaderLoading('Loading…');
+  try {
+    const raw = await naklios.fs.readBinary('library/' + filename);
+    const buf = toArrayBuffer(raw);
+    const file = new File([buf], filename);
+    await openBookFromFile(file);
+  } catch (err) {
+    showReaderError('Could not load <code>' + escapeHtml(filename) + '</code>', err);
+  }
+}
+
+async function openBookFromFile(file) {
+  const key = engineKeyFor(file.name);
+  if (!key) {
+    showReaderError('Unsupported file type: <code>.' + escapeHtml(extOf(file.name)) + '</code>',
+      new Error('Books v1 supports ePub, PDF, MOBI, AZW3, FB2, TXT, MD, HTML.'));
+    return;
+  }
+  enterReaderView(file.name);
+  setReaderLoading('Loading…');
+  // Tear down any previous engine before mounting the new one.
+  if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
+  readerContent.innerHTML = '';
+  try {
+    activeEngine = new (ENGINES[key])(readerContent);
+    activeEngine.onRelocate((pos) => {
+      // Phase 3 will persist this to sidecar JSON. Phase 2 just displays.
+      readerStatus.textContent = describePosition(key, pos);
     });
+    await activeEngine.load(file);
+    readerStatus.textContent = describePosition(key, activeEngine.getPosition());
+  } catch (err) {
+    showReaderError('Could not render <code>' + escapeHtml(file.name) + '</code>', err);
+  }
+}
+
+function describePosition(engineKey, pos) {
+  if (!pos) return '';
+  if (engineKey === 'pdf' && pos.page) return 'p.' + pos.page;
+  if (typeof pos.fraction === 'number') return Math.round(pos.fraction * 100) + '%';
+  return '';
+}
+
+function toArrayBuffer(raw) {
+  if (raw instanceof ArrayBuffer) return raw;
+  if (raw && raw.buffer instanceof ArrayBuffer) {
+    return raw.buffer.slice(raw.byteOffset || 0, (raw.byteOffset || 0) + raw.byteLength);
+  }
+  if (typeof raw === 'string') {
+    // Defensive: some hosts may return base64 or binary-as-string. Treat as utf-8 text.
+    return new TextEncoder().encode(raw).buffer;
+  }
+  throw new Error('Unexpected response shape from naklios.fs.readBinary');
+}
+
+// ============================================================
+// Reader-view UX
+// ============================================================
+
+function enterReaderView(filename) {
+  readerTitle.textContent = filename.replace(/\.[a-z0-9]+$/i, '');
+  readerStatus.textContent = '';
+  reader.classList.add('is-open');
+  reader.setAttribute('aria-hidden', 'false');
+  topbar.style.display = 'none';
+  document.getElementById('main').style.display = 'none';
+  naklios.title('Books — ' + filename.replace(/\.[a-z0-9]+$/i, ''));
+}
+
+function exitReaderView() {
+  if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
+  readerContent.innerHTML = '';
+  reader.classList.remove('is-open');
+  reader.setAttribute('aria-hidden', 'true');
+  topbar.style.display = '';
+  document.getElementById('main').style.display = '';
+  naklios.title('Books');
+}
+
+backBtn.addEventListener('click', exitReaderView);
+
+function setReaderLoading(msg) {
+  readerContent.innerHTML = '<div class="loading">' + escapeHtml(msg) + '</div>';
+}
+function showReaderError(htmlMsg, err) {
+  const detail = err && err.message ? err.message : '';
+  readerContent.innerHTML =
+    '<div class="reader-error">' +
+      '<h3>Couldn\'t open this book</h3>' +
+      '<p>' + htmlMsg + '</p>' +
+      (detail ? '<p style="font-size:12px; opacity:0.7;"><code>' + escapeHtml(detail) + '</code></p>' : '') +
+    '</div>';
+  if (err) console.error('Books:', err);
+}
+
+// ============================================================
+// Library listing (hosted)
+// ============================================================
+
+async function listLibrary() {
+  try {
+    const entries = await naklios.fs.list('library/');
+    const books = (Array.isArray(entries) ? entries : []).filter((name) => {
+      if (typeof name !== 'string' || !name) return false;
+      if (name.charAt(name.length - 1) === '/') return false;
+      return SUPPORTED_EXTS.indexOf(extOf(name)) !== -1;
+    });
+    if (books.length === 0) renderLibraryEmpty();
+    else renderLibrary(books);
+  } catch (err) {
+    console.error('Books: library listing failed', err);
+    renderLibraryEmpty();
+  }
+}
+
+// ============================================================
+// Theme
+// ============================================================
+
+function applyHostTheme(theme) {
+  if (!theme || !theme.colors) return;
+  const c = theme.colors;
+  const s = document.documentElement.style;
+  if (c.body)  s.setProperty('--body',  c.body);
+  if (c.panel) s.setProperty('--panel', c.panel);
+  if (c.ink)   s.setProperty('--ink',   c.ink);
+  if (c.brand) s.setProperty('--brand', c.brand);
+  if (c.row)   s.setProperty('--row',   c.row);
+  if (c.line)  s.setProperty('--line',  c.line);
+}
+
+// ============================================================
+// Boot
+// ============================================================
+
+function boot() {
+  naklios.ready();
+  naklios.title('Books');
+
+  if (!naklios.capabilities.hosted) {
+    renderStandalonePreview();
+    return;
   }
 
-  boot();
-})();
+  let decided = false;
+  function decide() {
+    if (decided) return;
+    decided = true;
+    if (!naklios.capabilities.fs) renderHostedNoFolder();
+    else listLibrary();
+  }
+  naklios.onCapabilitiesChange((caps) => { if (caps.fs && !decided) decide(); });
+  naklios.requestCapabilities();
+  setTimeout(decide, 1500);
+
+  naklios.theme.onChange(applyHostTheme);
+  naklios.theme.request();
+
+  // Re-scan on window focus (A6 — scan-on-load + focus, debounced).
+  let rescanT = null;
+  window.addEventListener('focus', () => {
+    if (!naklios.capabilities.fs) return;
+    // Don't re-scan while a book is open.
+    if (reader.classList.contains('is-open')) return;
+    clearTimeout(rescanT);
+    rescanT = setTimeout(listLibrary, 500);
+  });
+}
+
+boot();
 </script>
 </body>
 </html>
