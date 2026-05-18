@@ -63,3 +63,28 @@ Standalone preview can't exercise the persistence path (`naklios.fs.*` requires 
 Automated smoke covers the engine-agnostic plumbing (capability detection, open/close lifecycle, error UX, position tracking). Format-specific rendering and the full persistence loop need to be exercised with real books in nakliOS — that work is user-driven and gated on the Books github.io site existing.
 
 One bug found and fixed during this stage: unsupported-format errors used to render into a hidden reader-content div because `showReaderError` was called before `enterReaderView`. Fixed in the same commit batch as this doc.
+
+---
+
+## Stage 7.x — nav + TOC follow-up (2026-05-18)
+
+Initial v1 shipped without explicit navigation UI: foliate-paginator has invisible click-zones (click page edges to flip), pdf.js was scroll-only, no TOC anywhere. User-reported as "no nav, index, search."
+
+Added in this pass:
+- **Header nav buttons** (◀ / ▶) — visible whenever a book is open, wired to `engine.next/prev`
+- **Keyboard nav** — ←/→/Space/Esc on `window`, skipped when focus is in an input/textarea
+- **TOC** — sidebar "Contents" section above bookmarks, populated from `engine.getTOC()`. Click-to-jump via `engine.jumpToTocItem(item)`. Hidden if no TOC available (PDFs without outlines, plain text).
+- **Engine surface gained 4 methods** (FoliateEngine, PdfEngine, TextEngine): `next`, `prev`, `getTOC`, `jumpToTocItem`. TextEngine's `next`/`prev` scroll by 90% viewport-height; `getTOC` returns null.
+- **Sidebar toggle now appears in standalone** when there's a TOC, so drag-drop preview users can see chapters. Bookmark + note widgets stay disabled in standalone (no persistence).
+
+Verified live (headless Chromium against `pg78703-images-3.epub`):
+- ✅ Prev/Next buttons appear after engine load
+- ✅ Sidebar toggle visible (TOC present)
+- ✅ Contents section shows 3 chapter entries
+- ✅ `view.next()` advances foliate-paginator from section 0 (cover) through section 5 (license)
+- ✅ TOC click jumps to a specific section (verified by `lastLocation.tocItem.label` matching)
+- ✅ Bookmark/note widgets visibly disabled in standalone
+
+**PDF multi-page caveat:** pdf.js's `page.render({ canvas, viewport }).promise` hangs on page 2+ in this headless Chromium preview — verified by calling pdf.js directly (not via the engine), so it's not a Books-side bug. Page 1 renders fine. Likely a worker-isolation quirk in the preview environment; needs in-browser verification on the live `naklitechie.github.io/Books/` site.
+
+**Search** — explicitly deferred to v1.1. Cross-engine search (foliate-js has `view.search()`, pdf.js has a separate find controller, TextEngine would need a custom substring index) is real engineering. Out of scope for the nav+TOC patch.

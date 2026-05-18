@@ -152,12 +152,16 @@ body { display: flex; flex-direction: column; }
   padding: 10px 16px; border-bottom: 1px solid var(--line);
   background: var(--panel); flex: 0 0 auto;
 }
-.reader-header .back {
+.reader-header .back,
+.reader-header .nav-btn {
   background: transparent; color: var(--ink); border: 1px solid var(--line);
   padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
-  font-family: inherit;
+  font-family: inherit; line-height: 1;
 }
-.reader-header .back:hover { background: var(--row); border-color: var(--brand); }
+.reader-header .nav-btn { padding: 6px 10px; font-size: 14px; }
+.reader-header .back:hover,
+.reader-header .nav-btn:hover { background: var(--row); border-color: var(--brand); }
+.reader-header .nav-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .reader-header .reader-title {
   flex: 1 1 auto; font-size: 14px; font-weight: 500;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -258,6 +262,21 @@ body { display: flex; flex-direction: column; }
 }
 .note-area:focus { outline: 2px solid color-mix(in srgb, var(--brand) 50%, transparent); outline-offset: -1px; }
 
+/* TOC list — nested chapter tree */
+.toc { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 0; }
+.toc ul { list-style: none; margin: 0; padding-left: 14px; }
+.toc .toc-item {
+  display: block; width: 100%;
+  background: transparent; border: none; padding: 7px 6px;
+  color: var(--ink); font-family: inherit; font-size: 13px;
+  text-align: left; cursor: pointer;
+  border-radius: 4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  line-height: 1.35;
+}
+.toc .toc-item:hover { background: var(--row); color: var(--brand); }
+
 .loading {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -286,6 +305,8 @@ body { display: flex; flex-direction: column; }
 <div class="reader" id="reader" aria-hidden="true">
   <div class="reader-header">
     <button class="back" id="back-btn" type="button">← Library</button>
+    <button class="nav-btn" id="prev-btn" type="button" hidden aria-label="Previous" title="Previous (←)">◀</button>
+    <button class="nav-btn" id="next-btn" type="button" hidden aria-label="Next" title="Next (→ or Space)">▶</button>
     <div class="reader-title" id="reader-title">…</div>
     <div class="status" id="reader-status"></div>
     <button class="sidebar-toggle" id="sidebar-toggle" type="button" hidden aria-label="Notes &amp; bookmarks">≡</button>
@@ -293,6 +314,10 @@ body { display: flex; flex-direction: column; }
   <div class="reader-body">
     <div class="reader-content" id="reader-content"><!-- engine renders here --></div>
     <aside class="sidebar" id="sidebar" aria-hidden="true">
+      <div class="sidebar-section" id="toc-section" hidden>
+        <label class="sidebar-label">Contents</label>
+        <ul class="toc" id="toc-list"></ul>
+      </div>
       <div class="sidebar-section">
         <button class="add-bookmark" id="add-bookmark-btn" type="button">＋ Bookmark this spot</button>
         <ul class="bookmarks" id="bookmarks-list"></ul>
@@ -421,11 +446,15 @@ const readerContent = document.getElementById('reader-content');
 const readerTitle = document.getElementById('reader-title');
 const readerStatus = document.getElementById('reader-status');
 const backBtn = document.getElementById('back-btn');
+const prevBtn = document.getElementById('prev-btn');
+const nextBtn = document.getElementById('next-btn');
 const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebar-toggle');
 const bookmarksList = document.getElementById('bookmarks-list');
 const addBookmarkBtn = document.getElementById('add-bookmark-btn');
 const noteArea = document.getElementById('note-area');
+const tocSection = document.getElementById('toc-section');
+const tocList = document.getElementById('toc-list');
 
 let activeEngine = null;
 let activeSidecar = null;    // sidecar object for the currently-open book; null if not persisted
@@ -617,6 +646,24 @@ class FoliateEngine {
     }
     return { title, author };
   }
+  async next() { if (this.view) { try { await this.view.next(); } catch (_) {} } }
+  async prev() { if (this.view) { try { await this.view.prev(); } catch (_) {} } }
+  async getTOC() {
+    const toc = this.view && this.view.book && this.view.book.toc;
+    if (!Array.isArray(toc) || toc.length === 0) return null;
+    function norm(items) {
+      return items.map((it) => ({
+        label: String(it.label || '').trim(),
+        href: it.href || '',
+        subitems: Array.isArray(it.subitems) && it.subitems.length ? norm(it.subitems) : null,
+      })).filter((it) => it.label);
+    }
+    return norm(toc);
+  }
+  async jumpToTocItem(item) {
+    if (!this.view || !item || !item.href) return;
+    try { await this.view.goTo(item.href); } catch (_) {}
+  }
   onRelocate(cb) { this._cb = cb; }
   destroy() {
     if (this.view) { try { this.container.removeChild(this.view); } catch (_) {} this.view = null; }
@@ -718,6 +765,48 @@ class PdfEngine {
       };
     } catch (_) { return {}; }
   }
+  async next() {
+    if (!this.viewer || !this.numPages) return;
+    if (this.currentPage >= this.numPages) return;
+    await this.jumpTo({ page: this.currentPage + 1, scrollY: 0 });
+  }
+  async prev() {
+    if (!this.viewer) return;
+    if (this.currentPage <= 1) return;
+    await this.jumpTo({ page: this.currentPage - 1, scrollY: 0 });
+  }
+  async getTOC() {
+    if (!this.pdfDoc) return null;
+    let outline = null;
+    try { outline = await this.pdfDoc.getOutline(); } catch (_) {}
+    if (!Array.isArray(outline) || outline.length === 0) return null;
+    const doc = this.pdfDoc;
+    async function resolve(item) {
+      let pageNum = null;
+      try {
+        const dest = typeof item.dest === 'string'
+          ? await doc.getDestination(item.dest)
+          : item.dest;
+        if (Array.isArray(dest) && dest[0]) {
+          pageNum = (await doc.getPageIndex(dest[0])) + 1;
+        }
+      } catch (_) {}
+      return {
+        label: String(item.title || '').trim(),
+        href: pageNum ? 'pdf-page:' + pageNum : '',
+        subitems: Array.isArray(item.items) && item.items.length
+          ? await Promise.all(item.items.map(resolve))
+          : null,
+      };
+    }
+    const resolved = await Promise.all(outline.map(resolve));
+    return resolved.filter((it) => it.label && it.href);
+  }
+  async jumpToTocItem(item) {
+    if (!this.viewer || !item || !item.href) return;
+    const m = String(item.href).match(/^pdf-page:(\d+)$/);
+    if (m) await this.jumpTo({ page: Number(m[1]), scrollY: 0 });
+  }
   onRelocate(cb) { this._cb = cb; }
   destroy() {
     if (this.pdfDoc) { try { this.pdfDoc.destroy(); } catch (_) {} this.pdfDoc = null; }
@@ -783,6 +872,16 @@ class TextEngine {
     this.viewer.scrollTop = f * total;
   }
   async getMetadata() { return {}; }   // No format-native metadata for plain text.
+  async next() {
+    if (!this.viewer) return;
+    this.viewer.scrollBy({ top: this.viewer.clientHeight * 0.9, behavior: 'smooth' });
+  }
+  async prev() {
+    if (!this.viewer) return;
+    this.viewer.scrollBy({ top: -this.viewer.clientHeight * 0.9, behavior: 'smooth' });
+  }
+  async getTOC() { return null; }
+  async jumpToTocItem() { /* no-op — TXT/MD/HTML have no chapter structure in v1 */ }
   onRelocate(cb) { this._cb = cb; }
   destroy() {
     if (this.viewer) { try { this.container.removeChild(this.viewer); } catch (_) {} this.viewer = null; }
@@ -970,6 +1069,21 @@ async function openBookFromFile(file, persistInfo) {
       }
     });
     readerStatus.textContent = describePosition(key, activeEngine.getPosition());
+
+    // Wire navigation controls now that the engine is live
+    prevBtn.hidden = false;
+    nextBtn.hidden = false;
+    prevBtn.onclick = () => activeEngine && activeEngine.prev();
+    nextBtn.onclick = () => activeEngine && activeEngine.next();
+
+    // Populate TOC (sidebar Contents section). null/empty hides the section.
+    let toc = null;
+    try { toc = activeEngine.getTOC ? await activeEngine.getTOC() : null; } catch (_) {}
+    renderTOC(toc);
+
+    // Sidebar toggle is useful whenever there's content in the sidebar —
+    // either persistence (bookmarks + note) or a TOC.
+    if (persisted || (toc && toc.length)) sidebarToggle.hidden = false;
   } catch (err) {
     showReaderError('Could not render <code>' + escapeHtml(file.name) + '</code>', err);
   }
@@ -1101,6 +1215,42 @@ bookmarksList.addEventListener('click', handleBookmarkClick);
 noteArea.addEventListener('input', handleNoteInput);
 
 // ============================================================
+// Table of contents — sidebar Contents section
+// ============================================================
+
+function renderTOC(toc) {
+  if (!Array.isArray(toc) || toc.length === 0) {
+    tocSection.hidden = true;
+    tocList.innerHTML = '';
+    return;
+  }
+  function build(items) {
+    return items.map((item) => {
+      const label = escapeHtml(item.label || '');
+      const href = escapeHtml(item.href || '');
+      const sub = (Array.isArray(item.subitems) && item.subitems.length)
+        ? '<ul>' + build(item.subitems) + '</ul>'
+        : '';
+      return '<li>' +
+               '<button class="toc-item" type="button" data-href="' + href + '" title="' + label + '">' +
+                 label +
+               '</button>' + sub +
+             '</li>';
+    }).join('');
+  }
+  tocList.innerHTML = build(toc);
+  tocSection.hidden = false;
+}
+
+tocList.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.toc-item');
+  if (!btn || !activeEngine) return;
+  const href = btn.getAttribute('data-href') || '';
+  try { await activeEngine.jumpToTocItem({ href, label: btn.textContent }); }
+  catch (err) { console.warn('Books: jumpToTocItem failed', err); }
+});
+
+// ============================================================
 // Reader-view UX
 // ============================================================
 
@@ -1125,6 +1275,10 @@ function exitReaderView() {
   activeSidecar = null;
   activeBookId = null;
   readerContent.innerHTML = '';
+  // Tear down navigation + TOC
+  prevBtn.hidden = true; prevBtn.onclick = null;
+  nextBtn.hidden = true; nextBtn.onclick = null;
+  renderTOC(null);
   deactivateSidebar();
   reader.classList.remove('is-open');
   reader.setAttribute('aria-hidden', 'true');
@@ -1255,6 +1409,25 @@ function boot() {
   // Flush pending sidecar writes on close
   window.addEventListener('beforeunload', flushPendingWritesSync);
   naklios.beforeClose(flushPendingWritesSync);
+
+  // Keyboard navigation in the reader view.
+  // Skipped while focus is in an input/textarea/contentEditable so typing notes
+  // and bookmark labels doesn't trigger page flips.
+  window.addEventListener('keydown', async (e) => {
+    if (!reader.classList.contains('is-open')) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.key === 'ArrowRight' || e.code === 'Space' || e.key === ' ') {
+      e.preventDefault();
+      if (activeEngine && activeEngine.next) await activeEngine.next();
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      if (activeEngine && activeEngine.prev) await activeEngine.prev();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      exitReaderView();
+    }
+  });
 }
 
 boot();

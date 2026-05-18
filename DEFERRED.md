@@ -49,6 +49,14 @@ Full-text search across all books in the library (or all *notes*, depending on s
 
 **Trigger to revisit:** Once library hits ~50+ books (volume makes search valuable) or once notes count makes "where did I write that?" a real question.
 
+### Cross-engine search (within the open book)
+
+Search within the currently-open book — find a phrase, jump to occurrences with highlight overlays.
+
+**Why deferred:** The three engines need three different implementations. foliate-js has `view.search()` (returns CFI matches). pdf.js has a separate `findController` with a canvas-overlay highlight layer. TextEngine would need a custom substring index. Wiring all three behind one search UI is real engineering — call it 2–3 sessions of work.
+
+**Trigger to revisit:** v1 stable in real use; OR when a user opens a long book and wishes they could grep.
+
 ### CBZ + CBR (comic-book archives) support
 
 Read comics packaged as ZIP (CBZ) or RAR (CBR) archives. Both are deferred to the same release because they share a renderer.
