@@ -576,6 +576,11 @@ class FoliateEngine {
       if (this._cb) this._cb(this.getPosition());
     });
     await this.view.open(file);
+    // open() parses the book but doesn't start the paginator. init() does —
+    // without it, foliate-paginator never paints. jumpTo() (called by the
+    // outer flow if a saved position exists) will reposition immediately.
+    try { await this.view.init({ showTextStart: true }); }
+    catch (_) { try { await this.view.next?.(); } catch (_) {} }
     this._loaded = true;
   }
   getPosition() {
@@ -910,6 +915,11 @@ async function openBookFromFile(file, persistInfo) {
   }
 
   try {
+    // Clear the loading indicator before the engine mounts its viewer.
+    // Otherwise the engine's element renders on top of "Loading…" and engines
+    // with transparent internals (e.g. foliate-view's shadow DOM during early
+    // paginator settle) let the loading text bleed through.
+    readerContent.innerHTML = '';
     activeEngine = new (ENGINES[key])(readerContent);
     await activeEngine.load(file);
 
