@@ -31,9 +31,11 @@ Eventually this folder will also hold `index.html` (the app itself) + `LICENSE` 
 - [ ] Q1 — Standalone behavior
 - [ ] Q2 — Book identity
 - [ ] Q3 — Library index
-- [ ] Q4 — Reading-position schema
+- [ ] Q4 — Reading-position schema *(shape depends on Q7)*
 - [ ] Q5 — Adding books
 - [ ] Q6 — Notes v1 scope
+- [ ] Q7 — Reader engine *(upstream of Q4 and Q8)*
+- [ ] Q8 — Format scope for v1
 
 **Build status:**
 - [x] Initiative scaffolded

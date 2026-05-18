@@ -13,7 +13,7 @@ Success v1: open a book from the library, read it to completion, close it, reope
 Locked decisions live here. Each is referenced by walkthrough number when applicable.
 
 - **A0. App ID + mount point.** `id:'books'`, mounted at `naklios.dev/apps/books/` (same-origin mirror, FSA-required). Already reserved in naklOS v2.18; this initiative replaces the "Coming soon" stub with a working app.
-- **A1. Single-file ethos.** Entire app is one `index.html` — markup, styles, logic inline. epub.js and pdf.js are loaded from CDN with SRI hashes (single binary dependency per format).
+- **A1. Single-file ethos.** Entire app is one `index.html` — markup, styles, logic inline. The reader engine(s) — chosen at Q7 (likely `foliate-js` for text formats + `pdf.js` for PDF) — are loaded from CDN with SRI hashes. An internal `Engine` adapter interface insulates the rest of the app from engine choice churn.
 - **A2. Data path convention.** All persistence under `apps/books/` in the host folder, via the `naklios.fs.*` RPC. Subdirs: `library/` (the books themselves), `notes/` (per-book sidecar JSON). No `localStorage` or `IndexedDB` for canonical state.
 - **A3. SDK contract.** Vendor `naklios.js` (sdk surface v1) inline. Call `naklios.ready()` after init, `naklios.title('Books — <book-title>')` on book open. Listen to `onCapabilitiesChange` for fs availability.
 
@@ -55,9 +55,10 @@ When implementation starts, the work breaks into phases:
 1. Replace the stub `index.html` with a minimal app shell: theme tokens, SDK vendoring, capability detection, "no folder connected" empty state.
 2. Wire `naklios.fs.list('library/')` → flat list of books in the library directory.
 
-**Phase 2 — Reader (one format first; second format added in 2b)**
-1. ePub reader: epub.js (or chosen lib per Q-libs) reading position via CFI, render into a viewport.
-2. PDF reader: pdf.js, page-based navigation with scroll position capture.
+**Phase 2 — Reader (engine adapter + first format)**
+1. Implement the internal `Engine` adapter interface (`load(file)`, `getPosition()`, `jumpToPosition()`, `onRelocate(cb)`).
+2. Wire up the engine(s) chosen at Q7 against that interface.
+3. EPUB first (smoke-test through one full read); PDF next; additional formats from Q8 follow.
 
 **Phase 3 — Persistence + reopen-flow**
 1. Read/write `apps/books/notes/<book-id>.json` for position on open + on close (debounce).

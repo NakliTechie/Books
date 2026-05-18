@@ -9,9 +9,11 @@ These are the *scope-defining* questions for Books — not implementation detail
 1. **Standalone behavior — what happens when there's no nakliOS host?** — 🟡 OPEN
 2. **Book identity — what's the stable key?** — 🟡 OPEN
 3. **Library index — scan-on-load or maintained file?** — 🟡 OPEN
-4. **Reading-position schema — one shape for ePub + PDF?** — 🟡 OPEN
+4. **Reading-position schema — one shape across formats?** — 🟡 OPEN *(shape depends on Q7)*
 5. **Adding books — sideload only, drag-drop in app, or both?** — 🟡 OPEN
 6. **Notes v1 scope — bookmark, free-text, or full highlights?** — 🟡 OPEN
+7. **Reader engine — `epub.js + pdf.js`, `foliate-js`, or hybrid?** — 🟡 OPEN *(upstream of Q4 and Q8)*
+8. **Format scope for v1 — which formats does the loader switch enable?** — 🟡 OPEN *(answered by Q7's lock)*
 
 Add questions as they emerge. Number stably — never renumber.
 
@@ -97,9 +99,9 @@ How does Books discover the books in `apps/books/library/`? Every app launch cal
 
 ## Question 4 — Reading-position schema
 
-> **Status:** 🟡 OPEN
+> **Status:** 🟡 OPEN — exact shape locks AFTER Q7 (reader engine), since foliate-js exposes a unified `relocate` event with its own location primitive that differs from raw epub.js CFI.
 
-ePub and PDF have different position primitives. ePub: a Canonical Fragment Identifier (CFI) string, precise to a character offset in a chapter. PDF: page number + intra-page scroll offset (typically `0..1`). The sidecar JSON should express both without either format needing the other's knowledge.
+Different formats have different position primitives. ePub: a Canonical Fragment Identifier (CFI) string, precise to a character offset in a chapter. PDF: page number + intra-page scroll offset (typically `0..1`). MOBI/AZW3: internal section index + offset. CBZ: page-image index. The sidecar JSON should express all needed formats without any format needing another's knowledge.
 
 ### Options being considered
 
@@ -177,6 +179,73 @@ Stub copy promises "Highlights + margin notes." That's ambitious for v1. What's 
 
 1. Notes scope for v1 (A/B/C).
 2. Update stub copy to match if B is chosen.
+
+---
+
+## Question 7 — Reader engine
+
+> **Status:** 🟡 OPEN — upstream of Q4 (position schema) and Q8 (format scope).
+
+What library does the actual rendering? The naive plan was `epub.js + pdf.js` (one per format). But [foliate-js](https://github.com/johnfactotum/foliate-js) (the engine behind the Foliate desktop reader) renders ePub, MOBI, KF8/AZW3, FB2, CBZ, and experimental PDF — all from a single unified `<foliate-view>` element. That's a real architectural fork.
+
+### Options being considered
+
+| Option | How | Pros | Cons |
+|---|---|---|---|
+| A. `epub.js` + `pdf.js` (separate) | One library per format, custom loader switch. Add formats by adding libraries. | Each library is mature, stable, well-known. pdf.js is the de facto PDF renderer. epub.js has been stable for years. | Adding a new format = adding a library. CBR/CBZ/MOBI each need their own thing. Two scroll-position models. |
+| B. `foliate-js` (unified) | One ES-module library, format-detection at load time, single `relocate` event for position. | EPUB + MOBI + KF8 + FB2 + CBZ free out of the box. PDF too (experimental). One codepath. Modern ES modules, no build step. | foliate-js's own README warns: "library is not stable and users should expect it to break with API changes at any time." PDF is experimental. Smaller ecosystem. |
+| C. Hybrid — foliate-js for text+image, pdf.js for PDF | foliate-js handles EPUB/MOBI/AZW3/FB2/CBZ; pdf.js handles PDF. Loader switch picks engine by file extension. | Best of both: foliate's breadth without trusting its experimental PDF; pdf.js's PDF maturity. | Two libraries on the page. Two scroll-position abstractions to reconcile in Q4's schema. Bigger bundle. |
+
+### My recommendation
+
+**C (hybrid).** Single-file ethos says minimize libraries, but the alternative is either trusting foliate-js for PDF (still experimental) or losing the multi-format breadth entirely. The two engines are non-overlapping (foliate-js does everything except PDF; pdf.js does only PDF), so the integration is a clean format-extension switch — no coordination needed.
+
+Mitigations for foliate-js's "unstable API" warning:
+1. **Pin to a tagged release** by URL (e.g. `https://cdn.jsdelivr.net/npm/foliate-js@1.0.1/...`) with an SRI hash; manual upgrade after smoke-test.
+2. **Adapter layer**: Books's reader code talks to a thin internal `Engine` interface (load, relocate, getPosition, jumpToPosition), and the foliate-js/pdf.js wrappers implement it. Engine churn doesn't ripple to the rest of the app.
+
+Tripwire that would flip to A: if foliate-js breaks twice in six months requiring our code to change, ditch it and write per-format ourselves.
+Tripwire that would flip to B: if foliate-js's PDF support reaches parity with pdf.js (would shrink bundle, simplify code).
+
+### Decisions to lock
+
+1. Engine choice (A / B / C).
+2. If C: pin version of foliate-js + adapter shape (or defer adapter to Phase 2 spike).
+3. Loading strategy — CDN with SRI vs vendor source inline. (Single-file ethos pulls toward vendoring; bundle size pulls toward CDN.)
+
+---
+
+## Question 8 — Format scope for v1
+
+> **Status:** 🟡 OPEN — directly downstream of Q7. Numbers below assume Q7 locks to C (hybrid).
+
+Given the engine, which formats does v1's loader switch actually accept? Enabling each format adds: one extension to the file-picker filter, one branch in the loader switch, one Q4 schema variant, one empty-state copy update, at least one test book in the test corpus.
+
+### Options being considered
+
+| Option | Formats in v1 | Notes |
+|---|---|---|
+| A. Minimum — original stub scope | EPUB + PDF | Honors the stub's exact promise. Smallest test surface. |
+| B. + plain-text family | EPUB + PDF + TXT/MD/HTML | TXT/MD/HTML share one renderer (markdown-to-html, plain-text-to-html, raw-html). ~150 LOC. |
+| C. + foliate breadth | EPUB + PDF + TXT/MD/HTML + MOBI + AZW3 + FB2 | If Q7 = C, these are essentially free in code terms (one switch branch each). The cost is test-corpus and edge-case discovery. |
+| D. + CBZ | C + CBZ | Adds an image-paginated UI mode (different from text-reflow). ~200 LOC for the comic UX. |
+
+**Rejected outright (don't ship in any v1):**
+- **CBR** — rar.js (the available pure-JS RAR library) doesn't implement decompression and has been stale since 2018. No viable path. Document the workaround: convert CBR → CBZ with WinRAR / `unar` / Calibre.
+- **DjVu** — heavyweight WASM library (djvu.js); niche audience; not worth the bundle.
+- **AZW (legacy, pre-AZW3)** — predates KF8; not supported by foliate-js. Practically obsolete.
+
+### My recommendation
+
+**C.** If we adopt foliate-js (Q7=C), MOBI/AZW3/FB2 become essentially free — denying them just to hold scope tight is silly. **Defer CBZ to v1.1** because its image-paginated UI is a meaningfully different reader surface (different controls, different position model, different empty-state). Including CBZ in v1 doubles UX-design effort for a feature with a smaller audience.
+
+Tradeoff: each enabled format adds at least one empty-state copy update + one test book in the test corpus. Tripwire: if MOBI usage logs (via simple telemetry — out of scope for naklOS today) stay at zero through v1, drop it in v1.1's deprecation pass.
+
+### Decisions to lock
+
+1. Format set (A / B / C / D, or custom selection).
+2. Test corpus: which books we use to verify each format renders correctly (one DRM-free public-domain book per format).
+3. Empty-state copy update — what extensions to mention in the "drop ePub or PDF files…" message.
 
 ---
 

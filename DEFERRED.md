@@ -49,6 +49,38 @@ Full-text search across all books in the library (or all *notes*, depending on s
 
 **Trigger to revisit:** Once library hits ~50+ books (volume makes search valuable) or once notes count makes "where did I write that?" a real question.
 
+### CBR (comic-book RAR) support
+
+Read comics packaged as RAR archives.
+
+**Why deferred:** Evaluated [rar.js](https://github.com/43081j/rar.js/) — pure JS, MIT-licensed, but stale (last release 2018) and decompression is unimplemented (entries can be listed but not extracted). No other permissive-licensed JS RAR library exists. Document the workaround for users: convert CBR → CBZ with WinRAR / `unar` / Calibre.
+
+**Trigger to revisit:** A maintained JS library with working RAR3+ decompression ships under a permissive license; OR enough users ask for it that we wrap a WASM port of unrar.
+
+### CBZ (comic-book ZIP) support
+
+Read comics packaged as ZIP-of-images.
+
+**Why deferred:** Image-paginated reader UX is materially different from text-reflow (different controls, different position model — page index instead of CFI/percent, different empty-state copy). Adding it to v1 would meaningfully widen UX scope. foliate-js can decode CBZ if we adopt it (Q7), so the parsing isn't the bottleneck.
+
+**Trigger to revisit:** v1 stable; OR a user requests comic support strongly enough to justify the second UI mode.
+
+### DjVu support
+
+Read scanned-book DjVu files (common in technical/academic archives).
+
+**Why deferred:** djvu.js exists but is a heavyweight WASM library; niche audience; would inflate bundle size significantly for a feature few would use. Document the workaround: convert DjVu → PDF (most readers can do this).
+
+**Trigger to revisit:** A meaningful audience requests it, OR a much lighter DjVu library becomes available.
+
+### Legacy AZW (pre-AZW3) support
+
+Read old Kindle AZW files (pre-KF8 format).
+
+**Why deferred:** foliate-js doesn't handle pre-KF8 AZW. Format is effectively obsolete (KF8/AZW3 superseded it in 2011). Users with old AZW files can convert via Calibre.
+
+**Trigger to revisit:** Improbable. Documented for completeness.
+
 ### Multiple libraries / shelves
 
 Multiple `library/` subdirs (e.g. `library/personal/`, `library/work/`) with shelf-switching UI.
