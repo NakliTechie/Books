@@ -193,9 +193,8 @@ Phase 2 (revised):
 ### Locked decisions
 
 1. **v1 enabled formats**: `.epub`, `.pdf`, `.mobi`, `.azw3`, `.fb2`, `.txt`, `.md`, `.html`, `.htm` (the last two share one engine path).
-2. **Deferred to v1.1**: `.cbz` (image-paginated UX is a separate track — see [DEFERRED.md](DEFERRED.md)).
+2. **Deferred to v1.1**: `.cbz` and `.cbr` (image-paginated UX is a separate track; both share one extractor interface — see [DEFERRED.md](DEFERRED.md)). CBZ via `fflate`; CBR via `node-unrar-js` (the real UnRAR-via-Emscripten WASM, not the stale pure-JS attempts).
 3. **Rejected** (with documented workarounds in [DEFERRED.md](DEFERRED.md)):
-   - `.cbr` — no usable JS RAR-decompression library. Workaround: convert to `.cbz`.
    - `.djvu` — heavyweight WASM. Workaround: convert to PDF.
    - Legacy `.azw` (pre-AZW3) — obsolete; foliate-js doesn't support. Workaround: convert via Calibre.
 4. **Test corpus** (smoke-test books for Phase 2):

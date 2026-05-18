@@ -49,21 +49,23 @@ Full-text search across all books in the library (or all *notes*, depending on s
 
 **Trigger to revisit:** Once library hits ~50+ books (volume makes search valuable) or once notes count makes "where did I write that?" a real question.
 
-### CBR (comic-book RAR) support
+### CBZ + CBR (comic-book archives) support
 
-Read comics packaged as RAR archives.
+Read comics packaged as ZIP (CBZ) or RAR (CBR) archives. Both are deferred to the same release because they share a renderer.
 
-**Why deferred:** Evaluated [rar.js](https://github.com/43081j/rar.js/) — pure JS, MIT-licensed, but stale (last release 2018) and decompression is unimplemented (entries can be listed but not extracted). No other permissive-licensed JS RAR library exists. Document the workaround for users: convert CBR → CBZ with WinRAR / `unar` / Calibre.
+**Why deferred:** Image-paginated reader UX is materially different from text-reflow (different controls, different position model — page index instead of CFI/percent, different empty-state copy). Adding it to v1 would meaningfully widen UX scope. Both decoders exist and are mature; the bottleneck is the comic-mode reader UI, not parsing.
 
-**Trigger to revisit:** A maintained JS library with working RAR3+ decompression ships under a permissive license; OR enough users ask for it that we wrap a WASM port of unrar.
+**Library choices** (locked-in advance for v1.1):
+- **CBZ → [`fflate`](https://github.com/101arrowz/fflate)** — fast, tiny, MIT, sync+async+streaming. Don't add JSZip; reuse fflate if already present elsewhere.
+- **CBR → [`node-unrar-js`](https://github.com/YuJianrong/node-unrar-js)** — despite the name, runs in browser. Official UnRAR source compiled to WASM via Emscripten (not a clean-room reimplementation), so it has full format fidelity for RAR v4 and v5, unicode filenames, password-protected entries. UnRAR license permits extraction. WASM binary must be loaded explicitly and passed via `wasmBinary` to `createExtractorFromData`. API: `getFileList()` for headers, `extract({files: [...]})` returning lazy iterators of `Uint8Array` per entry.
+- **Limitations to accept**: no volume-split RAR support (`.r01`, `.r02`, etc.) — surface a clear error to the user. No RAR creation (proprietary; we don't need it).
+- **Rejected for this app**: `libarchive.js`, `archive-wasm`, `libarchive-wasm`. They bundle libarchive's full format zoo (7z, TAR, ISO, etc.) — wasteful for two formats. Reserve for a future general-purpose archive tool.
 
-### CBZ (comic-book ZIP) support
+**Internal interface (v1.1 design ahead-of-time)**: both formats sit behind one internal extractor interface — `open → list entries → extract entry as Blob`. Two backends, one consumer (the page renderer). The renderer doesn't know which format the source was.
 
-Read comics packaged as ZIP-of-images.
+**Hard rules**: no server upload (both libs run fully in-browser), no telemetry (verify before shipping), bytes stay in memory or FSA-granted folders, errors surface clearly (corrupt archive, password-protected without password, split-volume RAR).
 
-**Why deferred:** Image-paginated reader UX is materially different from text-reflow (different controls, different position model — page index instead of CFI/percent, different empty-state copy). Adding it to v1 would meaningfully widen UX scope. foliate-js can decode CBZ if we adopt it (Q7), so the parsing isn't the bottleneck.
-
-**Trigger to revisit:** v1 stable; OR a user requests comic support strongly enough to justify the second UI mode.
+**Trigger to revisit:** v1 stable + Phase 1.1 starts; OR a user requests comic support strongly enough to justify the second UI mode.
 
 ### DjVu support
 

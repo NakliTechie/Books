@@ -61,7 +61,7 @@ class Engine {
 Both libraries via CDN with SRI hashes; pinned to tagged releases (foliate-js@1.0.1, pdf.js latest stable). Manual upgrades after smoke-test.
 
 ### A11. v1 format scope (Q8)
-Enabled: `.epub`, `.pdf`, `.mobi`, `.azw3`, `.fb2`, `.txt`, `.md`, `.html`, `.htm`. CBZ deferred to v1.1. CBR / DjVu / legacy AZW rejected with workarounds documented in [DEFERRED.md](DEFERRED.md).
+Enabled: `.epub`, `.pdf`, `.mobi`, `.azw3`, `.fb2`, `.txt`, `.md`, `.html`, `.htm`. CBZ + CBR both deferred to v1.1 (shared comic-mode reader; CBZ via `fflate`, CBR via `node-unrar-js`'s UnRAR-WASM). DjVu / legacy AZW rejected with workarounds documented in [DEFERRED.md](DEFERRED.md).
 
 ## Schema additions
 
@@ -163,7 +163,7 @@ The canonical list with revisit triggers lives in [DEFERRED.md](DEFERRED.md). Su
 - **In-app drag-drop add-book** — sideload only.
 - **Standalone-mode persistence** — preview-only outside the host.
 - **Cross-device sync conflict resolution** — assumed handled by underlying file-system semantics; revisit when wired to private-mesh.
-- **CBZ** (deferred to v1.1), **CBR / DjVu / legacy AZW** (rejected with workarounds).
+- **CBZ + CBR** (deferred to v1.1, shared comic-mode reader); **DjVu / legacy AZW** (rejected with workarounds).
 - **Rename / orphan recovery flow** — sidecars survive renames mechanically; rebind UI is v1.1.
 
 ## References
