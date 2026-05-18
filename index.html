@@ -890,13 +890,8 @@ async function openBookFromLibrary(filename) {
 
 // persistInfo: { bookId, sourceFilename } when hosted; null when standalone (A4).
 async function openBookFromFile(file, persistInfo) {
-  const key = engineKeyFor(file.name);
-  if (!key) {
-    showReaderError(
-      'Unsupported file type: <code>.' + escapeHtml(extOf(file.name)) + '</code>',
-      new Error('Books v1 supports ePub, PDF, MOBI, AZW3, FB2, TXT, MD, HTML.'));
-    return;
-  }
+  // Enter reader view first so errors are visible — unsupported-format
+  // and load failures both surface in the same place as successful loads.
   enterReaderView(file.name);
   setReaderLoading('Loading…');
 
@@ -904,8 +899,15 @@ async function openBookFromFile(file, persistInfo) {
   if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
   activeSidecar = null;
   activeBookId = null;
-  readerContent.innerHTML = '';
   deactivateSidebar();
+
+  const key = engineKeyFor(file.name);
+  if (!key) {
+    showReaderError(
+      'Unsupported file type: <code>.' + escapeHtml(extOf(file.name)) + '</code>',
+      new Error('Books v1 supports ePub, PDF, MOBI, AZW3, FB2, TXT, MD, HTML.'));
+    return;
+  }
 
   try {
     activeEngine = new (ENGINES[key])(readerContent);
