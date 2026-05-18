@@ -62,7 +62,7 @@ body { display: flex; flex-direction: column; }
 .card .tag {
   display: inline-block;
   font-size: 10px; padding: 2px 7px;
-  background: color-mix(in srgb, var(--brand) 30%, transparent);
+  background: color-mix(in srgb, var(--brand) 22%, transparent);
   color: var(--brand);
   border-radius: 4px;
   font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
@@ -96,11 +96,11 @@ body { display: flex; flex-direction: column; }
   background: color-mix(in srgb, var(--brand) 8%, transparent);
 }
 .dropzone input[type=file] { display: none; }
-.dropzone .formats { font-size: 11px; margin-top: 6px; opacity: 0.8; }
+.dropzone .formats { font-size: 11px; margin-top: 6px; opacity: 0.85; }
 
 .library { display: grid; gap: 6px; }
 .library .row {
-  display: flex; align-items: baseline; justify-content: space-between;
+  display: flex; align-items: flex-start; justify-content: space-between;
   padding: 12px 14px;
   background: var(--row);
   border: 1px solid var(--line);
@@ -112,15 +112,36 @@ body { display: flex; flex-direction: column; }
   background: color-mix(in srgb, var(--brand) 12%, var(--row));
   border-color: color-mix(in srgb, var(--brand) 30%, var(--line));
 }
+.library .row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 14px;
+}
 .library .row .name {
-  font-size: 14px; flex: 1 1 auto;
+  font-size: 14px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  padding-right: 12px;
+  color: var(--ink);
+}
+.library .row .author {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.library .row-meta {
+  flex: 0 0 auto;
+  text-align: right;
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 3px;
+}
+.library .row .last-read {
+  font-size: 10px;
+  color: var(--brand);
+  font-weight: 500;
 }
 .library .row .meta {
   font-size: 10px; color: var(--muted);
   text-transform: uppercase; letter-spacing: 0.05em;
-  flex: 0 0 auto;
 }
 
 /* === Reader view === */
@@ -134,6 +155,7 @@ body { display: flex; flex-direction: column; }
 .reader-header .back {
   background: transparent; color: var(--ink); border: 1px solid var(--line);
   padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
+  font-family: inherit;
 }
 .reader-header .back:hover { background: var(--row); border-color: var(--brand); }
 .reader-header .reader-title {
@@ -272,7 +294,7 @@ body { display: flex; flex-direction: column; }
 })();
 </script>
 
-<!-- Books app boot + engines -->
+<!-- Books app boot + engines + persistence -->
 <script type="module">
 'use strict';
 
@@ -296,6 +318,12 @@ const readerStatus = document.getElementById('reader-status');
 const backBtn = document.getElementById('back-btn');
 
 let activeEngine = null;
+let activeSidecar = null;    // sidecar object for the currently-open book; null if not persisted
+let activeBookId = null;
+
+// ============================================================
+// Small helpers
+// ============================================================
 
 function escapeHtml(s) {
   return String(s)
@@ -309,14 +337,116 @@ function extOf(name) {
 function engineKeyFor(filename) {
   return ENGINE_BY_EXT[extOf(filename)] || null;
 }
+function toArrayBuffer(raw) {
+  if (raw instanceof ArrayBuffer) return raw;
+  if (raw && raw.buffer instanceof ArrayBuffer) {
+    return raw.buffer.slice(raw.byteOffset || 0, (raw.byteOffset || 0) + raw.byteLength);
+  }
+  if (typeof raw === 'string') return new TextEncoder().encode(raw).buffer;
+  throw new Error('Unexpected response shape from naklios.fs.readBinary');
+}
+
+// A5 — bookId from filename: extension stripped, non-alnum → underscore, trim leading/trailing underscores.
+function bookIdFor(filename) {
+  return String(filename)
+    .replace(/\.[a-z0-9]{2,5}$/i, '')
+    .replace(/[^a-zA-Z0-9-]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'book';
+}
+
+function formatRelativeTime(iso) {
+  const t = iso ? Date.parse(iso) : 0;
+  if (!t) return '';
+  const diff = Date.now() - t;
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60); if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60); if (h < 24) return h + 'h ago';
+  const d = Math.floor(h / 24); if (d < 7)  return d + 'd ago';
+  const w = Math.floor(d / 7);  if (w < 5)  return w + 'w ago';
+  const mo = Math.floor(d / 30); if (mo < 12) return mo + 'mo ago';
+  return Math.floor(d / 365) + 'y ago';
+}
 
 // ============================================================
-// Engine adapters — all three implement the same informal interface:
-//   async load(file)         file is File | Blob (must have .name + .arrayBuffer())
-//   getPosition()            engine-shaped position object
-//   async jumpTo(position)
-//   onRelocate(cb)
-//   destroy()
+// Sidecar I/O — apps/books/notes/<bookId>.json (A7 schema)
+// ============================================================
+
+async function sidecarExists(bookId) {
+  try { return !!(await naklios.fs.exists('notes/' + bookId + '.json')); }
+  catch (_) { return false; }
+}
+
+async function readSidecar(bookId) {
+  try {
+    const path = 'notes/' + bookId + '.json';
+    if (!(await naklios.fs.exists(path))) return null;
+    const txt = await naklios.fs.read(path);
+    const obj = JSON.parse(txt);
+    return (obj && typeof obj === 'object') ? obj : null;
+  } catch (err) {
+    console.warn('Books: sidecar read failed for', bookId, err);
+    return null;
+  }
+}
+
+// Pending writes are coalesced per bookId — rapid relocate events get one write.
+const pendingWrites = new Map();   // bookId → { timer, data }
+
+function writeSidecarDebounced(bookId, data) {
+  const existing = pendingWrites.get(bookId);
+  if (existing) clearTimeout(existing.timer);
+  const timer = setTimeout(() => {
+    pendingWrites.delete(bookId);
+    naklios.fs.write('notes/' + bookId + '.json', JSON.stringify(data, null, 2))
+      .catch((err) => console.warn('Books: sidecar write failed for', bookId, err));
+  }, 1000);
+  pendingWrites.set(bookId, { timer, data });
+}
+
+function flushPendingWritesSync() {
+  // Fire writes immediately (we still can't wait on them in beforeunload,
+  // but firing the RPC ensures the host receives the postMessage).
+  for (const [bookId, { timer, data }] of pendingWrites.entries()) {
+    clearTimeout(timer);
+    naklios.fs.write('notes/' + bookId + '.json', JSON.stringify(data, null, 2))
+      .catch((err) => console.warn('Books: sidecar flush failed for', bookId, err));
+  }
+  pendingWrites.clear();
+}
+
+// Resolve a bookId for `filename`, allocating a `_2`, `_3`, ... suffix if a
+// sidecar already exists for a different source filename (A5 collision rule).
+async function resolveBookId(filename) {
+  const base = bookIdFor(filename);
+  let candidate = base;
+  for (let n = 1; n <= 50; n++) {
+    const existing = await readSidecar(candidate);
+    if (!existing) return candidate;
+    if (existing.sourceFilename === filename) return candidate;
+    n++;
+    candidate = base + '_' + n;
+  }
+  throw new Error('Too many bookId collisions for ' + filename);
+}
+
+function makeInitialSidecar({ bookId, sourceFilename, engineKey }) {
+  return {
+    bookId,
+    sourceFilename,
+    title: sourceFilename.replace(/\.[a-z0-9]+$/i, ''),
+    author: null,
+    format: extOf(sourceFilename),
+    engine: engineKey,
+    position: null,
+    lastOpened: null,
+    note: '',
+    bookmarks: [],
+  };
+}
+
+// ============================================================
+// Engine adapters — load / getPosition / jumpTo / getMetadata / onRelocate / destroy
 // ============================================================
 
 class FoliateEngine {
@@ -325,6 +455,7 @@ class FoliateEngine {
     this.container = container;
     this.view = null;
     this._cb = null;
+    this._loaded = null;
   }
   async load(file) {
     await import(VENDOR_FOLIATE + 'view.js');
@@ -335,6 +466,7 @@ class FoliateEngine {
       if (this._cb) this._cb(this.getPosition());
     });
     await this.view.open(file);
+    this._loaded = true;
   }
   getPosition() {
     const loc = this.view && this.view.lastLocation;
@@ -354,12 +486,25 @@ class FoliateEngine {
       try { await this.view.goToFraction(position.fraction); } catch (_) {}
     }
   }
+  async getMetadata() {
+    const m = (this.view && this.view.book && this.view.book.metadata) || {};
+    let title = null, author = null;
+    if (typeof m.title === 'string') title = m.title;
+    else if (Array.isArray(m.title) && m.title.length) title = String(m.title[0] || '') || null;
+    const creator = m.creator != null ? m.creator : m.author;
+    if (typeof creator === 'string') author = creator;
+    else if (Array.isArray(creator)) {
+      author = creator
+        .map((c) => (typeof c === 'string' ? c : (c && (c.name || c.value)) || ''))
+        .filter(Boolean).join(', ') || null;
+    } else if (creator && typeof creator === 'object') {
+      author = creator.name || creator.value || null;
+    }
+    return { title, author };
+  }
   onRelocate(cb) { this._cb = cb; }
   destroy() {
-    if (this.view) {
-      try { this.container.removeChild(this.view); } catch (_) {}
-      this.view = null;
-    }
+    if (this.view) { try { this.container.removeChild(this.view); } catch (_) {} this.view = null; }
     this._cb = null;
   }
 }
@@ -396,12 +541,9 @@ class PdfEngine {
     });
     this.container.appendChild(this.viewer);
 
-    // Render pages sequentially. For very large PDFs this can be slow;
-    // Phase 3 may introduce lazy rendering. v1 keeps it simple.
     for (let i = 1; i <= this.numPages; i++) {
       await this._renderPage(i);
     }
-
     this.viewer.addEventListener('scroll', () => this._onScroll());
   }
   async _renderPage(num) {
@@ -418,7 +560,7 @@ class PdfEngine {
     Object.assign(canvas.style, {
       display: 'block', margin: '8px auto',
       width: (vp.width / dpr) + 'px', height: (vp.height / dpr) + 'px',
-      boxShadow: '0 2px 12px rgba(0,0,0,0.4)', background: '#fff',
+      boxShadow: '0 2px 12px rgba(0,0,0,0.25)', background: '#fff',
     });
     this.viewer.appendChild(canvas);
     await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
@@ -450,6 +592,17 @@ class PdfEngine {
     if (!canvas) return;
     this.viewer.scrollTop = canvas.offsetTop + (scrollY * canvas.offsetHeight);
   }
+  async getMetadata() {
+    if (!this.pdfDoc) return {};
+    try {
+      const md = await this.pdfDoc.getMetadata();
+      const info = (md && md.info) || {};
+      return {
+        title: typeof info.Title === 'string' && info.Title ? info.Title : null,
+        author: typeof info.Author === 'string' && info.Author ? info.Author : null,
+      };
+    } catch (_) { return {}; }
+  }
   onRelocate(cb) { this._cb = cb; }
   destroy() {
     if (this.pdfDoc) { try { this.pdfDoc.destroy(); } catch (_) {} this.pdfDoc = null; }
@@ -476,16 +629,13 @@ class TextEngine {
     });
     if (ext === 'html' || ext === 'htm') {
       const iframe = document.createElement('iframe');
-      // Strict sandbox: no scripts, no same-origin, no top navigation.
       iframe.setAttribute('sandbox', '');
       Object.assign(iframe.style, { width: '100%', height: '100%', border: 'none', background: '#fff' });
       iframe.srcdoc = text;
       this.viewer.appendChild(iframe);
     } else {
       const inner = document.createElement('div');
-      Object.assign(inner.style, {
-        maxWidth: '720px', margin: '0 auto', padding: '40px 20px 80px',
-      });
+      Object.assign(inner.style, { maxWidth: '720px', margin: '0 auto', padding: '40px 20px 80px' });
       const pre = document.createElement('pre');
       Object.assign(pre.style, {
         whiteSpace: 'pre-wrap', wordWrap: 'break-word',
@@ -517,6 +667,7 @@ class TextEngine {
     const total = this.viewer.scrollHeight - this.viewer.clientHeight;
     this.viewer.scrollTop = f * total;
   }
+  async getMetadata() { return {}; }   // No format-native metadata for plain text.
   onRelocate(cb) { this._cb = cb; }
   destroy() {
     if (this.viewer) { try { this.container.removeChild(this.viewer); } catch (_) {} this.viewer = null; }
@@ -525,11 +676,6 @@ class TextEngine {
 }
 
 const ENGINES = { foliate: FoliateEngine, pdf: PdfEngine, text: TextEngine };
-function newEngineFor(filename, container) {
-  const key = engineKeyFor(filename);
-  if (!key) return null;
-  return new (ENGINES[key])(container);
-}
 
 // ============================================================
 // Views
@@ -569,21 +715,27 @@ function renderLibraryEmpty() {
     '</div></div>';
 }
 
-function renderLibrary(books) {
-  topbarStatus.textContent = books.length + ' book' + (books.length === 1 ? '' : 's');
-  const rows = books.map((name) => {
-    const ext = extOf(name);
-    const displayName = name.replace(/\.[a-z0-9]+$/i, '');
-    return '<div class="row" data-filename="' + escapeHtml(name) + '">' +
-             '<div class="name">' + escapeHtml(displayName) + '</div>' +
-             '<div class="meta">' + escapeHtml(ext) + '</div>' +
+function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
+  topbarStatus.textContent = decorated.length + ' book' + (decorated.length === 1 ? '' : 's');
+  const rows = decorated.map(({ filename, sidecar }) => {
+    const ext = extOf(filename);
+    const title = (sidecar && sidecar.title) || filename.replace(/\.[a-z0-9]+$/i, '');
+    const author = (sidecar && sidecar.author) || '';
+    const lastRead = (sidecar && sidecar.lastOpened) ? formatRelativeTime(sidecar.lastOpened) : '';
+    return '<div class="row" data-filename="' + escapeHtml(filename) + '">' +
+             '<div class="row-text">' +
+               '<div class="name">' + escapeHtml(title) + '</div>' +
+               (author ? '<div class="author">' + escapeHtml(author) + '</div>' : '') +
+             '</div>' +
+             '<div class="row-meta">' +
+               (lastRead ? '<div class="last-read">' + escapeHtml(lastRead) + '</div>' : '') +
+               '<div class="meta">' + escapeHtml(ext) + '</div>' +
+             '</div>' +
            '</div>';
   }).join('');
   root.innerHTML = '<div class="library">' + rows + '</div>';
   Array.prototype.forEach.call(root.querySelectorAll('.row'), (r) => {
-    r.addEventListener('click', () => {
-      openBookFromLibrary(r.getAttribute('data-filename'));
-    });
+    r.addEventListener('click', () => openBookFromLibrary(r.getAttribute('data-filename')));
   });
 }
 
@@ -596,7 +748,7 @@ function wireDropZone() {
   const fi = document.getElementById('fileinput');
   if (!dz || !fi) return;
   fi.addEventListener('change', () => {
-    if (fi.files && fi.files[0]) openBookFromFile(fi.files[0]);
+    if (fi.files && fi.files[0]) openBookFromFile(fi.files[0], null);
   });
   dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('drag-over'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
@@ -604,46 +756,93 @@ function wireDropZone() {
     e.preventDefault();
     dz.classList.remove('drag-over');
     const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) openBookFromFile(f);
+    if (f) openBookFromFile(f, null);
   });
 }
 
 // ============================================================
-// Open book — both library row click and standalone drop converge here
+// Open / close — convergence point for library clicks and standalone drops
 // ============================================================
 
 async function openBookFromLibrary(filename) {
   enterReaderView(filename);
   setReaderLoading('Loading…');
   try {
+    const bookId = await resolveBookId(filename);
     const raw = await naklios.fs.readBinary('library/' + filename);
     const buf = toArrayBuffer(raw);
     const file = new File([buf], filename);
-    await openBookFromFile(file);
+    await openBookFromFile(file, { bookId, sourceFilename: filename });
   } catch (err) {
     showReaderError('Could not load <code>' + escapeHtml(filename) + '</code>', err);
   }
 }
 
-async function openBookFromFile(file) {
+// persistInfo: { bookId, sourceFilename } when hosted; null when standalone (A4).
+async function openBookFromFile(file, persistInfo) {
   const key = engineKeyFor(file.name);
   if (!key) {
-    showReaderError('Unsupported file type: <code>.' + escapeHtml(extOf(file.name)) + '</code>',
+    showReaderError(
+      'Unsupported file type: <code>.' + escapeHtml(extOf(file.name)) + '</code>',
       new Error('Books v1 supports ePub, PDF, MOBI, AZW3, FB2, TXT, MD, HTML.'));
     return;
   }
   enterReaderView(file.name);
   setReaderLoading('Loading…');
-  // Tear down any previous engine before mounting the new one.
+
+  // Tear down any previous engine
   if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
+  activeSidecar = null;
+  activeBookId = null;
   readerContent.innerHTML = '';
+
   try {
     activeEngine = new (ENGINES[key])(readerContent);
-    activeEngine.onRelocate((pos) => {
-      // Phase 3 will persist this to sidecar JSON. Phase 2 just displays.
-      readerStatus.textContent = describePosition(key, pos);
-    });
     await activeEngine.load(file);
+
+    const persisted = !!(persistInfo && persistInfo.bookId && naklios.capabilities.fs);
+    if (persisted) {
+      activeBookId = persistInfo.bookId;
+      activeSidecar = (await readSidecar(activeBookId))
+        || makeInitialSidecar({
+          bookId: activeBookId,
+          sourceFilename: persistInfo.sourceFilename,
+          engineKey: key,
+        });
+
+      // Lazy metadata enrichment
+      if (!activeSidecar.title || !activeSidecar.author) {
+        try {
+          const meta = await activeEngine.getMetadata();
+          if (meta && meta.title && !activeSidecar.title) activeSidecar.title = meta.title;
+          if (meta && meta.author && !activeSidecar.author) activeSidecar.author = meta.author;
+        } catch (_) {}
+      }
+
+      // Seed engine to last known position
+      if (activeSidecar.position) {
+        try { await activeEngine.jumpTo(activeSidecar.position); } catch (_) {}
+      }
+
+      // Update the displayed title with the real one if we got it
+      if (activeSidecar.title && activeSidecar.title !== file.name.replace(/\.[a-z0-9]+$/i, '')) {
+        setReaderTitleText(activeSidecar.title);
+      }
+
+      // Record open + initial position
+      activeSidecar.lastOpened = new Date().toISOString();
+      activeSidecar.position = activeEngine.getPosition();
+      writeSidecarDebounced(activeBookId, activeSidecar);
+    }
+
+    activeEngine.onRelocate((pos) => {
+      readerStatus.textContent = describePosition(key, pos);
+      if (persisted && activeSidecar) {
+        activeSidecar.position = pos;
+        activeSidecar.lastOpened = new Date().toISOString();
+        writeSidecarDebounced(activeBookId, activeSidecar);
+      }
+    });
     readerStatus.textContent = describePosition(key, activeEngine.getPosition());
   } catch (err) {
     showReaderError('Could not render <code>' + escapeHtml(file.name) + '</code>', err);
@@ -652,45 +851,46 @@ async function openBookFromFile(file) {
 
 function describePosition(engineKey, pos) {
   if (!pos) return '';
-  if (engineKey === 'pdf' && pos.page) return 'p.' + pos.page;
+  if (engineKey === 'pdf' && pos.page) {
+    const pct = typeof pos.scrollY === 'number' ? Math.round(pos.scrollY * 100) : 0;
+    return 'p.' + pos.page + (pct ? ' · ' + pct + '%' : '');
+  }
   if (typeof pos.fraction === 'number') return Math.round(pos.fraction * 100) + '%';
   return '';
-}
-
-function toArrayBuffer(raw) {
-  if (raw instanceof ArrayBuffer) return raw;
-  if (raw && raw.buffer instanceof ArrayBuffer) {
-    return raw.buffer.slice(raw.byteOffset || 0, (raw.byteOffset || 0) + raw.byteLength);
-  }
-  if (typeof raw === 'string') {
-    // Defensive: some hosts may return base64 or binary-as-string. Treat as utf-8 text.
-    return new TextEncoder().encode(raw).buffer;
-  }
-  throw new Error('Unexpected response shape from naklios.fs.readBinary');
 }
 
 // ============================================================
 // Reader-view UX
 // ============================================================
 
+function setReaderTitleText(t) {
+  readerTitle.textContent = t;
+  naklios.title('Books — ' + t);
+}
+
 function enterReaderView(filename) {
-  readerTitle.textContent = filename.replace(/\.[a-z0-9]+$/i, '');
+  const guessed = filename.replace(/\.[a-z0-9]+$/i, '');
+  setReaderTitleText(guessed);
   readerStatus.textContent = '';
   reader.classList.add('is-open');
   reader.setAttribute('aria-hidden', 'false');
   topbar.style.display = 'none';
-  document.getElementById('main').style.display = 'none';
-  naklios.title('Books — ' + filename.replace(/\.[a-z0-9]+$/i, ''));
+  root.style.display = 'none';
 }
 
 function exitReaderView() {
+  flushPendingWritesSync();
   if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
+  activeSidecar = null;
+  activeBookId = null;
   readerContent.innerHTML = '';
   reader.classList.remove('is-open');
   reader.setAttribute('aria-hidden', 'true');
   topbar.style.display = '';
-  document.getElementById('main').style.display = '';
+  root.style.display = '';
   naklios.title('Books');
+  // Re-list library so any sidecar updates from this session show up
+  if (naklios.capabilities.fs) listLibrary();
 }
 
 backBtn.addEventListener('click', exitReaderView);
@@ -710,19 +910,48 @@ function showReaderError(htmlMsg, err) {
 }
 
 // ============================================================
-// Library listing (hosted)
+// Library listing (hosted) — A6 scan-on-load with sidecar decoration
 // ============================================================
 
 async function listLibrary() {
   try {
-    const entries = await naklios.fs.list('library/');
-    const books = (Array.isArray(entries) ? entries : []).filter((name) => {
+    const [libEntries, noteEntriesRaw] = await Promise.all([
+      naklios.fs.list('library/'),
+      naklios.fs.list('notes/').catch(() => []),
+    ]);
+    const books = (Array.isArray(libEntries) ? libEntries : []).filter((name) => {
       if (typeof name !== 'string' || !name) return false;
       if (name.charAt(name.length - 1) === '/') return false;
       return SUPPORTED_EXTS.indexOf(extOf(name)) !== -1;
     });
-    if (books.length === 0) renderLibraryEmpty();
-    else renderLibrary(books);
+
+    // Build sourceFilename → sidecar index from notes/
+    const noteFiles = (Array.isArray(noteEntriesRaw) ? noteEntriesRaw : [])
+      .filter((n) => typeof n === 'string' && n.endsWith('.json'));
+    const sidecarByFilename = new Map();
+    await Promise.all(noteFiles.map(async (n) => {
+      try {
+        const txt = await naklios.fs.read('notes/' + n);
+        const s = JSON.parse(txt);
+        if (s && s.sourceFilename) sidecarByFilename.set(s.sourceFilename, s);
+      } catch (_) { /* skip malformed sidecars */ }
+    }));
+
+    const decorated = books.map((filename) => ({
+      filename,
+      sidecar: sidecarByFilename.get(filename) || null,
+    }));
+
+    // Sort: lastOpened desc (sidecar'd first), then alphabetical for the rest
+    decorated.sort((a, b) => {
+      const aT = (a.sidecar && a.sidecar.lastOpened) ? Date.parse(a.sidecar.lastOpened) : 0;
+      const bT = (b.sidecar && b.sidecar.lastOpened) ? Date.parse(b.sidecar.lastOpened) : 0;
+      if (aT !== bT) return bT - aT;
+      return a.filename.localeCompare(b.filename);
+    });
+
+    if (decorated.length === 0) renderLibraryEmpty();
+    else renderLibrary(decorated);
   } catch (err) {
     console.error('Books: library listing failed', err);
     renderLibraryEmpty();
@@ -772,15 +1001,18 @@ function boot() {
   naklios.theme.onChange(applyHostTheme);
   naklios.theme.request();
 
-  // Re-scan on window focus (A6 — scan-on-load + focus, debounced).
+  // Re-scan on window focus (A6 — scan-on-load + on focus, debounced).
   let rescanT = null;
   window.addEventListener('focus', () => {
     if (!naklios.capabilities.fs) return;
-    // Don't re-scan while a book is open.
-    if (reader.classList.contains('is-open')) return;
+    if (reader.classList.contains('is-open')) return;   // don't trample reading
     clearTimeout(rescanT);
     rescanT = setTimeout(listLibrary, 500);
   });
+
+  // Flush pending sidecar writes on close
+  window.addEventListener('beforeunload', flushPendingWritesSync);
+  naklios.beforeClose(flushPendingWritesSync);
 }
 
 boot();
