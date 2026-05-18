@@ -1,0 +1,11 @@
+# Claude Code local settings
+.claude/
+
+# macOS
+.DS_Store
+
+# Node / misc (defensive — not used at runtime)
+node_modules/
+
+# Note: vendor/ is intentionally tracked. Books vendors foliate-js and
+# pdfjs-dist at pinned versions instead of CDN-loading at runtime.

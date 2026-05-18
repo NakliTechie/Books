@@ -40,10 +40,13 @@ Eventually this folder will also hold `index.html` (the app itself) + `LICENSE` 
 **Build status:**
 - [x] Initiative scaffolded
 - [x] Walkthroughs locked (2026-05-18)
-- [ ] Phase 1 — Foundation (shell, SDK wire-up, capability branch, empty state)
-- [ ] Phase 2 — Engine adapter + readers (foliate-js + pdf.js, 8-format smoke test)
-- [ ] Phase 3 — Persistence + reopen-flow (sidecar JSON)
-- [ ] Phase 4 — Notes + polish + stub-replacement (bookmarks, free-text note, manifest entry, theme)
+- [x] Phase 1 — Foundation (shell, SDK, capability branch, empty state)
+- [x] Phase 2 — Engine adapter + 3 readers (foliate-js + pdf.js + TextEngine, vendored)
+- [x] Phase 3 — Persistence + reopen-flow (sidecar JSON, debounced writes)
+- [x] Phase 4 — Bookmarks + per-book note (sidebar UI)
+- [ ] Launcher hand-off — update naklOS APPS entry to point at github.io/Books/ + delete the stub. **Blocked on user-side:** create NakliTechie/Books GitHub repo, push booksv1 → main, enable Pages.
+- [ ] Stage 6 — Security sweep
+- [ ] Stage 7 — Frontend walkthrough (verify each format renders end-to-end)
 
 See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
 
