@@ -6,14 +6,16 @@
 <title>Books — nakliOS</title>
 <meta name="description" content="Browser-native reader for ePub, PDF, MOBI, AZW3, FB2 and plain text. Part of nakliOS.">
 <style>
+/* Mumbai art deco — Marine Drive cream + teal-black + burnt sienna.
+   Host theme via naklios.theme.onChange can override at runtime. */
 :root {
-  --body: #15100c;
-  --panel: #1e1813;
-  --ink: #f5e6c8;
-  --brand: #c8512a;
-  --row: #221a13;
-  --muted: color-mix(in srgb, var(--ink) 60%, var(--body));
-  --line: color-mix(in srgb, var(--ink) 14%, transparent);
+  --body:  #e8d9b3;  /* aged-cream facade */
+  --panel: #f3e7c4;  /* lighter cream, for cards */
+  --ink:   #2c3e3a;  /* deep teal-black */
+  --brand: #b85c3a;  /* burnt sienna */
+  --row:   #ddc89a;  /* warmer cream, for rows */
+  --muted: #7a6850;  /* warm gray-brown */
+  --line:  #c9b582;  /* earthen */
 }
 * { box-sizing: border-box; }
 html, body {
