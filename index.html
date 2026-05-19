@@ -1194,12 +1194,23 @@ document.addEventListener('dragleave', (e) => {
 document.addEventListener('drop', (e) => {
   if (!isFileDrag(e)) return;
   e.preventDefault();
-  dragDepth = 0;
-  dropOverlay.hidden = true;
+  e.stopPropagation();
+  hideDropOverlay();
   if (reader.classList.contains('is-open')) return;
   const files = e.dataTransfer && e.dataTransfer.files;
   if (files && files.length) handlePickedFiles(files);
 });
+
+// dragend fires whenever a drag operation completes (drop or cancel),
+// so it's a safety net for "drag started, drag never properly ended" cases
+// where dragleave's depth-counting can desync.
+document.addEventListener('dragend', hideDropOverlay);
+window.addEventListener('blur', hideDropOverlay);
+
+function hideDropOverlay() {
+  dragDepth = 0;
+  if (dropOverlay) dropOverlay.hidden = true;
+}
 
 // ============================================================
 // Open / close — convergence point for library clicks and standalone drops
@@ -1247,7 +1258,9 @@ async function openBookFromFile(file, persistInfo) {
     // paginator settle) let the loading text bleed through.
     readerContent.innerHTML = '';
     activeEngine = new (ENGINES[key])(readerContent);
+    console.log('Books: loading via', key, 'engine →', file.name, '(' + file.size + ' bytes)');
     await activeEngine.load(file);
+    console.log('Books: engine.load resolved for', file.name);
 
     const persisted = !!(persistInfo && persistInfo.bookId && naklios.capabilities.fs);
     if (persisted) {
@@ -1494,6 +1507,9 @@ function enterReaderView(filename) {
   reader.setAttribute('aria-hidden', 'false');
   topbar.style.display = 'none';
   root.style.display = 'none';
+  // Defensive: any drag state that survived into the reader view would put the
+  // overlay on top (it has higher z-index than the reader). Wipe it out.
+  hideDropOverlay();
 }
 
 function exitReaderView() {
@@ -1530,6 +1546,10 @@ function showReaderError(htmlMsg, err) {
       (detail ? '<p style="font-size:12px; opacity:0.7;"><code>' + escapeHtml(detail) + '</code></p>' : '') +
     '</div>';
   if (err) console.error('Books:', err);
+  // Also surface via toast — covers the case where the reader chrome is
+  // somehow obscured (eg drop overlay stuck), so the user at least sees
+  // the failure mode instead of a frozen window.
+  showToast("Couldn't open: " + (detail || 'unknown error'), { error: true, duration: 6000 });
 }
 
 // ============================================================
