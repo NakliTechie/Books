@@ -320,6 +320,25 @@ body { display: flex; flex-direction: column; }
 .drop-overlay .msg { font-size: 17px; color: var(--ink); font-weight: 600; }
 .drop-overlay .sub { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
 
+/* Bottom-centered toast — feedback for adds, errors, etc. */
+.toast {
+  position: fixed;
+  left: 50%; bottom: 28px;
+  transform: translateX(-50%) translateY(8px);
+  background: var(--ink); color: var(--panel);
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13px; font-weight: 500;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+  z-index: 200;
+  opacity: 0;
+  transition: opacity 0.18s ease-out, transform 0.18s ease-out;
+  pointer-events: none;
+  max-width: min(80vw, 480px);
+}
+.toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.is-error { background: var(--brand); }
+
 .loading {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -350,6 +369,9 @@ body { display: flex; flex-direction: column; }
     <div class="sub">ePub · PDF · MOBI · AZW3 · FB2 · TXT · MD · HTML</div>
   </div>
 </div>
+
+<!-- Toast — feedback for adds + errors -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <div class="topbar" id="topbar">
   <div class="title"><span class="glyph">📖</span> Books</div>
@@ -1032,6 +1054,20 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
 const libraryFileInput = document.getElementById('library-fileinput');
 const dropOverlay = document.getElementById('drop-overlay');
 const dropMsg = document.getElementById('drop-msg');
+const toastEl = document.getElementById('toast');
+
+// Lightweight toast — for add success/failure, capability errors, etc.
+let toastTimer = null;
+function showToast(message, opts = {}) {
+  if (!toastEl) return;
+  toastEl.textContent = message;
+  toastEl.classList.toggle('is-error', !!opts.error);
+  toastEl.classList.add('is-visible');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastEl.classList.remove('is-visible');
+  }, opts.duration || 3200);
+}
 
 function openLibraryFilePicker() {
   libraryFileInput.click();
@@ -1062,15 +1098,29 @@ async function handlePickedFiles(fileList) {
 
 async function addBooksToLibrary(files) {
   const added = [];
+  const failures = [];
   for (const f of files) {
     try {
       const buf = await f.arrayBuffer();
-      // Host accepts ArrayBuffer / typed-array / string. Use Uint8Array.
+      // Host's fsWrite uses FileSystemWritableFileStream.write(data) which
+      // accepts ArrayBuffer / TypedArray / Blob / string. Pass Uint8Array.
       await naklios.fs.write('library/' + f.name, new Uint8Array(buf));
       added.push(f.name);
     } catch (err) {
+      const msg = String(err && err.message || err);
       console.warn('Books: write failed for', f.name, err);
+      failures.push({ name: f.name, message: msg });
     }
+  }
+  // Visible feedback so a silent host-side rejection doesn't look like nothing happened.
+  if (failures.length && !added.length) {
+    showToast("Couldn't add: " + failures[0].message, { error: true, duration: 5000 });
+  } else if (failures.length) {
+    showToast('Added ' + added.length + ', ' + failures.length + ' failed', { error: true, duration: 4500 });
+  } else if (added.length === 1) {
+    showToast('Added "' + added[0] + '"');
+  } else if (added.length > 1) {
+    showToast('Added ' + added.length + ' books');
   }
   return added;
 }
@@ -1486,21 +1536,38 @@ function showReaderError(htmlMsg, err) {
 // Library listing (hosted) — A6 scan-on-load with sidecar decoration
 // ============================================================
 
+// Strip a leading "<prefix>/" from every entry returned by naklios.fs.list.
+// The host returns entries as paths relative to apps/<id>/ — so listing
+// 'library/' yields ['library/Pride.epub', ...]. Books works in basenames,
+// so peel off the prefix once at the boundary.
+function stripListPrefix(entries, prefix) {
+  if (!Array.isArray(entries)) return [];
+  const p = prefix.replace(/\/$/, '') + '/';
+  return entries
+    .map((e) => {
+      if (typeof e !== 'string' || !e) return null;
+      return e.startsWith(p) ? e.slice(p.length) : e;
+    })
+    .filter(Boolean);
+}
+
 async function listLibrary() {
   try {
-    const [libEntries, noteEntriesRaw] = await Promise.all([
+    const [libRaw, noteRaw] = await Promise.all([
       naklios.fs.list('library/'),
       naklios.fs.list('notes/').catch(() => []),
     ]);
-    const books = (Array.isArray(libEntries) ? libEntries : []).filter((name) => {
+    const libEntries = stripListPrefix(libRaw, 'library');
+    const noteEntries = stripListPrefix(noteRaw, 'notes');
+
+    const books = libEntries.filter((name) => {
       if (typeof name !== 'string' || !name) return false;
       if (name.charAt(name.length - 1) === '/') return false;
       return SUPPORTED_EXTS.indexOf(extOf(name)) !== -1;
     });
 
     // Build sourceFilename → sidecar index from notes/
-    const noteFiles = (Array.isArray(noteEntriesRaw) ? noteEntriesRaw : [])
-      .filter((n) => typeof n === 'string' && n.endsWith('.json'));
+    const noteFiles = noteEntries.filter((n) => typeof n === 'string' && n.endsWith('.json'));
     const sidecarByFilename = new Map();
     await Promise.all(noteFiles.map(async (n) => {
       try {
