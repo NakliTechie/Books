@@ -4,20 +4,22 @@
 
 ## Goal
 
-A single-file, browser-native reader for ePub, PDF, MOBI, AZW3, FB2, TXT, Markdown, and HTML — slotted into nakliOS as the `books` app. The user's books live in their connected nakliOS folder at `apps/books/library/*`; reading position + bookmarks + per-book notes persist as sidecar JSON at `apps/books/notes/<bookId>.json`. Because the data is just files in the user's folder, the library is portable across devices and outlives the launcher.
+A single-file, browser-native reader for ePub, PDF, MOBI, AZW3, FB2, TXT, Markdown, and HTML — slotted into NakliOS as the `books` app. The user's books live in the Folder or encrypted Crate selected for Books at `apps/books/library/*`; reading position + bookmarks + per-book notes persist as sidecar JSON at `apps/books/notes/<bookId>.json`.
 
-Success v1: open any supported format from the library, read to completion, close, reopen — position is exactly where it was. Works inside nakliOS (folder access via the host's SDK) and degrades to preview-only when run standalone.
+Success v1: open any supported format from the library, read to completion, close, reopen — position is exactly where it was. Works inside NakliOS (storage access via the host's SDK) and degrades to preview-only when run standalone.
+
+Success v1.1: Books remains hosted in every NakliOS desktop mode; users can explicitly switch between connected Folder and Crate libraries, manage a larger flat library, and tune reading appearance. Switching backends never copies or deletes data.
 
 ## Architectural decisions
 
 ### A0. App ID + mount point
-`id:'books'`, served from `https://naklitechie.github.io/Books/` (its own GitHub Pages site). **Cross-origin to naklOS**, not mirrored. Books doesn't need same-origin — it never calls `showDirectoryPicker` itself (A4 standalone is preview-only via drag-drop; hosted FSA goes through `naklios.fs.*` postMessage RPC which is cross-origin-safe). Retaining the cross-origin sandbox + privacy badge per the naklOS series convention. The Books-related entry in naklOS v2.18's APPS list is currently set to `naklios.dev/apps/books/`; that needs to flip to `naklitechie.github.io/Books/` in Phase 4. The mirror stub at `naklOS/apps/books/index.html` is deleted in Phase 4.
+`id:'books'`, served from `https://naklitechie.github.io/Books/` (its own GitHub Pages site). **Cross-origin to NakliOS**, not mirrored. Books doesn't need same-origin — it never calls `showDirectoryPicker` itself (A4 standalone is preview-only via drag-drop; hosted storage goes through `naklios.fs.*` postMessage RPC, which is cross-origin-safe). The NakliOS registry points production at the published site and uses the sibling local checkout only on localhost for browser validation.
 
 ### A1. Single-file-app + vendored libraries
 The app code itself is one `index.html` — markup, styles, logic inline. Third-party libraries (`foliate-js`, `pdfjs-dist`) are **vendored** under `Books/vendor/<lib>@<version>/` and loaded via relative `<script>` paths. No runtime CDN dependency. See A10 for engine details. An internal `Engine` adapter interface insulates app code from library churn.
 
 ### A2. Data path convention
-All persistence under `apps/books/` in the host folder, via `naklios.fs.*` RPC. Subdirs:
+All persistence under `apps/books/` in the backend selected for Books, via `naklios.fs.*` RPC. Subdirs:
 - `apps/books/library/` — the books themselves (one file per book)
 - `apps/books/notes/<bookId>.json` — per-book sidecar (position, bookmarks, note)
 
@@ -27,7 +29,7 @@ No `localStorage` or `IndexedDB` for canonical state.
 Vendor `naklios.js` inline (sdk surface v1). Call `naklios.ready()` after init; `naklios.title('Books — <book-title>')` on book open; subscribe to `naklios.onCapabilitiesChange` for fs availability and to `naklios.theme.onChange` for theme.
 
 ### A4. Standalone behavior (Q1)
-Outside nakliOS (`capabilities.fs === false`), Books is preview-only — a single drag-drop zone, in-memory render, no persistence, no library, no notes. Library + notes + bookmarks UI only appears when hosted.
+Outside NakliOS (`capabilities.fs === false`), Books is preview-only — a single drag-drop zone, in-memory render, no persistence, no library, no notes. Library + notes + bookmarks UI only appears when hosted.
 
 ### A5. Book identity (Q2)
 `bookId` is a slugified filename (extension stripped, non-alnum → underscore, trimmed). Collisions get numeric suffixes (`_2`, `_3`). Sidecar carries a `sourceFilename` field for collision detection and future rename-recovery.
@@ -46,13 +48,12 @@ Three paths in hosted mode, two in standalone:
 
 Drop overlay appears on any drag-enter (when not already in the reader view) as a visual "drop to add" prompt covering the whole window. Reader-view drag-drop is intentionally disabled — drops while reading shouldn't replace the current book.
 
-The original Q5 lock ("sideload only for v1") was reversed when the user reported that drag-drop didn't work inside the nakliOS iframe — there was no drop zone in hosted mode at all, and no in-app pick-a-file path either. The revised behavior is what should have shipped in v1.
+The original Q5 lock ("sideload only for v1") was reversed when the user reported that drag-drop didn't work inside the NakliOS iframe — there was no drop zone in hosted mode at all, and no in-app pick-a-file path either. The revised behavior is what should have shipped in v1.
 
 ### A9. Notes v1 scope (Q6)
 - **Bookmarks**: array on sidecar, `{id, label?, ts, position}` per entry. Position shape matches the book's engine.
 - **Per-book free-text note**: single `note: string` field on sidecar. `<pre>`-rendered in v1.
 - **No inline highlights** in v1. Deferred.
-- naklOS apps/books/index.html stub copy must be updated from "Highlights + margin notes" to "Bookmarks + notes" to match what ships.
 
 ### A10. Reader engine (Q7) — three engines
 
@@ -60,7 +61,7 @@ During Phase 2 implementation we discovered foliate-js doesn't natively support 
 
 - **FoliateEngine** → `.epub` `.mobi` `.azw3` `.fb2` (wraps foliate-js's `<foliate-view>` element)
 - **PdfEngine** → `.pdf` (wraps pdf.js, continuous-scroll canvas viewer)
-- **TextEngine** → `.txt` `.md` `.html` `.htm` (no library; `<pre>` for TXT/MD, sandboxed `srcdoc` iframe for HTML)
+- **TextEngine** → `.txt` `.md` `.html` `.htm` (`<pre>` for TXT/MD, sandboxed `srcdoc` iframe for HTML)
 
 Internal `Engine` interface (all three implement):
 ```js
@@ -75,7 +76,20 @@ class Engine {
 **Vendored, not CDN.** Both libraries checked into `Books/vendor/<lib>@<version>/` and loaded via relative paths. Pinned: `foliate-js@1.0.1`, `pdfjs-dist@5.7.284`. Project-wide preference per memory entry [feedback_vendor_over_cdn](../../.claude/projects/-Users-chiragpatnaik-Code-naklios-universe-naklOS/memory/feedback_vendor_over_cdn.md). Manual upgrades = `mv vendor/<lib>@<old> vendor/<lib>@<new>` + smoke-test, never silent.
 
 ### A11. v1 format scope (Q8)
-Enabled: `.epub`, `.pdf`, `.mobi`, `.azw3`, `.fb2`, `.txt`, `.md`, `.html`, `.htm`. CBZ + CBR both deferred to v1.1 (shared comic-mode reader; CBZ via `fflate`, CBR via `node-unrar-js`'s UnRAR-WASM). DjVu / legacy AZW rejected with workarounds documented in [DEFERRED.md](DEFERRED.md).
+Enabled: `.epub`, `.pdf`, `.mobi`, `.azw3`, `.fb2`, `.txt`, `.md`, `.html`, `.htm`. CBZ + CBR remain deferred (shared comic-mode reader; CBZ via `fflate`, CBR via `node-unrar-js`'s UnRAR-WASM). DjVu / legacy AZW are rejected with workarounds documented in [DEFERRED.md](DEFERRED.md).
+
+### A12. v1.1 storage and library behavior
+
+- The vendored SDK consumes `fsBackends` and `fsBackend`, and exposes `naklios.fs.useBackend(id)`.
+- NakliOS mediates every explicit backend change and explains that the target is a separate library. Nothing is copied or deleted.
+- Pending sidecar writes are awaited before a switch.
+- Adding a filename that already exists is rejected; Books never silently overwrites a book.
+- Removal deletes the selected book and its matching sidecar only after an in-app modal confirmation.
+- The library can be filtered and sorted by recent activity, title, or author.
+
+### A13. v1.1 reader appearance
+
+Reflowable formats and plain text support font size, line height, text width, and system/paper/sepia/night profiles. Global defaults live in local preferences because they are UI settings, not canonical library data. A hosted book stores its active override in the book sidecar. PDFs keep their authored page layout.
 
 ## Schema additions
 
@@ -96,6 +110,12 @@ Enabled: `.epub`, `.pdf`, `.mobi`, `.azw3`, `.fb2`, `.txt`, `.md`, `.html`, `.ht
   },
   "lastOpened": "2026-05-18T12:34:56Z",
   "note": "",
+  "readerPrefs": {
+    "fontSize": 17,
+    "lineHeight": 1.7,
+    "pageWidth": 720,
+    "profile": "system"
+  },
   "bookmarks": [
     {
       "id": "bm_a7c3f9d2",
@@ -118,6 +138,7 @@ Enabled: `.epub`, `.pdf`, `.mobi`, `.azw3`, `.fb2`, `.txt`, `.md`, `.html`, `.ht
 - `title` / `author` — extracted from file metadata on first open (lazy).
 - `lastOpened` — ISO 8601; drives library sort order (A6) and "continue reading" rail (future).
 - `bookmarks[].position` — same shape as top-level `position`; engine-discriminated by the book's engine.
+- `readerPrefs` — optional v1.1 per-book appearance override; absent sidecars use the local global default.
 
 ### Library index — `apps/books/index.json`
 
@@ -125,7 +146,7 @@ Enabled: `.epub`, `.pdf`, `.mobi`, `.azw3`, `.fb2`, `.txt`, `.md`, `.html`, `.ht
 
 ## Endpoints / public surface
 
-No HTTP endpoints. The app's only public surface is `https://naklitechie.github.io/Books/` (used both standalone and embedded in naklOS as a cross-origin iframe). Standalone mode is preview-only per A4; hosted mode gets the full library experience via the SDK's `naklios.fs.*` RPC.
+No HTTP endpoints. The app's only public surface is `https://naklitechie.github.io/Books/` (used both standalone and embedded in NakliOS as a cross-origin iframe). Standalone mode is preview-only per A4; hosted mode gets the full library experience via the SDK's `naklios.fs.*` RPC.
 
 ## Build sequence
 
@@ -138,8 +159,8 @@ No HTTP endpoints. The app's only public surface is `https://naklitechie.github.
 
 **Phase 2 — Engine adapter + readers**
 1. Define `Engine` interface (A10) in `index.html`.
-2. Write `FoliateEngine` wrapper. Load foliate-js from pinned CDN URL with SRI. Smoke-test against EPUB.
-3. Write `PdfEngine` wrapper. Load pdf.js from pinned CDN URL with SRI. Smoke-test against PDF.
+2. Write `FoliateEngine` wrapper. Load the pinned vendored foliate-js build. Smoke-test against EPUB.
+3. Write `PdfEngine` wrapper. Load the pinned vendored pdf.js build. Smoke-test against PDF.
 4. Format-detection at file open: extension → engine, per A10.
 5. Smoke-test corpus: one DRM-free file per enabled format (A11). All 8 must render and surface a position object.
 
@@ -156,7 +177,7 @@ No HTTP endpoints. The app's only public surface is `https://naklitechie.github.
 2. Per-book free-text note: textarea, debounced write to sidecar `note` field.
 3. Theme integration: `naklios.theme.onChange` → swap CSS custom properties on `:root`. (Already partly done in Phase 1.)
 4. **Launcher hand-off** (cross-origin, no mirroring — A0):
-   - In naklOS's `index.html` APPS array, change the `books` entry's `url` and `embedUrl` from `https://naklios.dev/apps/books/` → `https://naklitechie.github.io/Books/`.
+   - In NakliOS's `index.html` APPS array, change the `books` entry's `url` and `embedUrl` from `https://naklios.dev/apps/books/` → `https://naklitechie.github.io/Books/`.
    - Delete the stub at `naklOS/apps/books/index.html` (no longer used).
    - Do **not** add `books` to `naklOS/apps/manifest.json` — Books is cross-origin, not mirrored.
    - Init NakliTechie/Books GitHub repo, push `booksv1` → `main`, enable GitHub Pages on `main`.
@@ -165,24 +186,20 @@ No HTTP endpoints. The app's only public surface is `https://naklitechie.github.
 
 The canonical list with revisit triggers lives in [DEFERRED.md](DEFERRED.md). Summary:
 
-- **Reader prefs panel** (font, size, line height, margins) — one good set of defaults in v1.
 - **Cover thumbnails** — text-only library list.
 - **Inline highlights** — bookmarks + free-text note covers v1; highlights need text-selection coordination.
 - **Search** — out of v1.
 - **Multiple libraries / shelves** — one flat `library/`.
-- **In-app drag-drop add-book** — sideload only.
 - **Standalone-mode persistence** — preview-only outside the host.
 - **Cross-device sync conflict resolution** — assumed handled by underlying file-system semantics; revisit when wired to private-mesh.
-- **CBZ + CBR** (deferred to v1.1, shared comic-mode reader); **DjVu / legacy AZW** (rejected with workarounds).
-- **Rename / orphan recovery flow** — sidecars survive renames mechanically; rebind UI is v1.1.
+- **CBZ + CBR** (deferred, shared comic-mode reader); **DjVu / legacy AZW** (rejected with workarounds).
+- **Rename / orphan recovery flow** — sidecars survive renames mechanically; rebind UI remains future work.
 
 ## References
 
 - [walkthroughs.md](walkthroughs.md) — locked walkthrough questions
 - [DEFERRED.md](DEFERRED.md) — items pushed to v2+
 - [README.md](README.md) — quickstart + status
-- naklOS SDK source: `../naklOS/sdk/naklios.js`
-- Current Books stub (mirror side): `../naklOS/apps/books/index.html` — to be replaced
-- Mirror manifest: `../naklOS/apps/manifest.json` — Books entry added in Phase 4
+- NakliOS SDK source: `../naklOS/sdk/naklios.js`
 - foliate-js: https://github.com/johnfactotum/foliate-js
 - pdf.js: https://github.com/mozilla/pdf.js

@@ -5,7 +5,7 @@
 
 ## Scope
 
-The branch covers a from-scratch single-file app + two vendored dependencies (foliate-js@1.0.1, pdfjs-dist@5.7.284) + dev-process docs. Public surface is `https://naklitechie.github.io/Books/`, used both standalone and embedded as a cross-origin iframe in nakliOS.
+The branch covers a from-scratch single-file app + two vendored dependencies (foliate-js@1.0.1, pdfjs-dist@5.7.284) + dev-process docs. Public surface is `https://naklitechie.github.io/Books/`, used both standalone and embedded as a cross-origin iframe in NakliOS.
 
 ## Findings
 
@@ -29,12 +29,12 @@ Books code makes no `fetch` / `XMLHttpRequest` / WebSocket calls. Verified:
 No runtime CDN dependency.
 
 ### postMessage trust
-The vendored `naklios.js` SDK posts with `targetOrigin: '*'` and the receive handler does not check `event.origin`. This is intrinsic to the cross-origin SDK pattern shared by every naklOS app — not a Books-introduced regression. Real-world impact: a malicious parent could speak the protocol, but the user's FSA folder handle lives in the parent (naklOS host), so the attacker would need to already have user grant. Not a meaningful escalation.
+The vendored `naklios.js` SDK posts with `targetOrigin: '*'` and the receive handler does not check `event.origin`. This is intrinsic to the cross-origin SDK pattern shared by every NakliOS app — not a Books-introduced regression. Real-world impact: a malicious parent could speak the protocol, but the user's FSA folder handle lives in the parent (NakliOS host), so the attacker would need to already have user grant. Not a meaningful escalation.
 
 If the SDK ever adds origin-checking, Books inherits the improvement.
 
 ### Sidecar data
-Per-book sidecar JSON contains user-derived fields (title, author, note, bookmarks). All stored in the user's nakliOS folder. No telemetry, no analytics, no external transmission. Note: the free-text `note` could contain personal reflections — same locality guarantee as the rest of the user's data.
+Per-book sidecar JSON contains user-derived fields (title, author, note, bookmarks). All stored in the user's NakliOS folder. No telemetry, no analytics, no external transmission. Note: the free-text `note` could contain personal reflections — same locality guarantee as the rest of the user's data.
 
 ### prompt() for bookmark labels
 Uses native browser `prompt()`. Returns a string; stored as `bookmark.label`; rendered via `escapeHtml`. Safe.
@@ -52,10 +52,10 @@ Versions are pinned in path. Upgrades are explicit `mv vendor/<lib>@<old> vendor
 None in the repo. No API keys. No tokens. No `.env` files.
 
 ## Not in scope (already covered upstream)
-- naklOS launcher-side trust model (postMessage handling, `embedUrl` sandbox attribute).
+- NakliOS launcher-side trust model (postMessage handling, `embedUrl` sandbox attribute).
 - foliate-js / pdf.js internals — both upstream maintained.
 
 ## Follow-ups
 None blocking. Possible nice-to-haves for a later phase (no security urgency):
 - ESC key to close the reader view.
-- Origin check on SDK receive (would be a naklOS-wide change, not Books).
+- Origin check on SDK receive (would be a NakliOS-wide change, not Books).

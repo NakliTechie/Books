@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Books — nakliOS</title>
-<meta name="description" content="Browser-native reader for ePub, PDF, MOBI, AZW3, FB2 and plain text. Part of nakliOS.">
+<title>Books — NakliOS</title>
+<meta name="description" content="Browser-native reader for ePub, PDF, MOBI, AZW3, FB2 and plain text. Part of NakliOS.">
 <style>
 /* Mumbai art deco — Marine Drive cream + teal-black + burnt sienna.
    Host theme via naklios.theme.onChange can override at runtime. */
@@ -39,6 +39,14 @@ body { display: flex; flex-direction: column; }
 }
 .topbar .title .glyph { font-size: 18px; }
 .topbar .status { font-size: 11px; color: var(--muted); }
+.topbar-actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
+.storage-btn, .reader-prefs-btn {
+  max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  background:transparent; color:var(--ink); border:1px solid var(--line);
+  padding:6px 10px; border-radius:6px; cursor:pointer; font:11px inherit;
+}
+.storage-btn:hover, .reader-prefs-btn:hover { background:var(--row); border-color:var(--brand); }
+.storage-btn:disabled { cursor:default; opacity:.55; }
 
 .main {
   flex: 1 1 auto;
@@ -131,9 +139,16 @@ body { display: flex; flex-direction: column; }
 .library .row-meta {
   flex: 0 0 auto;
   text-align: right;
-  display: flex; flex-direction: column; align-items: flex-end;
+  display: flex; flex-direction: row; align-items: center;
   gap: 3px;
 }
+.library .row-details { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+.library .row-action {
+  margin-left:7px; background:transparent; color:var(--muted);
+  border:1px solid transparent; border-radius:5px; padding:4px 7px;
+  cursor:pointer; font:13px inherit;
+}
+.library .row-action:hover { color:var(--brand); border-color:var(--brand); background:var(--panel); }
 .library .row .last-read {
   font-size: 10px;
   color: var(--brand);
@@ -174,6 +189,7 @@ body { display: flex; flex-direction: column; }
 }
 .reader-header .sidebar-toggle:hover { background: var(--row); border-color: var(--brand); }
 .reader-header .sidebar-toggle.is-active { background: var(--brand); color: var(--panel); border-color: var(--brand); }
+.reader-prefs-btn { font-size:13px; padding:6px 9px; }
 
 .reader-body {
   flex: 1 1 auto;
@@ -279,9 +295,16 @@ body { display: flex; flex-direction: column; }
 
 /* Library header — "+ Add book" affordance above the row list */
 .library-header {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap:8px; flex-wrap:wrap;
   margin-bottom: 12px;
 }
+.library-tools { display:flex; align-items:center; gap:7px; flex:1; min-width:220px; }
+.library-filter, .library-sort {
+  min-width:0; background:var(--panel); color:var(--ink); border:1px solid var(--line);
+  border-radius:6px; padding:7px 9px; font:12px inherit;
+}
+.library-filter { flex:1; }
+.library-sort { flex:0 0 auto; }
 .add-btn {
   background: var(--brand); color: var(--panel);
   border: none; border-radius: 6px;
@@ -303,11 +326,12 @@ body { display: flex; flex-direction: column; }
 /* Full-window drop overlay — visible while user is dragging a file in */
 .drop-overlay {
   position: fixed; inset: 0;
-  display: flex; align-items: center; justify-content: center;
+  display: none; align-items: center; justify-content: center;
   background: color-mix(in srgb, var(--brand) 25%, var(--body));
   z-index: 50;
   pointer-events: none;
 }
+.drop-overlay:not([hidden]) { display: flex; }
 .drop-overlay-card {
   padding: 40px 60px;
   background: var(--panel);
@@ -353,6 +377,43 @@ body { display: flex; flex-direction: column; }
   background: var(--row); padding: 1px 5px; border-radius: 3px;
   font-family: ui-monospace, monospace; font-size: 12px; color: var(--ink);
 }
+
+dialog.books-dialog {
+  width:min(430px, calc(100vw - 32px)); border:1px solid var(--line); border-radius:12px;
+  background:var(--panel); color:var(--ink); padding:0; box-shadow:0 22px 70px rgba(0,0,0,.35);
+}
+dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:blur(2px); }
+.books-dialog-body { padding:20px; }
+.books-dialog h3 { margin:0 0 8px; font-size:17px; }
+.books-dialog p { margin:0 0 16px; color:var(--muted); line-height:1.5; font-size:13px; }
+.books-dialog-list { display:flex; flex-direction:column; gap:7px; }
+.books-dialog-choice {
+  width:100%; text-align:left; background:var(--row); color:var(--ink);
+  border:1px solid var(--line); border-radius:8px; padding:11px 12px; cursor:pointer;
+}
+.books-dialog-choice:hover { border-color:var(--brand); }
+.books-dialog-choice strong,.books-dialog-choice small { display:block; }
+.books-dialog-choice small { color:var(--muted); margin-top:3px; }
+.books-dialog-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+.books-dialog-actions button {
+  background:transparent; color:var(--ink); border:1px solid var(--line);
+  border-radius:6px; padding:7px 12px; cursor:pointer;
+}
+.books-dialog-actions button.primary { background:var(--brand); color:var(--panel); border-color:var(--brand); }
+.books-dialog-field { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; margin:10px 0; }
+.books-dialog-field label { font-size:12px; color:var(--muted); }
+.books-dialog-field input,.books-dialog-field select {
+  width:150px; background:var(--body); color:var(--ink); border:1px solid var(--line);
+  border-radius:6px; padding:6px 8px;
+}
+@media (max-width:600px) {
+  .topbar { gap:8px; padding:10px 12px; }
+  .topbar-actions { min-width:0; }
+  .storage-btn { max-width:150px; }
+  .main { padding:12px; }
+  .library-header { align-items:stretch; }
+  .library-tools { width:100%; }
+}
 </style>
 </head>
 <body>
@@ -375,7 +436,10 @@ body { display: flex; flex-direction: column; }
 
 <div class="topbar" id="topbar">
   <div class="title"><span class="glyph">📖</span> Books</div>
-  <div class="status" id="topbar-status">Loading…</div>
+  <div class="topbar-actions">
+    <div class="status" id="topbar-status">Loading…</div>
+    <button class="storage-btn" id="storage-btn" type="button" hidden>Storage</button>
+  </div>
 </div>
 
 <div class="main" id="main"><!-- view rendered by JS --></div>
@@ -387,6 +451,8 @@ body { display: flex; flex-direction: column; }
     <button class="nav-btn" id="next-btn" type="button" hidden aria-label="Next" title="Next (→ or Space)">▶</button>
     <div class="reader-title" id="reader-title">…</div>
     <div class="status" id="reader-status"></div>
+    <button class="storage-btn" id="reader-storage-btn" type="button" hidden>Storage</button>
+    <button class="reader-prefs-btn" id="reader-prefs-btn" type="button" title="Reading appearance">Aa</button>
     <button class="sidebar-toggle" id="sidebar-toggle" type="button" hidden aria-label="Notes &amp; bookmarks">≡</button>
   </div>
   <div class="reader-body">
@@ -408,8 +474,61 @@ body { display: flex; flex-direction: column; }
   </div>
 </div>
 
+<dialog class="books-dialog" id="storage-dialog">
+  <div class="books-dialog-body">
+    <h3>Choose library location</h3>
+    <p>Each backend has a separate library. Switching saves the current reading position, then loads the target. Nothing is copied or deleted.</p>
+    <div class="books-dialog-list" id="storage-dialog-list"></div>
+    <div class="books-dialog-actions">
+      <button type="button" data-close-dialog="storage-dialog">Cancel</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="books-dialog" id="confirm-dialog">
+  <div class="books-dialog-body">
+    <h3 id="confirm-dialog-title">Are you sure?</h3>
+    <p id="confirm-dialog-message"></p>
+    <div class="books-dialog-actions">
+      <button type="button" id="confirm-dialog-cancel">Cancel</button>
+      <button class="primary" type="button" id="confirm-dialog-ok">Continue</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="books-dialog" id="reader-prefs-dialog">
+  <div class="books-dialog-body">
+    <h3>Reading appearance</h3>
+    <p>Typography applies to reflowable books and plain text. PDF pages retain their original layout.</p>
+    <div class="books-dialog-field">
+      <label for="reader-font-size">Font size</label>
+      <input id="reader-font-size" type="range" min="12" max="28" step="1">
+    </div>
+    <div class="books-dialog-field">
+      <label for="reader-line-height">Line height</label>
+      <input id="reader-line-height" type="range" min="1.2" max="2.2" step="0.1">
+    </div>
+    <div class="books-dialog-field">
+      <label for="reader-page-width">Text width</label>
+      <input id="reader-page-width" type="range" min="480" max="1000" step="20">
+    </div>
+    <div class="books-dialog-field">
+      <label for="reader-profile">Profile</label>
+      <select id="reader-profile">
+        <option value="system">NakliOS theme</option>
+        <option value="paper">Paper</option>
+        <option value="sepia">Sepia</option>
+        <option value="night">Night</option>
+      </select>
+    </div>
+    <div class="books-dialog-actions">
+      <button type="button" data-close-dialog="reader-prefs-dialog">Done</button>
+    </div>
+  </div>
+</dialog>
+
 <!--
-  naklios.js — cooperative SDK for apps hosted inside nakliOS (Immersive mode).
+  naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode).
   Vendored inline per the single-file ethos. Standalone-safe (no-ops when not hosted).
   Canonical source: https://naklios.dev/sdk/naklios.js. License: MIT.
 -->
@@ -421,7 +540,13 @@ body { display: flex; flex-direction: column; }
   var themeListeners = new Set();
   var capListeners = new Set();
   var beforeCloseCb = null;
-  var capabilities = { hosted: inNakliOS, version: 1, fs: false };
+  var capabilities = {
+    hosted: inNakliOS,
+    version: 1,
+    fs: false,
+    fsBackends: [],
+    fsBackend: null,
+  };
   var pendingRpc = new Map();
   var rpcCounter = 0;
 
@@ -456,6 +581,8 @@ body { display: flex; flex-direction: column; }
       if (beforeCloseCb) { try { beforeCloseCb(); } catch (_) {} }
     } else if (msg.type === 'naklios:capabilities') {
       if (typeof msg.fs === 'boolean') capabilities.fs = msg.fs;
+      if (Array.isArray(msg.fsBackends)) capabilities.fsBackends = msg.fsBackends;
+      capabilities.fsBackend = typeof msg.fsBackend === 'string' ? msg.fsBackend : null;
       capListeners.forEach(function (cb) { try { cb(capabilities); } catch (_) {} });
     } else if (msg.type === 'naklios:fs:reply' && msg.requestId) {
       var p = pendingRpc.get(msg.requestId);
@@ -497,6 +624,7 @@ body { display: flex; flex-direction: column; }
       list:       function (prefix)     { return rpc('naklios:fs:list', { prefix: prefix || '' }); },
       delete:     function (path)       { return rpc('naklios:fs:delete', { path: path }); },
       exists:     function (path)       { return rpc('naklios:fs:exists', { path: path }); },
+      useBackend: function (backend)    { return rpc('naklios:fs:selectBackend', { backend: backend }); },
     },
   };
 })();
@@ -533,10 +661,37 @@ const addBookmarkBtn = document.getElementById('add-bookmark-btn');
 const noteArea = document.getElementById('note-area');
 const tocSection = document.getElementById('toc-section');
 const tocList = document.getElementById('toc-list');
+const storageBtn = document.getElementById('storage-btn');
+const readerStorageBtn = document.getElementById('reader-storage-btn');
+const storageDialog = document.getElementById('storage-dialog');
+const storageDialogList = document.getElementById('storage-dialog-list');
+const confirmDialog = document.getElementById('confirm-dialog');
+const confirmDialogTitle = document.getElementById('confirm-dialog-title');
+const confirmDialogMessage = document.getElementById('confirm-dialog-message');
+const confirmDialogCancel = document.getElementById('confirm-dialog-cancel');
+const confirmDialogOk = document.getElementById('confirm-dialog-ok');
+const readerPrefsBtn = document.getElementById('reader-prefs-btn');
+const readerPrefsDialog = document.getElementById('reader-prefs-dialog');
+const readerFontSize = document.getElementById('reader-font-size');
+const readerLineHeight = document.getElementById('reader-line-height');
+const readerPageWidth = document.getElementById('reader-page-width');
+const readerProfile = document.getElementById('reader-profile');
 
 let activeEngine = null;
 let activeSidecar = null;    // sidecar object for the currently-open book; null if not persisted
 let activeBookId = null;
+let libraryCache = [];
+let libraryFilter = '';
+let librarySort = localStorage.getItem('books.librarySort.v1') || 'recent';
+
+const DEFAULT_READER_PREFS = Object.freeze({
+  fontSize: 17,
+  lineHeight: 1.7,
+  pageWidth: 720,
+  profile: 'system',
+});
+const READER_PREFS_KEY = 'books.readerPrefs.v1';
+let activeReaderPrefs = loadReaderPrefs();
 
 // ============================================================
 // Small helpers
@@ -561,6 +716,65 @@ function toArrayBuffer(raw) {
   }
   if (typeof raw === 'string') return new TextEncoder().encode(raw).buffer;
   throw new Error('Unexpected response shape from naklios.fs.readBinary');
+}
+
+function clampNumber(value, min, max, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+}
+
+function normaliseReaderPrefs(value) {
+  const p = value && typeof value === 'object' ? value : {};
+  const profiles = ['system', 'paper', 'sepia', 'night'];
+  return {
+    fontSize: clampNumber(p.fontSize, 12, 28, DEFAULT_READER_PREFS.fontSize),
+    lineHeight: clampNumber(p.lineHeight, 1.2, 2.2, DEFAULT_READER_PREFS.lineHeight),
+    pageWidth: clampNumber(p.pageWidth, 480, 1000, DEFAULT_READER_PREFS.pageWidth),
+    profile: profiles.includes(p.profile) ? p.profile : DEFAULT_READER_PREFS.profile,
+  };
+}
+
+function loadReaderPrefs() {
+  try { return normaliseReaderPrefs(JSON.parse(localStorage.getItem(READER_PREFS_KEY) || 'null')); }
+  catch (_) { return { ...DEFAULT_READER_PREFS }; }
+}
+
+function saveReaderPrefs(prefs) {
+  activeReaderPrefs = normaliseReaderPrefs(prefs);
+  localStorage.setItem(READER_PREFS_KEY, JSON.stringify(activeReaderPrefs));
+}
+
+function readerPalette(profile) {
+  if (profile === 'paper') return { background: '#f8f6ef', color: '#23231f' };
+  if (profile === 'sepia') return { background: '#f3e5c6', color: '#4a3525' };
+  if (profile === 'night') return { background: '#171a1d', color: '#e5e1d8' };
+  const styles = getComputedStyle(document.documentElement);
+  return {
+    background: styles.getPropertyValue('--panel').trim() || '#ffffff',
+    color: styles.getPropertyValue('--ink').trim() || '#18201d',
+  };
+}
+
+function connectedBackends() {
+  const list = Array.isArray(naklios.capabilities.fsBackends)
+    ? naklios.capabilities.fsBackends
+        .map((entry) => typeof entry === 'string' ? entry : entry && entry.id)
+        .filter((id) => id === 'fsa' || id === 'crate')
+    : [];
+  if (!list.length && naklios.capabilities.fs) {
+    list.push(naklios.capabilities.fsBackend === 'crate' ? 'crate' : 'fsa');
+  }
+  return list;
+}
+
+function activeBackendId() {
+  const id = naklios.capabilities.fsBackend;
+  if (id === 'fsa' || id === 'crate') return id;
+  return connectedBackends()[0] || null;
+}
+
+function backendLabel(id) {
+  return id === 'crate' ? 'Crate' : id === 'fsa' ? 'Folder' : 'Storage';
 }
 
 // A5 — bookId from filename: extension stripped, non-alnum → underscore, trim leading/trailing underscores.
@@ -632,6 +846,22 @@ function flushPendingWritesSync() {
   pendingWrites.clear();
 }
 
+async function flushPendingWrites() {
+  const writes = [];
+  for (const [bookId, { timer, data }] of pendingWrites.entries()) {
+    clearTimeout(timer);
+    writes.push(
+      naklios.fs.write('notes/' + bookId + '.json', JSON.stringify(data, null, 2))
+        .catch((err) => {
+          console.warn('Books: sidecar flush failed for', bookId, err);
+          throw err;
+        })
+    );
+  }
+  pendingWrites.clear();
+  await Promise.all(writes);
+}
+
 // Resolve a bookId for `filename`, allocating a `_2`, `_3`, ... suffix if a
 // sidecar already exists for a different source filename (A5 collision rule).
 async function resolveBookId(filename) {
@@ -641,8 +871,7 @@ async function resolveBookId(filename) {
     const existing = await readSidecar(candidate);
     if (!existing) return candidate;
     if (existing.sourceFilename === filename) return candidate;
-    n++;
-    candidate = base + '_' + n;
+    candidate = base + '_' + (n + 1);
   }
   throw new Error('Too many bookId collisions for ' + filename);
 }
@@ -659,6 +888,7 @@ function makeInitialSidecar({ bookId, sourceFilename, engineKey }) {
     lastOpened: null,
     note: '',
     bookmarks: [],
+    readerPrefs: null,
   };
 }
 
@@ -741,6 +971,17 @@ class FoliateEngine {
   async jumpToTocItem(item) {
     if (!this.view || !item || !item.href) return;
     try { await this.view.goTo(item.href); } catch (_) {}
+  }
+  applyPreferences(prefs) {
+    if (!this.view || !this.view.renderer || !this.view.renderer.setStyles) return;
+    const p = normaliseReaderPrefs(prefs);
+    const palette = readerPalette(p.profile);
+    this.view.renderer.setStyles(
+      ':root { color-scheme: light dark; } ' +
+      'html, body { background:' + palette.background + ' !important; color:' + palette.color + ' !important; } ' +
+      'body { font-size:' + p.fontSize + 'px !important; line-height:' + p.lineHeight + ' !important; ' +
+      'max-width:' + p.pageWidth + 'px !important; margin-inline:auto !important; }'
+    );
   }
   onRelocate(cb) { this._cb = cb; }
   destroy() {
@@ -885,6 +1126,7 @@ class PdfEngine {
     const m = String(item.href).match(/^pdf-page:(\d+)$/);
     if (m) await this.jumpTo({ page: Number(m[1]), scrollY: 0 });
   }
+  applyPreferences() { /* PDFs retain their authored page layout. */ }
   onRelocate(cb) { this._cb = cb; }
   destroy() {
     if (this.pdfDoc) { try { this.pdfDoc.destroy(); } catch (_) {} this.pdfDoc = null; }
@@ -898,6 +1140,9 @@ class TextEngine {
   constructor(container) {
     this.container = container;
     this.viewer = null;
+    this.inner = null;
+    this.pre = null;
+    this.frame = null;
     this._cb = null;
     this._scrollT = null;
   }
@@ -915,6 +1160,7 @@ class TextEngine {
       Object.assign(iframe.style, { width: '100%', height: '100%', border: 'none', background: '#fff' });
       iframe.srcdoc = text;
       this.viewer.appendChild(iframe);
+      this.frame = iframe;
     } else {
       const inner = document.createElement('div');
       Object.assign(inner.style, { maxWidth: '720px', margin: '0 auto', padding: '40px 20px 80px' });
@@ -927,6 +1173,8 @@ class TextEngine {
       pre.textContent = text;
       inner.appendChild(pre);
       this.viewer.appendChild(inner);
+      this.inner = inner;
+      this.pre = pre;
     }
     this.container.appendChild(this.viewer);
     this.viewer.addEventListener('scroll', () => this._onScroll());
@@ -960,6 +1208,24 @@ class TextEngine {
   }
   async getTOC() { return null; }
   async jumpToTocItem() { /* no-op — TXT/MD/HTML have no chapter structure in v1 */ }
+  applyPreferences(prefs) {
+    if (!this.viewer) return;
+    const p = normaliseReaderPrefs(prefs);
+    const palette = readerPalette(p.profile);
+    Object.assign(this.viewer.style, { background: palette.background, color: palette.color });
+    if (this.inner) this.inner.style.maxWidth = p.pageWidth + 'px';
+    if (this.pre) {
+      Object.assign(this.pre.style, {
+        fontSize: p.fontSize + 'px',
+        lineHeight: String(p.lineHeight),
+        color: palette.color,
+      });
+    }
+    if (this.frame) {
+      this.frame.style.background = palette.background;
+      this.frame.style.colorScheme = p.profile === 'night' ? 'dark' : 'light';
+    }
+  }
   onRelocate(cb) { this._cb = cb; }
   destroy() {
     if (this.viewer) { try { this.container.removeChild(this.viewer); } catch (_) {} this.viewer = null; }
@@ -979,7 +1245,7 @@ function renderStandalonePreview() {
     '<div class="center"><div class="card">' +
       '<div class="tag">Preview mode</div>' +
       '<h2>📖 Books</h2>' +
-      "<p>Books works fully inside nakliOS — your library, position, and notes persist to your folder. Standalone, you can read one file at a time.</p>" +
+      "<p>Books works fully inside NakliOS — your library, position, and notes persist to the selected Folder or Crate. Standalone, you can read one file at a time.</p>" +
       '<label class="dropzone" id="dropzone">' +
         '<input type="file" id="fileinput" accept=".epub,.pdf,.mobi,.azw3,.fb2,.txt,.md,.html,.htm">' +
         '<div>Drop a book here, or click to choose</div>' +
@@ -989,31 +1255,74 @@ function renderStandalonePreview() {
   wireDropZone();
 }
 
-function renderHostedNoFolder() {
-  topbarStatus.textContent = 'No folder connected';
+function renderHostedNoStorage() {
+  topbarStatus.textContent = 'No storage connected';
   root.innerHTML =
     '<div class="center"><div class="card">' +
-      '<h2>📖 No folder connected</h2>' +
-      "<p>Connect a folder via nakliOS settings (⚙ in the top bar) → Folder sync → Connect folder. That's where your books, reading position, and notes will live.</p>" +
+      '<h2>📖 No storage connected</h2>' +
+      "<p>Connect a Folder or Crate in NakliOS settings. Books keeps each library, reading position, bookmarks, and notes inside that selected backend.</p>" +
     '</div></div>';
 }
 
 function renderLibraryEmpty() {
-  topbarStatus.textContent = 'Library empty';
+  topbarStatus.textContent = 'Library empty · ' + backendLabel(activeBackendId());
+  const backend = activeBackendId();
+  const sideload = backend === 'fsa'
+    ? " You can also place files in <code>apps/books/library/</code> inside the mounted Folder; they'll appear when this window is focused."
+    : '';
   root.innerHTML =
     '<div class="center"><div class="card">' +
       '<h2>📖 Your library is empty</h2>' +
       '<p>Add books from your computer to start reading. Supported: <code>.epub</code>, <code>.pdf</code>, <code>.mobi</code>, <code>.azw3</code>, <code>.fb2</code>, <code>.txt</code>, <code>.md</code>, <code>.html</code>.</p>' +
       '<button class="add-btn-secondary" id="add-book-btn-empty" type="button">＋ Add book…</button>' +
-      "<p style=\"font-size:11px; margin-top:18px;\">Or drag files onto this window. You can also sideload by dropping files into <code>apps/books/library/</code> in your nakliOS folder via Finder &mdash; they'll appear next time you focus this window.</p>" +
+      '<p style="font-size:11px; margin-top:18px;">Or drag files onto this window.' + sideload + '</p>' +
     '</div></div>';
   const btn = document.getElementById('add-book-btn-empty');
   if (btn) btn.addEventListener('click', openLibraryFilePicker);
 }
 
-function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
-  topbarStatus.textContent = decorated.length + ' book' + (decorated.length === 1 ? '' : 's');
-  const rows = decorated.map(({ filename, sidecar }) => {
+function visibleLibraryBooks() {
+  const needle = libraryFilter.trim().toLowerCase();
+  const books = libraryCache.filter(({ filename, sidecar }) => {
+    if (!needle) return true;
+    const haystack = [
+      filename,
+      sidecar && sidecar.title,
+      sidecar && sidecar.author,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(needle);
+  });
+  books.sort((a, b) => {
+    if (librarySort === 'title') {
+      const aTitle = (a.sidecar && a.sidecar.title) || a.filename;
+      const bTitle = (b.sidecar && b.sidecar.title) || b.filename;
+      return aTitle.localeCompare(bTitle);
+    }
+    if (librarySort === 'author') {
+      const aAuthor = (a.sidecar && a.sidecar.author) || '';
+      const bAuthor = (b.sidecar && b.sidecar.author) || '';
+      return aAuthor.localeCompare(bAuthor) || a.filename.localeCompare(b.filename);
+    }
+    const aT = (a.sidecar && a.sidecar.lastOpened) ? Date.parse(a.sidecar.lastOpened) : 0;
+    const bT = (b.sidecar && b.sidecar.lastOpened) ? Date.parse(b.sidecar.lastOpened) : 0;
+    return bT - aT || a.filename.localeCompare(b.filename);
+  });
+  return books;
+}
+
+function renderLibraryRows() {
+  const list = root.querySelector('.library');
+  if (!list) return;
+  const decorated = visibleLibraryBooks();
+  topbarStatus.textContent =
+    (libraryFilter ? decorated.length + ' of ' + libraryCache.length : libraryCache.length) +
+    ' book' + (libraryCache.length === 1 ? '' : 's') +
+    ' · ' + backendLabel(activeBackendId());
+  if (!decorated.length) {
+    list.innerHTML = '<div class="card"><p>No books match this filter.</p></div>';
+    return;
+  }
+  list.innerHTML = decorated.map(({ filename, sidecar }) => {
     const ext = extOf(filename);
     const title = (sidecar && sidecar.title) || filename.replace(/\.[a-z0-9]+$/i, '');
     const author = (sidecar && sidecar.author) || '';
@@ -1023,21 +1332,56 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
                '<div class="name">' + escapeHtml(title) + '</div>' +
                (author ? '<div class="author">' + escapeHtml(author) + '</div>' : '') +
              '</div>' +
-             '<div class="row-meta">' +
-               (lastRead ? '<div class="last-read">' + escapeHtml(lastRead) + '</div>' : '') +
-               '<div class="meta">' + escapeHtml(ext) + '</div>' +
+             '<div class="row-details">' +
+               '<div class="row-meta">' +
+                 (lastRead ? '<div class="last-read">' + escapeHtml(lastRead) + '</div>' : '') +
+                 '<div class="meta">' + escapeHtml(ext) + '</div>' +
+               '</div>' +
+               '<button class="row-action" type="button" data-action="remove" title="Remove from this library">Remove</button>' +
              '</div>' +
            '</div>';
   }).join('');
+}
+
+function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
+  libraryCache = decorated.slice();
   root.innerHTML =
     '<div class="library-header">' +
+      '<div class="library-tools">' +
+        '<input class="library-filter" id="library-filter" type="search" placeholder="Filter library…" value="' + escapeHtml(libraryFilter) + '">' +
+        '<select class="library-sort" id="library-sort" aria-label="Sort library">' +
+          '<option value="recent"' + (librarySort === 'recent' ? ' selected' : '') + '>Recently read</option>' +
+          '<option value="title"' + (librarySort === 'title' ? ' selected' : '') + '>Title</option>' +
+          '<option value="author"' + (librarySort === 'author' ? ' selected' : '') + '>Author</option>' +
+        '</select>' +
+      '</div>' +
       '<button class="add-btn compact" id="add-book-btn" type="button">＋ Add book…</button>' +
     '</div>' +
-    '<div class="library">' + rows + '</div>';
+    '<div class="library"></div>';
+  renderLibraryRows();
   const addBtn = document.getElementById('add-book-btn');
   if (addBtn) addBtn.addEventListener('click', openLibraryFilePicker);
-  Array.prototype.forEach.call(root.querySelectorAll('.row'), (r) => {
-    r.addEventListener('click', () => openBookFromLibrary(r.getAttribute('data-filename')));
+  const filter = document.getElementById('library-filter');
+  const sort = document.getElementById('library-sort');
+  filter.addEventListener('input', () => {
+    libraryFilter = filter.value;
+    renderLibraryRows();
+  });
+  sort.addEventListener('change', () => {
+    librarySort = sort.value;
+    localStorage.setItem('books.librarySort.v1', librarySort);
+    renderLibraryRows();
+  });
+  root.querySelector('.library').addEventListener('click', (event) => {
+    const row = event.target.closest('.row[data-filename]');
+    if (!row) return;
+    const filename = row.getAttribute('data-filename');
+    if (event.target.closest('[data-action="remove"]')) {
+      const item = libraryCache.find((entry) => entry.filename === filename);
+      removeBookFromLibrary(filename, item && item.sidecar);
+      return;
+    }
+    openBookFromLibrary(filename);
   });
 }
 
@@ -1046,8 +1390,8 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
 // Three entry points: standalone-dropzone, full-window drop, library "+ Add" button.
 // Behavior:
 //   - Standalone:        first supported file → openBookFromFile (preview-only, A4)
-//   - Hosted, no folder: ignored — there's no library to write to
-//   - Hosted + folder:   write all supported files to apps/books/library/<name>,
+//   - Hosted, no storage: ignored — there's no library to write to
+//   - Hosted + storage: write all supported files to apps/books/library/<name>,
 //                        re-list, and auto-open the just-added file when there's only one
 // ============================================================
 
@@ -1101,6 +1445,13 @@ async function addBooksToLibrary(files) {
   const failures = [];
   for (const f of files) {
     try {
+      if (await naklios.fs.exists('library/' + f.name)) {
+        failures.push({
+          name: f.name,
+          message: '"' + f.name + '" is already in this library. Remove it first to replace it.',
+        });
+        continue;
+      }
       const buf = await f.arrayBuffer();
       // Host's fsWrite uses FileSystemWritableFileStream.write(data) which
       // accepts ArrayBuffer / TypedArray / Blob / string. Pass Uint8Array.
@@ -1123,6 +1474,60 @@ async function addBooksToLibrary(files) {
     showToast('Added ' + added.length + ' books');
   }
   return added;
+}
+
+function askForConfirmation({ title, message, confirmLabel = 'Continue' }) {
+  return new Promise((resolve) => {
+    confirmDialogTitle.textContent = title;
+    confirmDialogMessage.textContent = message;
+    confirmDialogOk.textContent = confirmLabel;
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      confirmDialogCancel.removeEventListener('click', cancel);
+      confirmDialogOk.removeEventListener('click', accept);
+      confirmDialog.removeEventListener('cancel', cancel);
+      if (confirmDialog.open) confirmDialog.close();
+      resolve(result);
+    };
+    const cancel = (event) => { if (event) event.preventDefault(); finish(false); };
+    const accept = () => finish(true);
+    confirmDialogCancel.addEventListener('click', cancel);
+    confirmDialogOk.addEventListener('click', accept);
+    confirmDialog.addEventListener('cancel', cancel);
+    confirmDialog.showModal();
+  });
+}
+
+async function removeBookFromLibrary(filename, sidecar) {
+  const confirmed = await askForConfirmation({
+    title: 'Remove this book?',
+    message: '"' + filename + '" and its Books notes, bookmarks, and reading position will be removed from the current ' +
+      backendLabel(activeBackendId()) + '. Other storage backends are untouched.',
+    confirmLabel: 'Remove',
+  });
+  if (!confirmed) return;
+  try {
+    await naklios.fs.delete('library/' + filename);
+    if (sidecar && sidecar.bookId) {
+      try {
+        await naklios.fs.delete('notes/' + sidecar.bookId + '.json');
+      } catch (sidecarError) {
+        showToast(
+          'Book removed, but its notes could not be removed: ' +
+            String(sidecarError && sidecarError.message || sidecarError),
+          { error: true, duration: 6000 },
+        );
+        await listLibrary();
+        return;
+      }
+    }
+    showToast('Removed "' + filename + '"');
+    await listLibrary();
+  } catch (err) {
+    showToast("Couldn't remove: " + String(err && err.message || err), { error: true, duration: 5000 });
+  }
 }
 
 // File picker change → unified handler. Reset input so picking the same file twice fires again.
@@ -1247,7 +1652,7 @@ async function openBookFromFile(file, persistInfo) {
   if (!key) {
     showReaderError(
       'Unsupported file type: <code>.' + escapeHtml(extOf(file.name)) + '</code>',
-      new Error('Books v1 supports ePub, PDF, MOBI, AZW3, FB2, TXT, MD, HTML.'));
+      new Error('Books supports ePub, PDF, MOBI, AZW3, FB2, TXT, MD, and HTML.'));
     return;
   }
 
@@ -1271,6 +1676,8 @@ async function openBookFromFile(file, persistInfo) {
           sourceFilename: persistInfo.sourceFilename,
           engineKey: key,
         });
+      activeReaderPrefs = normaliseReaderPrefs(activeSidecar.readerPrefs || loadReaderPrefs());
+      if (activeEngine.applyPreferences) activeEngine.applyPreferences(activeReaderPrefs);
 
       // Lazy metadata enrichment
       if (!activeSidecar.title || !activeSidecar.author) {
@@ -1298,6 +1705,9 @@ async function openBookFromFile(file, persistInfo) {
 
       // Show + populate the bookmarks/note sidebar
       activateSidebarForCurrentBook();
+    } else {
+      activeReaderPrefs = loadReaderPrefs();
+      if (activeEngine.applyPreferences) activeEngine.applyPreferences(activeReaderPrefs);
     }
 
     activeEngine.onRelocate((pos) => {
@@ -1338,6 +1748,112 @@ function describePosition(engineKey, pos) {
   if (typeof pos.fraction === 'number') return Math.round(pos.fraction * 100) + '%';
   return '';
 }
+
+function syncReaderPrefsControls() {
+  const p = normaliseReaderPrefs(activeReaderPrefs);
+  readerFontSize.value = String(p.fontSize);
+  readerLineHeight.value = String(p.lineHeight);
+  readerPageWidth.value = String(p.pageWidth);
+  readerProfile.value = p.profile;
+}
+
+function readReaderPrefsControls() {
+  return normaliseReaderPrefs({
+    fontSize: readerFontSize.value,
+    lineHeight: readerLineHeight.value,
+    pageWidth: readerPageWidth.value,
+    profile: readerProfile.value,
+  });
+}
+
+function applyReaderPrefsFromDialog() {
+  activeReaderPrefs = readReaderPrefsControls();
+  saveReaderPrefs(activeReaderPrefs);
+  if (activeEngine && activeEngine.applyPreferences) {
+    activeEngine.applyPreferences(activeReaderPrefs);
+  }
+  if (activeSidecar && activeBookId) {
+    activeSidecar.readerPrefs = { ...activeReaderPrefs };
+    writeSidecarDebounced(activeBookId, activeSidecar);
+  }
+}
+
+readerPrefsBtn.addEventListener('click', () => {
+  syncReaderPrefsControls();
+  readerPrefsDialog.showModal();
+});
+[readerFontSize, readerLineHeight, readerPageWidth, readerProfile].forEach((control) => {
+  control.addEventListener('input', applyReaderPrefsFromDialog);
+  control.addEventListener('change', applyReaderPrefsFromDialog);
+});
+
+document.querySelectorAll('[data-close-dialog]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const dialog = document.getElementById(button.getAttribute('data-close-dialog'));
+    if (dialog && dialog.open) dialog.close();
+  });
+});
+
+function updateStorageButton() {
+  if (!naklios.capabilities.hosted) {
+    storageBtn.hidden = true;
+    readerStorageBtn.hidden = true;
+    return;
+  }
+  const active = activeBackendId();
+  [storageBtn, readerStorageBtn].forEach((button) => {
+    button.hidden = false;
+    button.textContent = active ? backendLabel(active) + ' ▾' : 'Choose storage…';
+    button.title = active
+      ? 'Books is using this ' + backendLabel(active) + '. Choose a different connected backend.'
+      : 'Choose a connected Folder or Crate';
+  });
+}
+
+function showStorageDialog() {
+  const active = activeBackendId();
+  const choices = connectedBackends();
+  storageDialogList.innerHTML = choices.length
+    ? choices.map((id) =>
+        '<button class="books-dialog-choice" type="button" data-backend="' + id + '">' +
+          '<strong>' + backendLabel(id) + (id === active ? ' · Current' : '') + '</strong>' +
+          '<small>' + (id === 'crate' ? 'Encrypted, multi-device storage' : 'Mounted local folder') + '</small>' +
+        '</button>'
+      ).join('')
+    : '<p>No Folder or Crate is connected. Connect one in NakliOS settings first.</p>';
+  storageDialog.showModal();
+}
+
+async function switchLibraryBackend(target) {
+  if (target === activeBackendId()) {
+    storageDialog.close();
+    return;
+  }
+  try {
+    await flushPendingWrites();
+    const changed = await naklios.fs.useBackend(target);
+    if (!changed) return;
+    naklios.capabilities.fsBackend = target;
+    if (reader.classList.contains('is-open')) teardownReaderView();
+    storageDialog.close();
+    updateStorageButton();
+    libraryFilter = '';
+    await listLibrary();
+    showToast('Now using ' + backendLabel(target) + '. Nothing was copied or deleted.');
+  } catch (err) {
+    showToast("Couldn't switch storage: " + String(err && err.message || err), {
+      error: true,
+      duration: 5500,
+    });
+  }
+}
+
+storageBtn.addEventListener('click', showStorageDialog);
+readerStorageBtn.addEventListener('click', showStorageDialog);
+storageDialogList.addEventListener('click', (event) => {
+  const choice = event.target.closest('[data-backend]');
+  if (choice) switchLibraryBackend(choice.getAttribute('data-backend'));
+});
 
 // ============================================================
 // Bookmarks + per-book note (A9) — sidebar
@@ -1512,8 +2028,7 @@ function enterReaderView(filename) {
   hideDropOverlay();
 }
 
-function exitReaderView() {
-  flushPendingWritesSync();
+function teardownReaderView() {
   if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
   activeSidecar = null;
   activeBookId = null;
@@ -1528,11 +2043,24 @@ function exitReaderView() {
   topbar.style.display = '';
   root.style.display = '';
   naklios.title('Books');
-  // Re-list library so any sidecar updates from this session show up
-  if (naklios.capabilities.fs) listLibrary();
 }
 
-backBtn.addEventListener('click', exitReaderView);
+async function exitReaderView() {
+  try {
+    await flushPendingWrites();
+  } catch (_) {
+    showToast('Reading state could not be saved. The library was left open.', {
+      error: true,
+      duration: 5000,
+    });
+    return;
+  }
+  teardownReaderView();
+  // Re-list library so any sidecar updates from this session show up
+  if (naklios.capabilities.fs) await listLibrary();
+}
+
+backBtn.addEventListener('click', () => { void exitReaderView(); });
 
 function setReaderLoading(msg) {
   readerContent.innerHTML = '<div class="loading">' + escapeHtml(msg) + '</div>';
@@ -1610,7 +2138,10 @@ async function listLibrary() {
       return a.filename.localeCompare(b.filename);
     });
 
-    if (decorated.length === 0) renderLibraryEmpty();
+    if (decorated.length === 0) {
+      libraryCache = [];
+      renderLibraryEmpty();
+    }
     else renderLibrary(decorated);
   } catch (err) {
     console.error('Books: library listing failed', err);
@@ -1648,17 +2179,27 @@ function boot() {
   }
 
   let decided = false;
-  function decide() {
-    if (decided) return;
+  let lastStorageSignature = '';
+  function syncCapabilities(caps, force = false) {
+    updateStorageButton();
+    const signature = String(!!caps.fs) + ':' + (caps.fsBackend || '') + ':' + connectedBackends().join(',');
+    if (!force && !decided && !caps.fs) return;
+    if (!force && decided && signature === lastStorageSignature) return;
     decided = true;
-    if (!naklios.capabilities.fs) renderHostedNoFolder();
-    else listLibrary();
+    lastStorageSignature = signature;
+    if (!caps.fs) renderHostedNoStorage();
+    else if (!reader.classList.contains('is-open')) void listLibrary();
   }
-  naklios.onCapabilitiesChange((caps) => { if (caps.fs && !decided) decide(); });
+  naklios.onCapabilitiesChange((caps) => syncCapabilities(caps));
   naklios.requestCapabilities();
-  setTimeout(decide, 1500);
+  setTimeout(() => syncCapabilities(naklios.capabilities, true), 1500);
 
-  naklios.theme.onChange(applyHostTheme);
+  naklios.theme.onChange((theme) => {
+    applyHostTheme(theme);
+    if (activeEngine && activeReaderPrefs.profile === 'system' && activeEngine.applyPreferences) {
+      activeEngine.applyPreferences(activeReaderPrefs);
+    }
+  });
   naklios.theme.request();
 
   // Re-scan on window focus (A6 — scan-on-load + on focus, debounced).
@@ -1689,7 +2230,7 @@ function boot() {
       if (activeEngine && activeEngine.prev) await activeEngine.prev();
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      exitReaderView();
+      await exitReaderView();
     }
   });
 }

@@ -1,10 +1,19 @@
 # books
 
-> **Lifecycle:** `living` — SPEC.md locked 2026-05-18; implementation begins on `booksv1`.
+> **Lifecycle:** `living` — v1 shipped; v1.1 base-utilities upgrade implemented locally.
 
-Books is a single-file browser-native reader for ePub and PDF, slotted into nakliOS as the `books` app. Books live in the user's connected nakliOS folder (`apps/books/library/*.{epub,pdf}`) and reading position + notes persist back to that folder as sidecar JSON — so the library is portable across devices and outlives the launcher.
+Books is a single-file, browser-native reader for ePub, PDF, MOBI, AZW3, FB2, TXT, Markdown, and HTML, slotted into NakliOS as the `books` app. Books and their sidecars live under `apps/books/` in the Folder or encrypted Crate selected for Books. Each backend remains a separate library; switching never copies or deletes data.
 
-Replaces the "Coming soon" stub already registered in naklOS v2.18.
+Standalone mode remains a one-book, in-memory preview. NakliOS always keeps Books hosted—even in Basic mode—so the app can use the scoped storage bridge.
+
+## v1.1 highlights
+
+- Explicit Folder/Crate picker with host confirmation and backend isolation.
+- Library filter and sort by recently read, title, or author.
+- Safe removal through an in-app modal; duplicate filenames are refused instead of overwritten.
+- Reader appearance controls for font size, line height, text width, and color profile.
+- Appearance defaults persist locally; hosted books can store a per-book override in their sidecar.
+- PDF pages retain their authored layout.
 
 ## How this fits in the repo
 
@@ -12,8 +21,7 @@ Replaces the "Coming soon" stub already registered in naklOS v2.18.
 naklios-universe/
 ├── naklOS/                       ← the launcher (registry, sdk, mirror tree)
 │   ├── sdk/naklios.js            ← SDK Books vendors inline
-│   ├── apps/books/index.html     ← current stub; replaced by mirror sync once Books ships
-│   └── apps/manifest.json        ← Books entry added during Phase 4
+│   └── index.html                ← Books registry entry + storage host
 └── Books/                        ← THIS INITIATIVE
     ├── SPEC.md                   ← architectural decisions
     ├── walkthroughs.md           ← open scope-defining questions
@@ -21,12 +29,10 @@ naklios-universe/
     └── README.md                 ← this file (quickstart + status)
 ```
 
-Eventually this folder will also hold `index.html` (the app itself) + `LICENSE` + `.gitignore`.
-
 ## Status
 
 **Decisions locked:**
-- [x] Slug + ID = `books`; folder = `naklios-universe/Books/`; branch = `booksv1`
+- [x] Slug + ID = `books`; folder = `naklios-universe/Books/`; branch = `main`
 - [x] A0–A3: mount point, single-file ethos, data-path convention, SDK contract
 - [x] A4 (Q1) — Standalone = preview-only
 - [x] A5 (Q2) — Book identity = slugified filename
@@ -44,9 +50,12 @@ Eventually this folder will also hold `index.html` (the app itself) + `LICENSE` 
 - [x] Phase 2 — Engine adapter + 3 readers (foliate-js + pdf.js + TextEngine, vendored)
 - [x] Phase 3 — Persistence + reopen-flow (sidecar JSON, debounced writes)
 - [x] Phase 4 — Bookmarks + per-book note (sidebar UI)
-- [ ] Launcher hand-off — update naklOS APPS entry to point at github.io/Books/ + delete the stub. **Blocked on user-side:** create NakliTechie/Books GitHub repo, push booksv1 → main, enable Pages.
-- [ ] Stage 6 — Security sweep
-- [ ] Stage 7 — Frontend walkthrough (verify each format renders end-to-end)
+- [x] Launcher hand-off — NakliOS points at `naklitechie.github.io/Books/`
+- [x] Stage 6 — Security sweep
+- [x] Stage 7 — Frontend walkthrough documented
+- [x] v1.1 — Folder/Crate switching, library management, and reader preferences
+- [x] Contract test at `scripts/test-books-v1_1.mjs`
+- [x] Safe two-backend browser fixture at `test/host-harness.html`
 
 See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
 
@@ -58,16 +67,15 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
 
 ## Context
 
-- naklOS launcher: `../naklOS/` — `id:'books'` already in the APPS registry at v2.18
-- Current Books stub (mirror side): `../naklOS/apps/books/index.html` — gets replaced by `sync-mirrors.sh` once this repo has shipped content
+- NakliOS launcher: `../naklOS/` — `id:'books'` already in the APPS registry at v2.18
 - SDK reference: `../naklOS/sdk/naklios.js` — vendor inline; use `naklios.fs.{read,readBinary,write,list}` for persistence
-- Mirror precedent: Tijori (`../Tijori/`) — same FSA-required category
+- Storage-switch precedent: Tijori (`../Tijori/`)
 
 ## Branch
 
-This initiative is being built on `booksv1`. To get started:
+Current development happens on `main`. To get started:
 
 ```
 cd /Users/chiragpatnaik/Code/naklios-universe/Books
-git checkout booksv1
+git checkout main
 ```

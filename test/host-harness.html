@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Books host harness</title>
+  <style>
+    html, body, iframe { width:100%; height:100%; margin:0; border:0; }
+  </style>
+</head>
+<body>
+<iframe id="books" title="Books test app" src="../index.html"></iframe>
+<script>
+(() => {
+  const frame = document.getElementById('books');
+  let activeBackend = 'fsa';
+  const stores = {
+    fsa: new Map([
+      ['library/Sample.md', new TextEncoder().encode(
+        '# Sample book\n\nA quiet test book for NakliOS Books.\n\nSecond paragraph.'
+      )],
+    ]),
+    crate: new Map([
+      ['library/Crate Book.txt', new TextEncoder().encode(
+        'Crate Book\n\nThis library is separate from the mounted Folder.'
+      )],
+    ]),
+  };
+
+  const capabilities = () => ({
+    type: 'naklios:capabilities',
+    fs: true,
+    fsBackend: activeBackend,
+    fsBackends: [
+      { id: 'fsa', label: 'Folder', name: 'Test Folder' },
+      { id: 'crate', label: 'Crate', name: 'Test Crate' },
+    ],
+  });
+
+  function send(message) {
+    frame.contentWindow.postMessage(message, '*');
+  }
+
+  function bytesToText(value) {
+    if (typeof value === 'string') return value;
+    if (value instanceof ArrayBuffer) return new TextDecoder().decode(value);
+    if (ArrayBuffer.isView(value)) return new TextDecoder().decode(value);
+    return String(value ?? '');
+  }
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== frame.contentWindow) return;
+    const msg = event.data;
+    if (!msg || typeof msg !== 'object') return;
+    if (msg.type === 'naklios:ready' || msg.type === 'naklios:capabilities-request') {
+      send(capabilities());
+      return;
+    }
+    if (msg.type === 'naklios:theme-request') {
+      send({
+        type: 'naklios:theme',
+        theme: 'test',
+        colors: {
+          body: '#f4f2ec',
+          panel: '#fffdf8',
+          ink: '#202522',
+          brand: '#8d3f2f',
+          row: '#ece8df',
+          line: '#d6d0c5',
+        },
+      });
+      return;
+    }
+    if (typeof msg.type !== 'string' || !msg.type.startsWith('naklios:fs:')) return;
+
+    const op = msg.type.slice('naklios:fs:'.length);
+    const reply = { type: 'naklios:fs:reply', requestId: msg.requestId };
+    try {
+      if (op === 'selectBackend') {
+        if (!stores[msg.backend]) throw new Error('Unknown backend');
+        activeBackend = msg.backend;
+        reply.result = true;
+        send(capabilities());
+      } else {
+        const store = stores[activeBackend];
+        if (op === 'list') {
+          const prefix = String(msg.prefix || '');
+          reply.result = [...store.keys()].filter((path) => path.startsWith(prefix));
+        } else if (op === 'exists') {
+          reply.result = store.has(msg.path);
+        } else if (op === 'read') {
+          if (!store.has(msg.path)) throw new Error('Not found');
+          reply.result = bytesToText(store.get(msg.path));
+        } else if (op === 'readBinary') {
+          if (!store.has(msg.path)) throw new Error('Not found');
+          const value = store.get(msg.path);
+          reply.result = typeof value === 'string' ? new TextEncoder().encode(value) : value;
+        } else if (op === 'write') {
+          store.set(msg.path, typeof msg.data === 'string' ? msg.data : new Uint8Array(msg.data));
+          reply.result = null;
+        } else if (op === 'delete') {
+          store.delete(msg.path);
+          reply.result = null;
+        } else {
+          throw new Error('Unsupported mock op: ' + op);
+        }
+      }
+    } catch (error) {
+      reply.error = String(error && error.message || error);
+    }
+    send(reply);
+  });
+
+  frame.addEventListener('load', () => {
+    send(capabilities());
+    send({
+      type: 'naklios:theme',
+      theme: 'test',
+      colors: {
+        body: '#f4f2ec',
+        panel: '#fffdf8',
+        ink: '#202522',
+        brand: '#8d3f2f',
+        row: '#ece8df',
+        line: '#d6d0c5',
+      },
+    });
+  });
+})();
+</script>
+</body>
+</html>

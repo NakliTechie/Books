@@ -4,7 +4,7 @@
 
 ## Locked questions (index)
 
-1. **Standalone behavior** — ✅ LOCKED 2026-05-18. Preview-only outside nakliOS — drag-drop one file, in-memory render, no persistence.
+1. **Standalone behavior** — ✅ LOCKED 2026-05-18. Preview-only outside NakliOS — drag-drop one file, in-memory render, no persistence.
 2. **Book identity** — ✅ LOCKED 2026-05-18. Slugified filename. Collisions get numeric suffixes.
 3. **Library index** — ✅ LOCKED 2026-05-18. Scan-on-load via `naklios.fs.list('library/')`. No maintained index in v1.
 4. **Reading-position schema** — ✅ LOCKED 2026-05-18. Engine-discriminated: foliate-engine formats use `{fraction, cfi?, sectionIndex}`; PDF uses `{page, scrollY}`.
@@ -17,13 +17,13 @@
 
 ## Question 1 — Standalone behavior
 
-> **Status:** ✅ LOCKED 2026-05-18. Preview-only outside nakliOS; full library + persistence only when hosted.
+> **Status:** ✅ LOCKED 2026-05-18. Preview-only outside NakliOS; full library + persistence only when hosted.
 
 ### Locked decisions
 
 1. **Standalone is preview-only.** When `naklios.capabilities.fs === false`, the app renders a single drag-drop zone. One file at a time, in-memory render, no persistence, no library, no notes.
 2. **Library view is host-only.** Library grid and per-book sidebars only appear when the host has a folder connected.
-3. **Empty-state copy in standalone:** "Books works fully inside nakliOS — your library, position, and notes persist to your folder. Standalone, you can read one file at a time. Drop a book here to read."
+3. **Empty-state copy in standalone:** "Books works fully inside NakliOS — your library, position, and notes persist to your folder. Standalone, you can read one file at a time. Drop a book here to read."
 
 ### Build sequence delta
 
@@ -118,7 +118,7 @@ Phase 2: each `Engine` implementation returns `getPosition()` in the shape match
 
 1. **Books are added by dropping files into `apps/books/library/` via the user's file manager** (Finder, Files.app, etc.). Books re-scans on next launch and on window-focus.
 2. **Empty-state copy** (when library is empty):
-   > "Drop ePub, PDF, MOBI, AZW3, FB2, or text files (.txt/.md/.html) into `apps/books/library/` in your nakliOS folder. They'll appear here."
+   > "Drop ePub, PDF, MOBI, AZW3, FB2, or text files (.txt/.md/.html) into `apps/books/library/` in your NakliOS folder. They'll appear here."
 3. **No in-app file-write code path in v1.** When Books is run standalone, the drag-drop zone reads in-memory only (per Q1's preview-only lock) — it does not write to any folder.
 
 ### Build sequence delta
@@ -147,7 +147,7 @@ Phase 1: empty-state component renders the locked copy when `naklios.fs.list('li
 
 ### Build sequence delta
 
-Phase 4: bookmarks panel UI (list, add-here button, remove, click-to-jump), free-text-note textarea, both wired to sidecar via debounced write. Update naklOS stub copy.
+Phase 4: bookmarks panel UI (list, add-here button, remove, click-to-jump), free-text-note textarea, both wired to sidecar via debounced write. Update NakliOS stub copy.
 
 ---
 

@@ -8,7 +8,7 @@ Ran against a python `http.server` serving the Books repo at `localhost:8801`.
 
 ### Boot
 - ✅ `index.html` loads to `readyState: 'complete'` without console errors.
-- ✅ `window.naklios` SDK initialised; `capabilities.hosted === false`, `capabilities.fs === false` (correct — preview is not iframed by nakliOS).
+- ✅ `window.naklios` SDK initialised; `capabilities.hosted === false`, `capabilities.fs === false` (correct — preview is not iframed by NakliOS).
 - ✅ Standalone preview view rendered: card with tag "Preview mode", dropzone visible, topbar status "Preview mode".
 
 ### TextEngine path (drop a `.txt` file)
@@ -47,11 +47,11 @@ For each format, drop into the standalone preview and verify it renders + positi
 | MD      | (any `.md` file) | TextEngine renders `<pre>` (no MD-to-HTML in v1) |
 | HTML    | (any `.html` file) | TextEngine srcdoc-iframe renders with `sandbox=""` — no scripts |
 
-### Hosted-mode verification (inside nakliOS)
+### Hosted-mode verification (inside NakliOS)
 Standalone preview can't exercise the persistence path (`naklios.fs.*` requires a real host). Once Books is pushed to a github.io site:
 
-1. Copy a few books into the user's nakliOS folder under `apps/books/library/`.
-2. Open Books from the nakliOS launcher.
+1. Copy a few books into the user's NakliOS folder under `apps/books/library/`.
+2. Open Books from the NakliOS launcher.
 3. Verify library list populates with filenames.
 4. Open a book; scroll; close; reopen — position should be preserved.
 5. Add a bookmark; rename; remove; click to jump.
@@ -60,7 +60,7 @@ Standalone preview can't exercise the persistence path (`naklios.fs.*` requires 
 
 ## Conclusion
 
-Automated smoke covers the engine-agnostic plumbing (capability detection, open/close lifecycle, error UX, position tracking). Format-specific rendering and the full persistence loop need to be exercised with real books in nakliOS — that work is user-driven and gated on the Books github.io site existing.
+Automated smoke covers the engine-agnostic plumbing (capability detection, open/close lifecycle, error UX, position tracking). Format-specific rendering and the full persistence loop need to be exercised with real books in NakliOS — that work is user-driven and gated on the Books github.io site existing.
 
 One bug found and fixed during this stage: unsupported-format errors used to render into a hidden reader-content div because `showReaderError` was called before `enterReaderView`. Fixed in the same commit batch as this doc.
 

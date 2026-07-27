@@ -25,13 +25,11 @@ Show extracted cover art (from ePub `<package>/Cover.jpg` or PDF page 1 render) 
 
 **Trigger to revisit:** When 3+ users say "this looks like a directory listing, not a library." Or when the library view feels visually empty enough to hurt usability.
 
-### Reader prefs panel
+### Reader prefs panel — shipped in v1.1
 
-User-controllable typography for the reader: font face, font size, line height, page margins, justification, dark/sepia color profiles independent of nakliOS theme.
+Delivered: font size, line height, text width, and system/paper/sepia/night profiles for reflowable books and plain text. Global defaults are local UI preferences; hosted books can carry a per-book override. PDF layout remains unchanged.
 
-**Why deferred:** Reader prefs are a deep UX surface (multi-line settings panel, persistence per-book vs global, sane defaults that work for both formats). v1 ships with one good set of defaults.
-
-**Trigger to revisit:** When 3+ users ask for it, or when a font/size choice in v1 turns out to be wrong for a meaningful fraction of books.
+**Still deferred:** font-family selection, justification, and deeper format-specific layout controls.
 
 ### Inline highlights with notes
 
@@ -63,13 +61,13 @@ Read comics packaged as ZIP (CBZ) or RAR (CBR) archives. Both are deferred to th
 
 **Why deferred:** Image-paginated reader UX is materially different from text-reflow (different controls, different position model — page index instead of CFI/percent, different empty-state copy). Adding it to v1 would meaningfully widen UX scope. Both decoders exist and are mature; the bottleneck is the comic-mode reader UI, not parsing.
 
-**Library choices** (locked-in advance for v1.1):
+**Library choices** (locked for the future comic-reader phase):
 - **CBZ → [`fflate`](https://github.com/101arrowz/fflate)** — fast, tiny, MIT, sync+async+streaming. Don't add JSZip; reuse fflate if already present elsewhere.
 - **CBR → [`node-unrar-js`](https://github.com/YuJianrong/node-unrar-js)** — despite the name, runs in browser. Official UnRAR source compiled to WASM via Emscripten (not a clean-room reimplementation), so it has full format fidelity for RAR v4 and v5, unicode filenames, password-protected entries. UnRAR license permits extraction. WASM binary must be loaded explicitly and passed via `wasmBinary` to `createExtractorFromData`. API: `getFileList()` for headers, `extract({files: [...]})` returning lazy iterators of `Uint8Array` per entry.
 - **Limitations to accept**: no volume-split RAR support (`.r01`, `.r02`, etc.) — surface a clear error to the user. No RAR creation (proprietary; we don't need it).
 - **Rejected for this app**: `libarchive.js`, `archive-wasm`, `libarchive-wasm`. They bundle libarchive's full format zoo (7z, TAR, ISO, etc.) — wasteful for two formats. Reserve for a future general-purpose archive tool.
 
-**Internal interface (v1.1 design ahead-of-time)**: both formats sit behind one internal extractor interface — `open → list entries → extract entry as Blob`. Two backends, one consumer (the page renderer). The renderer doesn't know which format the source was.
+**Internal interface**: both formats sit behind one internal extractor interface — `open → list entries → extract entry as Blob`. Two backends, one consumer (the page renderer). The renderer doesn't know which format the source was.
 
 **Hard rules**: no server upload (both libs run fully in-browser), no telemetry (verify before shipping), bytes stay in memory or FSA-granted folders, errors surface clearly (corrupt archive, password-protected without password, split-volume RAR).
 
@@ -105,7 +103,7 @@ Multiple `library/` subdirs (e.g. `library/personal/`, `library/work/`) with she
 
 ### Standalone-mode persistence (Tijori pattern)
 
-Self-pickered FSA + IndexedDB for the dir handle, so Books can persist position and notes when run outside nakliOS at `naklitechie.github.io/Books/`.
+Self-pickered FSA + IndexedDB for the dir handle, so Books can persist position and notes when run outside NakliOS at `naklitechie.github.io/Books/`.
 
 **Why deferred:** If standalone is preview-only (per walkthrough Q1's recommended lock), this is unnecessary. Adds dual code path.
 
