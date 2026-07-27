@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const harness = readFileSync(new URL('../test/host-harness.html', import.meta.url), 'utf8');
+const paginator = readFileSync(
+  new URL('../vendor/foliate-js@1.0.1/paginator.js', import.meta.url),
+  'utf8',
+);
 
 for (const [index, match] of [...html.matchAll(/<script(?:\s+type="module")?>([\s\S]*?)<\/script>/g)].entries()) {
   assert.doesNotThrow(() => new Function(match[1]), `inline Books script ${index + 1} parses`);
@@ -29,6 +33,16 @@ assert.match(
 
 assert.match(html, /id="library-filter"/, 'library includes a filter');
 assert.match(html, /id="library-sort"/, 'library includes a sort chooser');
+assert.match(html, /scrollbar-color:\s*var\(--line\)\s*transparent/, 'Books scrollbars use its active theme');
+assert.match(html, /id="reader-library"/, 'reader keeps the library visible in a sidebar');
+assert.match(html, /id="reader-library-list"/, 'reader sidebar includes the library contents');
+assert.match(html, /id="reader-open-file"/, 'reader includes an explicit file-open control');
+assert.match(html, /function renderReaderLibrary\(\)/, 'reader library can refresh without leaving the book');
+assert.match(
+  html,
+  /readerLibraryList\.addEventListener\('click'[\s\S]*?openBookFromLibrary\(filename\)/,
+  'reader library switches directly between persisted books',
+);
 assert.match(html, /removeBookFromLibrary/, 'library supports deliberate removal');
 assert.match(html, /askForConfirmation/, 'book removal uses an in-app confirmation dialog');
 assert.doesNotMatch(
@@ -55,6 +69,21 @@ assert.match(html, /readerPrefs:\s*null/, 'new sidecars support per-book reader 
 assert.match(html, /activeSidecar\.readerPrefs/, 'reader preferences persist into the active sidecar');
 assert.match(html, /applyPreferences\(prefs\)/, 'reader engines implement preference application');
 assert.match(html, /PDFs retain their authored page layout/, 'PDF preference behavior is explicit');
+assert.match(
+  html,
+  /withTimeout\([\s\S]*?this\.view\.init\(\{ showTextStart: true \}\)[\s\S]*?first EPUB page did not finish rendering/,
+  'EPUB startup has a bounded, visible failure path',
+);
+assert.doesNotMatch(
+  html,
+  /try\s*\{\s*await this\.view\.init\([\s\S]{0,180}catch\s*\(_\)\s*\{\s*try\s*\{\s*await this\.view\.next/,
+  'EPUB startup errors must not be swallowed into a blank reader',
+);
+assert.match(
+  paginator,
+  /src\.startsWith\('blob:'\)[\s\S]*?\(\?:xhtml\|html\)[\s\S]*?srcdoc\s*=\s*await response\.text\(\)[\s\S]*?this\.#iframe\.srcdoc\s*=\s*srcdoc/,
+  'vendored paginator uses srcdoc for XHTML blob sections that Chromium may leave pending',
+);
 assert.match(harness, /fsa:\s*new Map/, 'browser fixture provides an isolated Folder library');
 assert.match(harness, /crate:\s*new Map/, 'browser fixture provides an isolated Crate library');
 

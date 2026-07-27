@@ -242,36 +242,69 @@ class View {
     }
     async load(src, afterLoad, beforeRender) {
         if (typeof src !== 'string') throw new Error(`${src} is not string`)
-        return new Promise(resolve => {
+        let srcdoc = null
+        if (src.startsWith('blob:')) {
+            // Chromium can leave application/xhtml+xml blob navigations
+            // pending forever for some valid EPUB sections. Foliate has
+            // already rewritten every local asset to a blob URL, so the
+            // equivalent srcdoc navigation preserves isolation and assets
+            // while avoiding that browser deadlock.
+            const response = await fetch(src)
+            if (!response.ok)
+                throw new Error(`Failed to load section: ${response.status}`)
+            const type = response.headers.get('content-type') ?? ''
+            if (/(?:xhtml|html)/i.test(type))
+                srcdoc = await response.text()
+        }
+        return new Promise((resolve, reject) => {
+            let settled = false
+            const fail = error => {
+                if (settled) return
+                settled = true
+                reject(error)
+            }
             this.#iframe.addEventListener('load', () => {
-                const doc = this.document
-                afterLoad?.(doc)
+                if (settled) return
+                try {
+                    const doc = this.document
+                    afterLoad?.(doc)
 
-                // it needs to be visible for Firefox to get computed style
-                this.#iframe.style.display = 'block'
-                const { vertical, rtl } = getDirection(doc)
-                this.docBackground = getBackground(doc)
-                doc.body.style.background = 'none'
-                const background = this.docBackground
-                this.#iframe.style.display = 'none'
+                    // it needs to be visible for Firefox to get computed style
+                    this.#iframe.style.display = 'block'
+                    const { vertical, rtl } = getDirection(doc)
+                    this.docBackground = getBackground(doc)
+                    doc.body.style.background = 'none'
+                    const background = this.docBackground
+                    this.#iframe.style.display = 'none'
 
-                this.#vertical = vertical
-                this.#rtl = rtl
+                    this.#vertical = vertical
+                    this.#rtl = rtl
 
-                this.#contentRange.selectNodeContents(doc.body)
-                const layout = beforeRender?.({ vertical, rtl, background })
-                this.#iframe.style.display = 'block'
-                this.render(layout)
-                this.#observer.observe(doc.body)
+                    this.#contentRange.selectNodeContents(doc.body)
+                    const layout = beforeRender?.({ vertical, rtl, background })
+                    this.#iframe.style.display = 'block'
+                    this.render(layout)
+                    this.#observer.observe(doc.body)
 
-                // the resize observer above doesn't work in Firefox
-                // (see https://bugzilla.mozilla.org/show_bug.cgi?id=1832939)
-                // until the bug is fixed we can at least account for font load
-                doc.fonts.ready.then(() => this.expand())
+                    // the resize observer above doesn't work in Firefox
+                    // (see https://bugzilla.mozilla.org/show_bug.cgi?id=1832939)
+                    // until the bug is fixed we can at least account for font load
+                    doc.fonts.ready.then(() => this.expand())
 
-                resolve()
+                    settled = true
+                    resolve()
+                } catch (error) {
+                    fail(error)
+                }
             }, { once: true })
-            this.#iframe.src = src
+            if (srcdoc != null) {
+                this.#iframe.srcdoc = srcdoc
+            } else {
+                // srcdoc overrides src. Assign the next URL first so removing
+                // srcdoc cannot expose an intermediate about:blank load.
+                this.#iframe.src = src
+                this.#iframe.removeAttribute('srcdoc')
+            }
         })
     }
     render(layout) {

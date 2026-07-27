@@ -17,7 +17,25 @@
   --muted: #7a6850;  /* warm gray-brown */
   --line:  #c9b582;  /* earthen */
 }
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--brand);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
 html, body {
   margin: 0; padding: 0; height: 100%;
   background: var(--body); color: var(--ink);
@@ -194,8 +212,65 @@ body { display: flex; flex-direction: column; }
 .reader-body {
   flex: 1 1 auto;
   position: relative;
+  display: flex;
   overflow: hidden;
   min-height: 0;
+}
+.reader-library {
+  flex: 0 0 248px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  z-index: 1;
+}
+.reader-library-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.reader-library-head strong {
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.reader-open-file {
+  background: transparent; color: var(--ink); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 8px; cursor: pointer;
+  font: 11px/1 inherit;
+}
+.reader-open-file:hover { background: var(--row); border-color: var(--brand); }
+.reader-library-list { overflow-y: auto; padding: 7px; }
+.reader-library-empty {
+  color: var(--muted); font-size: 11px; line-height: 1.5;
+  padding: 10px 8px;
+}
+.reader-library-item {
+  display: block; width: 100%; margin: 0 0 4px; padding: 9px 10px;
+  background: transparent; color: var(--ink); border: 1px solid transparent;
+  border-radius: 6px; cursor: pointer; text-align: left; font-family: inherit;
+}
+.reader-library-item:hover { background: var(--row); }
+.reader-library-item[aria-current="true"] {
+  background: var(--row); border-color: var(--brand);
+}
+.reader-library-item .reader-book-title,
+.reader-library-item .reader-book-author {
+  display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.reader-library-item .reader-book-title { font-size: 12px; font-weight: 600; }
+.reader-library-item .reader-book-author {
+  margin-top: 3px; color: var(--muted); font-size: 10px;
+}
+.reader-library-item .reader-book-meta {
+  display: block; margin-top: 5px; color: var(--muted);
+  font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.reader-library[aria-busy="true"] .reader-library-item { opacity: 0.55; pointer-events: none; }
+.reader-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 .reader-content { position: absolute; inset: 0; overflow: hidden; }
 .reader-content > * { position: absolute; inset: 0; }
@@ -413,6 +488,9 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   .main { padding:12px; }
   .library-header { align-items:stretch; }
   .library-tools { width:100%; }
+  .reader-library { flex-basis:168px; }
+  .reader-library-head { align-items:stretch; flex-direction:column; }
+  .reader-open-file { text-align:left; }
 }
 </style>
 </head>
@@ -456,7 +534,16 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <button class="sidebar-toggle" id="sidebar-toggle" type="button" hidden aria-label="Notes &amp; bookmarks">≡</button>
   </div>
   <div class="reader-body">
-    <div class="reader-content" id="reader-content"><!-- engine renders here --></div>
+    <aside class="reader-library" id="reader-library" aria-label="Library">
+      <div class="reader-library-head">
+        <strong>Library</strong>
+        <button class="reader-open-file" id="reader-open-file" type="button">Open file…</button>
+      </div>
+      <div class="reader-library-list" id="reader-library-list"></div>
+    </aside>
+    <div class="reader-stage">
+      <div class="reader-content" id="reader-content"><!-- engine renders here --></div>
+    </div>
     <aside class="sidebar" id="sidebar" aria-hidden="true">
       <div class="sidebar-section" id="toc-section" hidden>
         <label class="sidebar-label">Contents</label>
@@ -649,6 +736,9 @@ const topbar = document.getElementById('topbar');
 const topbarStatus = document.getElementById('topbar-status');
 const reader = document.getElementById('reader');
 const readerContent = document.getElementById('reader-content');
+const readerLibrary = document.getElementById('reader-library');
+const readerLibraryList = document.getElementById('reader-library-list');
+const readerOpenFileBtn = document.getElementById('reader-open-file');
 const readerTitle = document.getElementById('reader-title');
 const readerStatus = document.getElementById('reader-status');
 const backBtn = document.getElementById('back-btn');
@@ -680,6 +770,8 @@ const readerProfile = document.getElementById('reader-profile');
 let activeEngine = null;
 let activeSidecar = null;    // sidecar object for the currently-open book; null if not persisted
 let activeBookId = null;
+let activeSourceFilename = null;
+let bookOpenInProgress = false;
 let libraryCache = [];
 let libraryFilter = '';
 let librarySort = localStorage.getItem('books.librarySort.v1') || 'recent';
@@ -708,6 +800,15 @@ function extOf(name) {
 }
 function engineKeyFor(filename) {
   return ENGINE_BY_EXT[extOf(filename)] || null;
+}
+function withTimeout(promise, ms, message) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
 }
 function toArrayBuffer(raw) {
   if (raw instanceof ArrayBuffer) return raw;
@@ -916,8 +1017,11 @@ class FoliateEngine {
     // open() parses the book but doesn't start the paginator. init() does —
     // without it, foliate-paginator never paints. jumpTo() (called by the
     // outer flow if a saved position exists) will reposition immediately.
-    try { await this.view.init({ showTextStart: true }); }
-    catch (_) { try { await this.view.next?.(); } catch (_) {} }
+    await withTimeout(
+      this.view.init({ showTextStart: true }),
+      20000,
+      'The first EPUB page did not finish rendering.',
+    );
     this._loaded = true;
   }
   getPosition() {
@@ -1345,6 +1449,7 @@ function renderLibraryRows() {
 
 function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   libraryCache = decorated.slice();
+  renderReaderLibrary();
   root.innerHTML =
     '<div class="library-header">' +
       '<div class="library-tools">' +
@@ -1416,6 +1521,41 @@ function showToast(message, opts = {}) {
 function openLibraryFilePicker() {
   libraryFileInput.click();
 }
+
+function renderReaderLibrary() {
+  if (!readerLibraryList) return;
+  if (!naklios.capabilities.hosted || !naklios.capabilities.fs) {
+    readerLibraryList.innerHTML =
+      '<div class="reader-library-empty">Preview mode. Use Open file… to choose another book.</div>';
+    return;
+  }
+  if (!libraryCache.length) {
+    readerLibraryList.innerHTML =
+      '<div class="reader-library-empty">This library is empty. Use Open file… to add a book.</div>';
+    return;
+  }
+  readerLibraryList.innerHTML = libraryCache.map(({ filename, sidecar }) => {
+    const title = (sidecar && sidecar.title) || filename.replace(/\.[a-z0-9]+$/i, '');
+    const author = (sidecar && sidecar.author) || '';
+    const current = filename === activeSourceFilename;
+    return '<button class="reader-library-item" type="button" data-filename="' +
+        escapeHtml(filename) + '" aria-current="' + (current ? 'true' : 'false') + '"' +
+        ' title="' + escapeHtml(title) + '">' +
+      '<span class="reader-book-title">' + escapeHtml(title) + '</span>' +
+      (author ? '<span class="reader-book-author">' + escapeHtml(author) + '</span>' : '') +
+      '<span class="reader-book-meta">' + escapeHtml(extOf(filename)) +
+        (current ? ' · Reading' : '') + '</span>' +
+    '</button>';
+  }).join('');
+}
+
+readerOpenFileBtn.addEventListener('click', openLibraryFilePicker);
+readerLibraryList.addEventListener('click', (event) => {
+  const item = event.target.closest('.reader-library-item[data-filename]');
+  if (!item || bookOpenInProgress) return;
+  const filename = item.getAttribute('data-filename');
+  if (filename && filename !== activeSourceFilename) void openBookFromLibrary(filename);
+});
 
 async function handlePickedFiles(fileList) {
   if (!fileList || fileList.length === 0) return;
@@ -1622,7 +1762,26 @@ function hideDropOverlay() {
 // ============================================================
 
 async function openBookFromLibrary(filename) {
+  if (bookOpenInProgress) return;
+  if (activeEngine && filename === activeSourceFilename) return;
+  bookOpenInProgress = true;
+  readerLibrary.setAttribute('aria-busy', 'true');
+  if (activeEngine || activeBookId) {
+    try {
+      await flushPendingWrites();
+    } catch (_) {
+      showToast('The current reading state could not be saved, so the book was not switched.', {
+        error: true,
+        duration: 5000,
+      });
+      bookOpenInProgress = false;
+      readerLibrary.setAttribute('aria-busy', 'false');
+      return;
+    }
+  }
+  activeSourceFilename = filename;
   enterReaderView(filename);
+  renderReaderLibrary();
   setReaderLoading('Loading…');
   try {
     const bookId = await resolveBookId(filename);
@@ -1632,6 +1791,9 @@ async function openBookFromLibrary(filename) {
     await openBookFromFile(file, { bookId, sourceFilename: filename });
   } catch (err) {
     showReaderError('Could not load <code>' + escapeHtml(filename) + '</code>', err);
+  } finally {
+    bookOpenInProgress = false;
+    readerLibrary.setAttribute('aria-busy', 'false');
   }
 }
 
@@ -1640,6 +1802,8 @@ async function openBookFromFile(file, persistInfo) {
   // Enter reader view first so errors are visible — unsupported-format
   // and load failures both surface in the same place as successful loads.
   enterReaderView(file.name);
+  activeSourceFilename = (persistInfo && persistInfo.sourceFilename) || file.name;
+  renderReaderLibrary();
   setReaderLoading('Loading…');
 
   // Tear down any previous engine
@@ -1657,14 +1821,14 @@ async function openBookFromFile(file, persistInfo) {
   }
 
   try {
-    // Clear the loading indicator before the engine mounts its viewer.
-    // Otherwise the engine's element renders on top of "Loading…" and engines
-    // with transparent internals (e.g. foliate-view's shadow DOM during early
-    // paginator settle) let the loading text bleed through.
-    readerContent.innerHTML = '';
+    // Keep the loading indicator underneath the engine while it prepares its
+    // first page. It is removed only once the engine resolves, so a slow book
+    // never looks like a blank, frozen reader.
     activeEngine = new (ENGINES[key])(readerContent);
     console.log('Books: loading via', key, 'engine →', file.name, '(' + file.size + ' bytes)');
     await activeEngine.load(file);
+    const loadingIndicator = readerContent.querySelector('.loading');
+    if (loadingIndicator) loadingIndicator.remove();
     console.log('Books: engine.load resolved for', file.name);
 
     const persisted = !!(persistInfo && persistInfo.bookId && naklios.capabilities.fs);
@@ -1697,6 +1861,9 @@ async function openBookFromFile(file, persistInfo) {
       if (activeSidecar.title && activeSidecar.title !== file.name.replace(/\.[a-z0-9]+$/i, '')) {
         setReaderTitleText(activeSidecar.title);
       }
+      const cachedBook = libraryCache.find((entry) => entry.filename === persistInfo.sourceFilename);
+      if (cachedBook) cachedBook.sidecar = activeSidecar;
+      renderReaderLibrary();
 
       // Record open + initial position
       activeSidecar.lastOpened = new Date().toISOString();
@@ -1735,6 +1902,7 @@ async function openBookFromFile(file, persistInfo) {
     // either persistence (bookmarks + note) or a TOC.
     if (persisted || (toc && toc.length)) sidebarToggle.hidden = false;
   } catch (err) {
+    if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
     showReaderError('Could not render <code>' + escapeHtml(file.name) + '</code>', err);
   }
 }
@@ -2023,6 +2191,7 @@ function enterReaderView(filename) {
   reader.setAttribute('aria-hidden', 'false');
   topbar.style.display = 'none';
   root.style.display = 'none';
+  renderReaderLibrary();
   // Defensive: any drag state that survived into the reader view would put the
   // overlay on top (it has higher z-index than the reader). Wipe it out.
   hideDropOverlay();
@@ -2032,6 +2201,10 @@ function teardownReaderView() {
   if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
   activeSidecar = null;
   activeBookId = null;
+  activeSourceFilename = null;
+  bookOpenInProgress = false;
+  readerLibrary.setAttribute('aria-busy', 'false');
+  renderReaderLibrary();
   readerContent.innerHTML = '';
   // Tear down navigation + TOC
   prevBtn.hidden = true; prevBtn.onclick = null;
@@ -2140,6 +2313,7 @@ async function listLibrary() {
 
     if (decorated.length === 0) {
       libraryCache = [];
+      renderReaderLibrary();
       renderLibraryEmpty();
     }
     else renderLibrary(decorated);
