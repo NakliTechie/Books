@@ -94,5 +94,18 @@ assert.match(
 );
 assert.match(harness, /fsa:\s*new Map/, 'browser fixture provides an isolated Folder library');
 assert.match(harness, /crate:\s*new Map/, 'browser fixture provides an isolated Crate library');
+assert.match(harness, /\['library\/Harness\.epub',\s*minimalEpub\(\)\]/, 'browser fixture provides a real binary EPUB path');
+assert.match(harness, /function storedZip\(entries\)/, 'minimal EPUB is assembled as a deterministic ZIP archive');
+assert.match(harness, /function runEpubRegression\(\)/, 'browser harness exposes an EPUB regression run');
+assert.match(
+  harness,
+  /getElementById\('next-btn'\)[\s\S]*?next\.click\(\)[\s\S]*?prev\.click\(\)[\s\S]*?next\.click\(\)/,
+  'browser harness exercises Next, Previous, then an advanced page',
+);
+assert.match(
+  harness,
+  /positionFromStore\(\)[\s\S]*?back-btn[\s\S]*?reopenedRow\.click\(\)[\s\S]*?hosted EPUB position restoration/,
+  'browser harness proves hosted sidecar persistence by closing and reopening the EPUB',
+);
 
 console.log('Books v1.1 storage and library contract: PASS');

@@ -5,20 +5,140 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Books host harness</title>
   <style>
-    html, body, iframe { width:100%; height:100%; margin:0; border:0; }
+    html, body { width:100%; height:100%; margin:0; }
+    body { display:grid; grid-template-rows:auto minmax(0, 1fr); background:#1f2522; }
+    iframe { width:100%; height:100%; border:0; background:#fff; }
+    #harness-bar {
+      display:flex; align-items:center; gap:10px; padding:8px 12px;
+      color:#f5f1e8; font:12px/1.4 ui-monospace, SFMono-Regular, monospace;
+    }
+    #harness-run {
+      border:1px solid #7d9186; border-radius:5px; padding:5px 9px;
+      background:#edf0e9; color:#202522; cursor:pointer; font:inherit;
+    }
+    #harness-run:disabled { opacity:.55; cursor:wait; }
+    #harness-status[data-state="pass"] { color:#91d7a3; }
+    #harness-status[data-state="fail"] { color:#ff9b8d; }
   </style>
 </head>
 <body>
+<div id="harness-bar">
+  <button id="harness-run" type="button">Run EPUB regression</button>
+  <span id="harness-status" role="status">Ready · Folder and Crate are isolated</span>
+</div>
 <iframe id="books" title="Books test app" src="../index.html"></iframe>
 <script>
 (() => {
   const frame = document.getElementById('books');
+  const runButton = document.getElementById('harness-run');
+  const status = document.getElementById('harness-status');
+  const encoder = new TextEncoder();
+
+  function concatBytes(chunks) {
+    const output = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
+    let offset = 0;
+    chunks.forEach((chunk) => { output.set(chunk, offset); offset += chunk.length; });
+    return output;
+  }
+
+  function crc32(bytes) {
+    let crc = 0xffffffff;
+    for (const byte of bytes) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit += 1) {
+        crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+      }
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+
+  function storedZip(entries) {
+    const locals = [];
+    const centrals = [];
+    let localOffset = 0;
+    for (const [name, content] of entries) {
+      const nameBytes = encoder.encode(name);
+      const data = typeof content === 'string' ? encoder.encode(content) : content;
+      const checksum = crc32(data);
+      const local = new Uint8Array(30 + nameBytes.length);
+      const lv = new DataView(local.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0, true);
+      lv.setUint16(8, 0, true);
+      lv.setUint32(14, checksum, true);
+      lv.setUint32(18, data.length, true);
+      lv.setUint32(22, data.length, true);
+      lv.setUint16(26, nameBytes.length, true);
+      local.set(nameBytes, 30);
+      locals.push(local, data);
+
+      const central = new Uint8Array(46 + nameBytes.length);
+      const cv = new DataView(central.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint32(16, checksum, true);
+      cv.setUint32(20, data.length, true);
+      cv.setUint32(24, data.length, true);
+      cv.setUint16(28, nameBytes.length, true);
+      cv.setUint32(42, localOffset, true);
+      central.set(nameBytes, 46);
+      centrals.push(central);
+      localOffset += local.length + data.length;
+    }
+    const centralSize = centrals.reduce((sum, chunk) => sum + chunk.length, 0);
+    const end = new Uint8Array(22);
+    const ev = new DataView(end.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, entries.length, true);
+    ev.setUint16(10, entries.length, true);
+    ev.setUint32(12, centralSize, true);
+    ev.setUint32(16, localOffset, true);
+    return concatBytes([...locals, ...centrals, end]);
+  }
+
+  function minimalEpub() {
+    return storedZip([
+      ['mimetype', 'application/epub+zip'],
+      ['META-INF/container.xml',
+        '<?xml version="1.0"?>' +
+        '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">' +
+        '<rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>' +
+        '</rootfiles></container>'],
+      ['OEBPS/content.opf',
+        '<?xml version="1.0" encoding="UTF-8"?>' +
+        '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id">' +
+        '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">' +
+        '<dc:identifier id="book-id">urn:uuid:naklios-books-harness</dc:identifier>' +
+        '<dc:title>Harness EPUB</dc:title><dc:creator>NakliOS</dc:creator>' +
+        '<dc:language>en</dc:language><meta property="dcterms:modified">2026-01-01T00:00:00Z</meta>' +
+        '</metadata><manifest>' +
+        '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>' +
+        '<item id="one" href="chapter-1.xhtml" media-type="application/xhtml+xml"/>' +
+        '<item id="two" href="chapter-2.xhtml" media-type="application/xhtml+xml"/>' +
+        '</manifest><spine><itemref idref="one"/><itemref idref="two"/></spine></package>'],
+      ['OEBPS/nav.xhtml',
+        '<!doctype html><html xmlns="http://www.w3.org/1999/xhtml" ' +
+        'xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head>' +
+        '<body><nav epub:type="toc"><ol><li><a href="chapter-1.xhtml">First</a></li>' +
+        '<li><a href="chapter-2.xhtml">Second</a></li></ol></nav></body></html>'],
+      ['OEBPS/chapter-1.xhtml',
+        '<!doctype html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>First</title></head>' +
+        '<body><h1>First page</h1><p>This is the deterministic opening page.</p></body></html>'],
+      ['OEBPS/chapter-2.xhtml',
+        '<!doctype html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Second</title></head>' +
+        '<body><h1>Second page</h1><p>This page proves navigation and hosted restoration.</p></body></html>'],
+    ]);
+  }
+
   let activeBackend = 'fsa';
   const stores = {
     fsa: new Map([
       ['library/Sample.md', new TextEncoder().encode(
         '# Sample book\n\nA quiet test book for NakliOS Books.\n\nSecond paragraph.'
       )],
+      ['library/Harness.epub', minimalEpub()],
     ]),
     crate: new Map([
       ['library/Crate Book.txt', new TextEncoder().encode(
@@ -46,6 +166,119 @@
     if (value instanceof ArrayBuffer) return new TextDecoder().decode(value);
     if (ArrayBuffer.isView(value)) return new TextDecoder().decode(value);
     return String(value ?? '');
+  }
+
+  function setStatus(message, state = '') {
+    status.textContent = message;
+    status.dataset.state = state;
+  }
+
+  function waitFor(check, label, timeout = 25000) {
+    const started = performance.now();
+    return new Promise((resolve, reject) => {
+      const poll = () => {
+        let value = null;
+        try { value = check(); } catch (_) {}
+        if (value) { resolve(value); return; }
+        if (performance.now() - started >= timeout) {
+          reject(new Error('Timed out waiting for ' + label));
+          return;
+        }
+        setTimeout(poll, 50);
+      };
+      poll();
+    });
+  }
+
+  function positionFromStore() {
+    for (const [path, value] of stores.fsa.entries()) {
+      if (!path.startsWith('notes/') || !path.endsWith('.json')) continue;
+      const sidecar = JSON.parse(bytesToText(value));
+      if (sidecar.sourceFilename === 'Harness.epub') return sidecar.position;
+    }
+    return null;
+  }
+
+  function percent(text) {
+    const match = String(text || '').match(/(\d+)%/);
+    return match ? Number(match[1]) : -1;
+  }
+
+  async function runEpubRegression() {
+    runButton.disabled = true;
+    setStatus('Running · opening real EPUB fixture…');
+    try {
+      activeBackend = 'fsa';
+      [...stores.fsa.keys()].filter((path) => path.startsWith('notes/')).forEach((path) => stores.fsa.delete(path));
+      send(capabilities());
+
+      const app = frame.contentDocument;
+      const row = await waitFor(
+        () => app.querySelector('.row[data-filename="Harness.epub"]'),
+        'Harness.epub in the hosted Folder library',
+      );
+      row.click();
+      await waitFor(
+        () => app.getElementById('reader').classList.contains('is-open') &&
+          !app.getElementById('next-btn').hidden &&
+          app.getElementById('reader-title').textContent.includes('Harness') &&
+          percent(app.getElementById('reader-status').textContent) >= 0,
+        'EPUB first page',
+      );
+
+      const readerStatus = app.getElementById('reader-status');
+      const next = app.getElementById('next-btn');
+      const prev = app.getElementById('prev-btn');
+      const initial = readerStatus.textContent;
+      next.click();
+      const advanced = await waitFor(
+        () => percent(readerStatus.textContent) > percent(initial) ? readerStatus.textContent : '',
+        'Next to advance the EPUB',
+      );
+      // Foliate emits relocation before its page transition promise fully settles.
+      // Give the paginator one frame before issuing the inverse command so the
+      // regression observes user-realistic sequential clicks rather than a race.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      prev.click();
+      await waitFor(
+        () => percent(readerStatus.textContent) < percent(advanced),
+        'Previous to return toward the opening page',
+      );
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      next.click();
+      await waitFor(
+        () => percent(readerStatus.textContent) >= percent(advanced),
+        'Next to restore the advanced page',
+      );
+
+      await waitFor(() => {
+        const pos = positionFromStore();
+        return pos && (pos.fraction > 0 || pos.sectionIndex > 0) ? pos : null;
+      }, 'hosted sidecar position write');
+      const saved = positionFromStore();
+      app.getElementById('back-btn').click();
+      const reopenedRow = await waitFor(
+        () => app.querySelector('.row[data-filename="Harness.epub"]'),
+        'library after closing the reader',
+      );
+      reopenedRow.click();
+      await waitFor(
+        () => app.getElementById('reader').classList.contains('is-open') &&
+          percent(app.getElementById('reader-status').textContent) >= Math.round(saved.fraction * 100),
+        'hosted EPUB position restoration',
+      );
+
+      setStatus(
+        'PASS · EPUB opened, Next/Previous worked, and Folder position restored at ' +
+          app.getElementById('reader-status').textContent,
+        'pass',
+      );
+    } catch (error) {
+      console.error('Books harness regression failed', error);
+      setStatus('FAIL · ' + String(error && error.message || error), 'fail');
+    } finally {
+      runButton.disabled = false;
+    }
   }
 
   window.addEventListener('message', (event) => {
@@ -126,6 +359,11 @@
       },
     });
   });
+
+  runButton.addEventListener('click', runEpubRegression);
+  if (new URLSearchParams(location.search).get('autorun') === '1') {
+    frame.addEventListener('load', () => setTimeout(runEpubRegression, 0), { once: true });
+  }
 })();
 </script>
 </body>
