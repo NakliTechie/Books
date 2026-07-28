@@ -50,6 +50,14 @@ assert.doesNotMatch(
   /removeBookFromLibrary[\s\S]{0,1500}\bconfirm\s*\(/,
   'book removal must not use the browser confirm popup',
 );
+assert.match(html, /id="bookmark-label-dialog"/, 'bookmark renaming has an app-styled dialog');
+assert.match(html, /function askForBookmarkLabel\(/, 'bookmark label dialog has a promise-based adapter');
+assert.match(
+  html,
+  /bookmarkLabelInput\.addEventListener\('keydown'[\s\S]*?event\.key !== 'Enter'[\s\S]*?bookmarkLabelDialog\.close\('save'\)/,
+  'Enter in the bookmark label field saves instead of activating Cancel',
+);
+assert.doesNotMatch(html, /\bprompt\s*\(/, 'Books must not use the browser prompt popup');
 assert.match(
   html,
   /exists\('library\/'\s*\+\s*f\.name\)/,

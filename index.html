@@ -481,6 +481,12 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   width:150px; background:var(--body); color:var(--ink); border:1px solid var(--line);
   border-radius:6px; padding:6px 8px;
 }
+.books-dialog-text-field { display:flex; flex-direction:column; gap:6px; margin:14px 0; }
+.books-dialog-text-field label { font-size:12px; color:var(--muted); }
+.books-dialog-text-field input {
+  width:100%; box-sizing:border-box; background:var(--body); color:var(--ink);
+  border:1px solid var(--line); border-radius:6px; padding:8px 10px;
+}
 @media (max-width:600px) {
   .topbar { gap:8px; padding:10px 12px; }
   .topbar-actions { min-width:0; }
@@ -581,6 +587,22 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <button class="primary" type="button" id="confirm-dialog-ok">Continue</button>
     </div>
   </div>
+</dialog>
+
+<dialog class="books-dialog" id="bookmark-label-dialog"
+        aria-labelledby="bookmark-label-title" aria-describedby="bookmark-label-help">
+  <form class="books-dialog-body" method="dialog">
+    <h3 id="bookmark-label-title">Rename bookmark</h3>
+    <p id="bookmark-label-help">Use a short label, or leave it empty to show the reading position.</p>
+    <div class="books-dialog-text-field">
+      <label for="bookmark-label-input">Bookmark label</label>
+      <input id="bookmark-label-input" type="text" maxlength="120" autocomplete="off">
+    </div>
+    <div class="books-dialog-actions">
+      <button type="submit" value="cancel">Cancel</button>
+      <button class="primary" type="submit" value="save">Save label</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog class="books-dialog" id="reader-prefs-dialog">
@@ -760,12 +782,20 @@ const confirmDialogTitle = document.getElementById('confirm-dialog-title');
 const confirmDialogMessage = document.getElementById('confirm-dialog-message');
 const confirmDialogCancel = document.getElementById('confirm-dialog-cancel');
 const confirmDialogOk = document.getElementById('confirm-dialog-ok');
+const bookmarkLabelDialog = document.getElementById('bookmark-label-dialog');
+const bookmarkLabelInput = document.getElementById('bookmark-label-input');
 const readerPrefsBtn = document.getElementById('reader-prefs-btn');
 const readerPrefsDialog = document.getElementById('reader-prefs-dialog');
 const readerFontSize = document.getElementById('reader-font-size');
 const readerLineHeight = document.getElementById('reader-line-height');
 const readerPageWidth = document.getElementById('reader-page-width');
 const readerProfile = document.getElementById('reader-profile');
+
+bookmarkLabelInput.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.isComposing) return;
+  event.preventDefault();
+  bookmarkLabelDialog.close('save');
+});
 
 let activeEngine = null;
 let activeSidecar = null;    // sidecar object for the currently-open book; null if not persisted
@@ -1640,6 +1670,19 @@ function askForConfirmation({ title, message, confirmLabel = 'Continue' }) {
   });
 }
 
+function askForBookmarkLabel(initialValue) {
+  bookmarkLabelInput.value = initialValue || '';
+  bookmarkLabelDialog.returnValue = '';
+  return new Promise((resolve) => {
+    bookmarkLabelDialog.addEventListener('close', () => {
+      resolve(bookmarkLabelDialog.returnValue === 'save' ? bookmarkLabelInput.value : null);
+    }, { once: true });
+    bookmarkLabelDialog.showModal();
+    bookmarkLabelInput.focus();
+    bookmarkLabelInput.select();
+  });
+}
+
 async function removeBookFromLibrary(filename, sidecar) {
   const confirmed = await askForConfirmation({
     title: 'Remove this book?',
@@ -2083,7 +2126,7 @@ async function handleBookmarkClick(e) {
     return;
   }
   if (action === 'rename') {
-    const label = prompt('Bookmark label:', bm.label || '');
+    const label = await askForBookmarkLabel(bm.label || '');
     if (label != null) {
       bm.label = String(label).trim();
       writeSidecarDebounced(activeBookId, activeSidecar);
