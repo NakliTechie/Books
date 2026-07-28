@@ -64,6 +64,33 @@ assert.match(
   'adding a book checks for an existing filename first',
 );
 assert.match(html, /already in this library\. Remove it first/, 'duplicate adds refuse silent overwrite');
+assert.match(html, /id="continue-section"/, 'library includes a Continue Reading rail');
+assert.match(
+  html,
+  /filter\(\(entry\) => entry\.sidecar && entry\.sidecar\.lastOpened\)[\s\S]*?slice\(0, 5\)/,
+  'Continue Reading is derived from persisted last-opened sidecars',
+);
+assert.match(html, /id="orphan-section"/, 'library has a dedicated orphan-sidecar recovery area');
+assert.match(
+  html,
+  /orphanSidecars = sidecarRows\.filter\([\s\S]*?!bookNames\.has\(entry\.sidecar\.sourceFilename\)/,
+  'missing book files leave their sidecars visible instead of discarding them',
+);
+assert.match(
+  html,
+  /file\.name !== expected[\s\S]*?Reading data was not rebound/,
+  'orphan recovery refuses a differently named book without rebinding reading data',
+);
+assert.match(
+  html,
+  /recoverOrphanWithFile[\s\S]*?noteFilename\.slice[\s\S]*?fs\.write\('library\/' \+ expected[\s\S]*?openBookFromLibrary\(expected, bookId\)/,
+  'recovering the exact book carries the existing sidecar identity into the reader',
+);
+assert.match(
+  html,
+  /preferredSidecar\.sourceFilename !== filename[\s\S]*?selected reading data no longer matches/,
+  'the reader validates a recovered sidecar before using its identity',
+);
 
 for (const id of [
   'reader-font-size',
@@ -97,6 +124,7 @@ assert.match(harness, /crate:\s*new Map/, 'browser fixture provides an isolated 
 assert.match(harness, /\['library\/Harness\.epub',\s*minimalEpub\(\)\]/, 'browser fixture provides a real binary EPUB path');
 assert.match(harness, /function storedZip\(entries\)/, 'minimal EPUB is assembled as a deterministic ZIP archive');
 assert.match(harness, /function runEpubRegression\(\)/, 'browser harness exposes an EPUB regression run');
+assert.match(harness, /sourceFilename:\s*'Missing\.epub'/, 'browser fixture seeds an orphaned sidecar');
 assert.match(
   harness,
   /getElementById\('next-btn'\)[\s\S]*?next\.click\(\)[\s\S]*?prev\.click\(\)[\s\S]*?next\.click\(\)/,
@@ -106,6 +134,21 @@ assert.match(
   harness,
   /positionFromStore\(\)[\s\S]*?back-btn[\s\S]*?reopenedRow\.click\(\)[\s\S]*?hosted EPUB position restoration/,
   'browser harness proves hosted sidecar persistence by closing and reopening the EPUB',
+);
+assert.match(
+  harness,
+  /#continue-section \[data-continue-filename="Harness\.epub"\][\s\S]*?#orphan-section \[data-recover-sidecar="missing-book\.json"\]/,
+  'browser harness proves Continue Reading and orphan recovery render after the EPUB flow',
+);
+assert.match(
+  harness,
+  /chooseRecoveryFile\('Wrong\.epub'\)[\s\S]*?Reading data was not rebound[\s\S]*?chooseRecoveryFile\('Missing\.epub'\)[\s\S]*?must survive[\s\S]*?Keep this place/,
+  'browser harness refuses mismatches and proves the exact book reuses its note and bookmark',
+);
+assert.match(
+  harness,
+  /has\('notes\/missing-book\.json'\)[\s\S]*?has\('notes\/Missing\.json'\)/,
+  'browser harness rejects silent sidecar rebinding after recovery',
 );
 
 console.log('Books v1.1 storage and library contract: PASS');

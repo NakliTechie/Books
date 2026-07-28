@@ -139,6 +139,17 @@
         '# Sample book\n\nA quiet test book for NakliOS Books.\n\nSecond paragraph.'
       )],
       ['library/Harness.epub', minimalEpub()],
+      ['notes/missing-book.json', JSON.stringify({
+        schemaVersion: 1,
+        bookId: 'missing-book',
+        sourceFilename: 'Missing.epub',
+        title: 'Missing Book',
+        author: 'Test Reader',
+        lastOpened: '2026-07-27T18:30:00.000Z',
+        position: { engine: 'epub', fraction: 0.42, sectionIndex: 1 },
+        bookmarks: [{ label: 'Keep this place', position: { fraction: 0.42 } }],
+        note: 'This sidecar must survive while its book is unavailable.',
+      })],
     ]),
     crate: new Map([
       ['library/Crate Book.txt', new TextEncoder().encode(
@@ -209,7 +220,11 @@
     setStatus('Running · opening real EPUB fixture…');
     try {
       activeBackend = 'fsa';
-      [...stores.fsa.keys()].filter((path) => path.startsWith('notes/')).forEach((path) => stores.fsa.delete(path));
+      [...stores.fsa.entries()]
+        .filter(([path, value]) =>
+          path.startsWith('notes/') &&
+          bytesToText(value).includes('"sourceFilename":"Harness.epub"'))
+        .forEach(([path]) => stores.fsa.delete(path));
       send(capabilities());
 
       const app = frame.contentDocument;
@@ -267,10 +282,53 @@
           percent(app.getElementById('reader-status').textContent) >= Math.round(saved.fraction * 100),
         'hosted EPUB position restoration',
       );
+      app.getElementById('back-btn').click();
+      await waitFor(
+        () => app.querySelector(
+          '#continue-section [data-continue-filename="Harness.epub"]'
+        ),
+        'Continue Reading rail after closing the restored book',
+      );
+      await waitFor(
+        () => app.querySelector(
+          '#orphan-section [data-recover-sidecar="missing-book.json"]'
+        ),
+        'visible recovery entry for an orphaned sidecar',
+      );
+      const recoveryInput = app.getElementById('orphan-recovery-input');
+      const chooseRecoveryFile = (name) => {
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([minimalEpub()], name, { type: 'application/epub+zip' }));
+        recoveryInput.files = transfer.files;
+        recoveryInput.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+
+      app.querySelector('[data-recover-sidecar="missing-book.json"]').click();
+      chooseRecoveryFile('Wrong.epub');
+      await waitFor(
+        () => app.getElementById('toast').textContent.includes('Reading data was not rebound'),
+        'mismatched recovery refusal',
+      );
+      if (stores.fsa.has('library/Wrong.epub') || stores.fsa.has('library/Missing.epub')) {
+        throw new Error('Mismatched recovery wrote a book file');
+      }
+
+      app.querySelector('[data-recover-sidecar="missing-book.json"]').click();
+      chooseRecoveryFile('Missing.epub');
+      await waitFor(
+        () => app.getElementById('reader').classList.contains('is-open') &&
+          app.getElementById('reader-title').textContent.includes('Missing Book') &&
+          app.getElementById('note-area').value.includes('must survive') &&
+          app.getElementById('bookmarks-list').textContent.includes('Keep this place'),
+        'exact-file recovery with original reading data',
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      if (!stores.fsa.has('notes/missing-book.json') || stores.fsa.has('notes/Missing.json')) {
+        throw new Error('Recovery rebound the orphan to a different sidecar');
+      }
 
       setStatus(
-        'PASS · EPUB opened, Next/Previous worked, and Folder position restored at ' +
-          app.getElementById('reader-status').textContent,
+        'PASS · EPUB navigation/restoration, Continue Reading, and exact orphan recovery work',
         'pass',
       );
     } catch (error) {

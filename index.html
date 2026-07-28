@@ -176,6 +176,43 @@ body { display: flex; flex-direction: column; }
   font-size: 10px; color: var(--muted);
   text-transform: uppercase; letter-spacing: 0.05em;
 }
+.continue-section, .orphan-section { margin: 0 0 18px; }
+.section-heading {
+  display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+  margin:0 0 8px; color:var(--ink);
+}
+.section-heading h2 { margin:0; font-size:14px; font-weight:650; }
+.section-heading span { color:var(--muted); font-size:10px; }
+.continue-rail {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:8px;
+}
+.continue-card, .orphan-card {
+  border:1px solid var(--line); border-radius:8px; background:var(--panel);
+  color:var(--ink); font:inherit;
+}
+.continue-card {
+  display:grid; gap:4px; padding:11px 12px; text-align:left; cursor:pointer;
+}
+.continue-card:hover { border-color:var(--brand); background:var(--row); }
+.continue-card strong, .orphan-card strong {
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.continue-card small, .orphan-card small { color:var(--muted); font-size:10px; }
+.continue-progress { color:var(--brand); font-size:11px; font-weight:600; }
+.orphan-section {
+  padding:12px; border:1px dashed var(--line); border-radius:10px;
+  background:color-mix(in srgb,var(--row) 55%,transparent);
+}
+.orphan-list { display:grid; gap:7px; }
+.orphan-card {
+  display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px;
+}
+.orphan-copy { min-width:0; display:grid; gap:3px; }
+.orphan-recover {
+  flex:0 0 auto; border:1px solid var(--line); border-radius:5px; padding:6px 8px;
+  background:var(--panel); color:var(--ink); font:11px inherit; cursor:pointer;
+}
+.orphan-recover:hover { border-color:var(--brand); color:var(--brand); }
 
 /* === Reader view === */
 .reader { position: fixed; inset: 0; background: var(--body); display: none; flex-direction: column; z-index: 10; }
@@ -505,6 +542,8 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 <!-- Persistent file picker — triggered from "Add book" buttons in any view -->
 <input type="file" id="library-fileinput" multiple
        accept=".epub,.pdf,.mobi,.azw3,.fb2,.txt,.md,.html,.htm" hidden>
+<input type="file" id="orphan-recovery-input"
+       accept=".epub,.pdf,.mobi,.azw3,.fb2,.txt,.md,.html,.htm" hidden>
 
 <!-- Full-window drop overlay — appears on drag-enter outside the reader -->
 <div class="drop-overlay" id="drop-overlay" hidden>
@@ -803,6 +842,8 @@ let activeBookId = null;
 let activeSourceFilename = null;
 let bookOpenInProgress = false;
 let libraryCache = [];
+let orphanSidecars = [];
+let orphanRecoveryTarget = null;
 let libraryFilter = '';
 let librarySort = localStorage.getItem('books.librarySort.v1') || 'recent';
 
@@ -1444,16 +1485,97 @@ function visibleLibraryBooks() {
   return books;
 }
 
+function positionLabel(position) {
+  if (!position || typeof position !== 'object') return 'Start';
+  if (Number.isFinite(Number(position.page)) && Number(position.page) > 0) {
+    return 'Page ' + Number(position.page);
+  }
+  if (Number.isFinite(Number(position.fraction))) {
+    return Math.round(Math.max(0, Math.min(1, Number(position.fraction))) * 100) + '%';
+  }
+  if (Number.isFinite(Number(position.sectionIndex))) {
+    return 'Section ' + (Number(position.sectionIndex) + 1);
+  }
+  return 'Continue';
+}
+
+function renderContinueReading() {
+  const section = root.querySelector('#continue-section');
+  if (!section) return;
+  const recent = libraryCache
+    .filter((entry) => entry.sidecar && entry.sidecar.lastOpened)
+    .slice()
+    .sort((a, b) =>
+      Date.parse(b.sidecar.lastOpened || 0) - Date.parse(a.sidecar.lastOpened || 0))
+    .slice(0, 5);
+  section.hidden = recent.length === 0;
+  if (!recent.length) { section.innerHTML = ''; return; }
+  section.innerHTML =
+    '<div class="section-heading"><h2>Continue Reading</h2><span>Saved in this ' +
+      escapeHtml(backendLabel(activeBackendId())) + '</span></div>' +
+    '<div class="continue-rail">' +
+      recent.map(({ filename, sidecar }) =>
+        '<button class="continue-card" type="button" data-continue-filename="' +
+          escapeHtml(filename) + '">' +
+          '<strong>' + escapeHtml(sidecar.title || filename.replace(/\.[a-z0-9]+$/i, '')) + '</strong>' +
+          (sidecar.author ? '<small>' + escapeHtml(sidecar.author) + '</small>' : '') +
+          '<span class="continue-progress">' + escapeHtml(positionLabel(sidecar.position)) + '</span>' +
+          '<small>' + escapeHtml(formatRelativeTime(sidecar.lastOpened)) + '</small>' +
+        '</button>'
+      ).join('') +
+    '</div>';
+}
+
+function renderOrphanSidecars() {
+  const section = root.querySelector('#orphan-section');
+  if (!section) return;
+  const rows = orphanSidecars.slice().sort((a, b) =>
+    Date.parse(b.sidecar.lastOpened || 0) - Date.parse(a.sidecar.lastOpened || 0));
+  section.hidden = rows.length === 0;
+  if (!rows.length) { section.innerHTML = ''; return; }
+  section.innerHTML =
+    '<div class="section-heading"><h2>Reading data without its book</h2><span>' +
+      rows.length + ' recoverable</span></div>' +
+    '<p style="margin:0 0 10px;color:var(--muted);font-size:11px;line-height:1.5">' +
+      'These notes and positions were left intact because the matching book file is missing. ' +
+      'Choose the original file to make each entry readable again.</p>' +
+    '<div class="orphan-list">' +
+      rows.map(({ noteFilename, sidecar }) => {
+        const details = [
+          positionLabel(sidecar.position),
+          sidecar.lastOpened ? formatRelativeTime(sidecar.lastOpened) : '',
+          sidecar.note ? 'note' : '',
+          Array.isArray(sidecar.bookmarks) && sidecar.bookmarks.length
+            ? sidecar.bookmarks.length + ' bookmark' + (sidecar.bookmarks.length === 1 ? '' : 's')
+            : '',
+        ].filter(Boolean).join(' · ');
+        return '<div class="orphan-card">' +
+          '<div class="orphan-copy">' +
+            '<strong>' + escapeHtml(sidecar.title || sidecar.sourceFilename || noteFilename) + '</strong>' +
+            '<small>Missing: ' + escapeHtml(sidecar.sourceFilename || 'unknown book') + '</small>' +
+            (details ? '<small>' + escapeHtml(details) + '</small>' : '') +
+          '</div>' +
+          '<button class="orphan-recover" type="button" data-recover-sidecar="' +
+            escapeHtml(noteFilename) + '">Locate book…</button>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+}
+
 function renderLibraryRows() {
   const list = root.querySelector('.library');
   if (!list) return;
+  renderContinueReading();
+  renderOrphanSidecars();
   const decorated = visibleLibraryBooks();
   topbarStatus.textContent =
     (libraryFilter ? decorated.length + ' of ' + libraryCache.length : libraryCache.length) +
     ' book' + (libraryCache.length === 1 ? '' : 's') +
     ' · ' + backendLabel(activeBackendId());
   if (!decorated.length) {
-    list.innerHTML = '<div class="card"><p>No books match this filter.</p></div>';
+    list.innerHTML = libraryCache.length
+      ? '<div class="card"><p>No books match this filter.</p></div>'
+      : '';
     return;
   }
   list.innerHTML = decorated.map(({ filename, sidecar }) => {
@@ -1481,6 +1603,7 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   libraryCache = decorated.slice();
   renderReaderLibrary();
   root.innerHTML =
+    '<section class="continue-section" id="continue-section" aria-label="Continue Reading"></section>' +
     '<div class="library-header">' +
       '<div class="library-tools">' +
         '<input class="library-filter" id="library-filter" type="search" placeholder="Filter library…" value="' + escapeHtml(libraryFilter) + '">' +
@@ -1492,7 +1615,8 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
       '</div>' +
       '<button class="add-btn compact" id="add-book-btn" type="button">＋ Add book…</button>' +
     '</div>' +
-    '<div class="library"></div>';
+    '<div class="library"></div>' +
+    '<section class="orphan-section" id="orphan-section" aria-label="Reading data without its book"></section>';
   renderLibraryRows();
   const addBtn = document.getElementById('add-book-btn');
   if (addBtn) addBtn.addEventListener('click', openLibraryFilePicker);
@@ -1518,6 +1642,18 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
     }
     openBookFromLibrary(filename);
   });
+  root.querySelector('#continue-section').addEventListener('click', (event) => {
+    const card = event.target.closest('[data-continue-filename]');
+    if (card) openBookFromLibrary(card.getAttribute('data-continue-filename'));
+  });
+  root.querySelector('#orphan-section').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-recover-sidecar]');
+    if (!button) return;
+    orphanRecoveryTarget = orphanSidecars.find(
+      (entry) => entry.noteFilename === button.getAttribute('data-recover-sidecar')
+    ) || null;
+    if (orphanRecoveryTarget) orphanRecoveryInput.click();
+  });
 }
 
 // ============================================================
@@ -1531,6 +1667,7 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
 // ============================================================
 
 const libraryFileInput = document.getElementById('library-fileinput');
+const orphanRecoveryInput = document.getElementById('orphan-recovery-input');
 const dropOverlay = document.getElementById('drop-overlay');
 const dropMsg = document.getElementById('drop-msg');
 const toastEl = document.getElementById('toast');
@@ -1646,6 +1783,42 @@ async function addBooksToLibrary(files) {
   return added;
 }
 
+async function recoverOrphanWithFile(file, target) {
+  if (!file || !target || !target.sidecar) return;
+  const expected = target.sidecar.sourceFilename;
+  const noteFilename = String(target.noteFilename || '');
+  if (!expected || file.name !== expected) {
+    showToast(
+      'Choose the original file named "' + (expected || 'unknown') +
+        '". Reading data was not rebound.',
+      { error: true, duration: 6000 },
+    );
+    return;
+  }
+  if (!engineKeyFor(file.name)) {
+    showToast('That book format is not supported.', { error: true });
+    return;
+  }
+  if (!/^[^/\\]+\.json$/.test(noteFilename)) {
+    showToast('This reading-data entry has an invalid identity.', { error: true });
+    return;
+  }
+  const bookId = noteFilename.slice(0, -'.json'.length);
+  try {
+    if (!(await naklios.fs.exists('library/' + expected))) {
+      await naklios.fs.write('library/' + expected, new Uint8Array(await file.arrayBuffer()));
+    }
+    showToast('Restored "' + expected + '" with its existing reading data.');
+    await listLibrary();
+    await openBookFromLibrary(expected, bookId);
+  } catch (err) {
+    showToast(
+      "Couldn't restore book: " + String(err && err.message || err),
+      { error: true, duration: 6000 },
+    );
+  }
+}
+
 function askForConfirmation({ title, message, confirmLabel = 'Continue' }) {
   return new Promise((resolve) => {
     confirmDialogTitle.textContent = title;
@@ -1717,6 +1890,13 @@ async function removeBookFromLibrary(filename, sidecar) {
 libraryFileInput.addEventListener('change', (e) => {
   if (e.target.files) handlePickedFiles(e.target.files);
   e.target.value = '';
+});
+orphanRecoveryInput.addEventListener('change', (event) => {
+  const target = orphanRecoveryTarget;
+  orphanRecoveryTarget = null;
+  const file = event.target.files && event.target.files[0];
+  event.target.value = '';
+  if (file && target) void recoverOrphanWithFile(file, target);
 });
 
 // Standalone preview card has its own inline dropzone (initialised when that view renders).
@@ -1804,7 +1984,7 @@ function hideDropOverlay() {
 // Open / close — convergence point for library clicks and standalone drops
 // ============================================================
 
-async function openBookFromLibrary(filename) {
+async function openBookFromLibrary(filename, preferredBookId = null) {
   if (bookOpenInProgress) return;
   if (activeEngine && filename === activeSourceFilename) return;
   bookOpenInProgress = true;
@@ -1827,7 +2007,15 @@ async function openBookFromLibrary(filename) {
   renderReaderLibrary();
   setReaderLoading('Loading…');
   try {
-    const bookId = await resolveBookId(filename);
+    let bookId = preferredBookId;
+    if (bookId) {
+      const preferredSidecar = await readSidecar(bookId);
+      if (!preferredSidecar || preferredSidecar.sourceFilename !== filename) {
+        throw new Error('The selected reading data no longer matches this book.');
+      }
+    } else {
+      bookId = await resolveBookId(filename);
+    }
     const raw = await naklios.fs.readBinary('library/' + filename);
     const buf = toArrayBuffer(raw);
     const file = new File([buf], filename);
@@ -2333,11 +2521,15 @@ async function listLibrary() {
     // Build sourceFilename → sidecar index from notes/
     const noteFiles = noteEntries.filter((n) => typeof n === 'string' && n.endsWith('.json'));
     const sidecarByFilename = new Map();
+    const sidecarRows = [];
     await Promise.all(noteFiles.map(async (n) => {
       try {
         const txt = await naklios.fs.read('notes/' + n);
         const s = JSON.parse(txt);
-        if (s && s.sourceFilename) sidecarByFilename.set(s.sourceFilename, s);
+        if (s && s.sourceFilename) {
+          sidecarByFilename.set(s.sourceFilename, s);
+          sidecarRows.push({ noteFilename:n, sidecar:s });
+        }
       } catch (_) { /* skip malformed sidecars */ }
     }));
 
@@ -2353,8 +2545,12 @@ async function listLibrary() {
       if (aT !== bT) return bT - aT;
       return a.filename.localeCompare(b.filename);
     });
+    const bookNames = new Set(books);
+    orphanSidecars = sidecarRows.filter(
+      (entry) => !bookNames.has(entry.sidecar.sourceFilename)
+    );
 
-    if (decorated.length === 0) {
+    if (decorated.length === 0 && orphanSidecars.length === 0) {
       libraryCache = [];
       renderReaderLibrary();
       renderLibraryEmpty();
@@ -2362,6 +2558,7 @@ async function listLibrary() {
     else renderLibrary(decorated);
   } catch (err) {
     console.error('Books: library listing failed', err);
+    orphanSidecars = [];
     renderLibraryEmpty();
   }
 }

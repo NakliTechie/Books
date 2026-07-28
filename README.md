@@ -10,6 +10,8 @@ Standalone mode remains a one-book, in-memory preview. NakliOS always keeps Book
 
 - Explicit Folder/Crate picker with host confirmation and backend isolation.
 - Library filter and sort by recently read, title, or author.
+- A Continue Reading rail reopens the five most recently read books at their saved positions.
+- Sidecars whose book file is missing stay visible and can only be recovered with the exact original filename; notes and positions are never silently rebound or deleted.
 - Safe removal through an in-app modal; duplicate filenames are refused instead of overwritten.
 - Reader appearance controls for font size, line height, text width, and color profile.
 - Appearance defaults persist locally; hosted books can store a per-book override in their sidecar.
