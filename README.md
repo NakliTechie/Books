@@ -1,6 +1,6 @@
 # books
 
-> **Lifecycle:** `living` — v1.2 library and search upgrade.
+> **Lifecycle:** `living` — v1.3 NakliOS Local AI reading companion.
 
 Books is a single-file, browser-native reader for ePub, PDF, MOBI, AZW3, FB2, TXT, Markdown, and HTML, slotted into NakliOS as the `books` app. Books and their sidecars live under `apps/books/` in the Folder or encrypted Crate selected for Books. Each backend remains a separate library; switching never copies or deletes data.
 
@@ -27,6 +27,16 @@ Standalone mode remains a one-book, in-memory preview. NakliOS always keeps Book
 - Find-in-book (`Cmd/Ctrl+F`) searches EPUB/MOBI/AZW3/FB2 through Foliate's
   CFI-aware engine, PDF text page by page, and TXT/Markdown/HTML through the
   text adapter. Results cycle through one common accessible search bar.
+
+## v1.3 highlights
+
+- A hosted-only Local AI reading companion can explain, summarize, extract key
+  points, or answer a question about the current selection, PDF page, or text
+  passage.
+- Books uses the shared `naklios.ai` model service: it does not download or
+  manage a second model and never receives another app's prompts.
+- Responses stream into a cancellable, app-styled dialog and cannot alter the
+  book or its notes. Standalone reading remains fully usable without AI.
 
 ## How this fits in the repo
 
@@ -68,6 +78,7 @@ naklios-universe/
 - [x] Stage 7 — Frontend walkthrough documented
 - [x] v1.1 — Folder/Crate switching, library management, and reader preferences
 - [x] v1.2 — cached covers and cross-engine in-book search
+- [x] v1.3 — selection/page-scoped NakliOS Local AI reading companion
 - [x] Contract test at `scripts/test-books-v1_1.mjs`
 - [x] Safe two-backend browser fixture at `test/host-harness.html`
 
@@ -82,7 +93,9 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
 ## Context
 
 - NakliOS launcher: `../naklOS/` — `id:'books'` already in the APPS registry at v2.18
-- SDK reference: `../naklOS/sdk/naklios.js` — vendor inline; use `naklios.fs.{read,readBinary,write,list}` for persistence
+- SDK reference: `../naklOS/sdk/naklios.js` — vendor inline; use
+  `naklios.fs.{read,readBinary,write,list}` for persistence and
+  `naklios.ai.chat.completions.create` for optional hosted inference
 - Storage-switch precedent: Tijori (`../Tijori/`)
 
 ## Branch

@@ -18,6 +18,9 @@ for (const [index, match] of [...harness.matchAll(/<script>([\s\S]*?)<\/script>/
 assert.match(html, /fsBackends:\s*\[\]/, 'vendored SDK exposes connected storage backends');
 assert.match(html, /fsBackend:\s*null/, 'vendored SDK exposes the active backend');
 assert.match(html, /useBackend:\s*function/, 'vendored SDK supports host-mediated backend switching');
+assert.match(html, /ai:\s*false/, 'vendored SDK exposes Local AI capability state');
+assert.match(html, /chat:\{\s*completions:\{\s*create:createAiCompletion/, 'vendored SDK exposes streamed chat completions');
+assert.match(html, /beforeCloseAck:true,\s*aiStream:true/, 'Books advertises close durability and AI streaming');
 assert.match(html, /openSettings:\s*function/, 'vendored SDK can open trusted NakliOS settings');
 assert.match(html, /Open Storage settings…/, 'disconnected Books offers a direct storage recovery action');
 assert.match(html, /Nothing is copied or deleted/, 'storage picker explains backend isolation');
@@ -40,6 +43,8 @@ assert.match(html, /id="reader-library"/, 'reader keeps the library visible in a
 assert.match(html, /id="reader-library-list"/, 'reader sidebar includes the library contents');
 assert.match(html, /id="reader-open-file"/, 'reader includes an explicit file-open control');
 assert.match(html, /id="reader-searchbar"/, 'reader includes an in-book search surface');
+assert.match(html, /id="reader-ai-btn"/, 'reader exposes Local AI only in reading mode');
+assert.match(html, /id="reader-ai-dialog"/, 'reader has an app-styled Local AI review dialog');
 assert.match(html, /Find in book \(⌘F\)/, 'reader advertises the standard search shortcut');
 assert.match(html, /function renderReaderLibrary\(\)/, 'reader library can refresh without leaving the book');
 assert.match(
@@ -150,6 +155,17 @@ for (const method of [
 ]) {
   assert.ok(html.includes(method), `reader engines expose ${method}`);
 }
+assert.equal(
+  [...html.matchAll(/async getContextText\(maxChars = 12000\)/g)].length,
+  3,
+  'every reader engine provides bounded passage context',
+);
+assert.match(html, /doc\?\.getSelection\?\.\(\)\?\.toString/, 'EPUB context prefers the visible selection');
+assert.match(html, /scope:`page \$\{this\.currentPage \|\| 1\}`/, 'PDF context names and extracts the current page');
+assert.match(html, /window\.getSelection\?\.\(\)/, 'text context prefers the visible selection');
+assert.match(html, /You are the private reading companion inside NakliOS Books/,
+  'reading prompts are passage-scoped and disclose model limits');
+assert.match(html, /readerAiController\?\.abort\(\)/, 'reader generation can be cancelled');
 assert.match(html, /const iterator = this\.view\.search[\s\S]*?for await \(const item of iterator\)/,
   'Foliate search uses its CFI-aware full-book search');
 assert.match(html, /await page\.getTextContent\(\)/,

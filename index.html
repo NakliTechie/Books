@@ -58,12 +58,12 @@ body { display: flex; flex-direction: column; }
 .topbar .title .glyph { font-size: 18px; }
 .topbar .status { font-size: 11px; color: var(--muted); }
 .topbar-actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
-.storage-btn, .reader-prefs-btn {
+.storage-btn, .reader-prefs-btn, .reader-ai-btn {
   max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   background:transparent; color:var(--ink); border:1px solid var(--line);
   padding:6px 10px; border-radius:6px; cursor:pointer; font:11px inherit;
 }
-.storage-btn:hover, .reader-prefs-btn:hover { background:var(--row); border-color:var(--brand); }
+.storage-btn:hover, .reader-prefs-btn:hover, .reader-ai-btn:hover { background:var(--row); border-color:var(--brand); }
 .storage-btn:disabled { cursor:default; opacity:.55; }
 
 .main {
@@ -293,6 +293,7 @@ body { display: flex; flex-direction: column; }
 .reader-header .sidebar-toggle:hover { background: var(--row); border-color: var(--brand); }
 .reader-header .sidebar-toggle.is-active { background: var(--brand); color: var(--panel); border-color: var(--brand); }
 .reader-prefs-btn { font-size:13px; padding:6px 9px; }
+.reader-ai-btn { font-size:12px; padding:6px 9px; }
 
 .reader-body {
   flex: 1 1 auto;
@@ -572,6 +573,19 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   width:100%; box-sizing:border-box; background:var(--body); color:var(--ink);
   border:1px solid var(--line); border-radius:6px; padding:8px 10px;
 }
+.books-ai-dialog { width:min(620px, calc(100vw - 32px)) !important; }
+.books-ai-actions { display:flex; flex-wrap:wrap; gap:7px; margin:10px 0; }
+.books-ai-actions button {
+  background:var(--row); color:var(--ink); border:1px solid var(--line);
+  border-radius:7px; padding:7px 10px; cursor:pointer;
+}
+.books-ai-actions button:hover { border-color:var(--brand); }
+.books-ai-output {
+  width:100%; box-sizing:border-box; min-height:180px; max-height:38vh; resize:vertical;
+  background:var(--body); color:var(--ink); border:1px solid var(--line);
+  border-radius:8px; padding:10px 12px; font:13px/1.55 system-ui,sans-serif;
+}
+.books-ai-status { min-height:18px; margin:8px 0 0; color:var(--muted); font-size:11px; }
 @media (max-width:600px) {
   .topbar { gap:8px; padding:10px 12px; }
   .topbar-actions { min-width:0; }
@@ -625,6 +639,8 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div class="reader-title" id="reader-title">…</div>
     <div class="status" id="reader-status"></div>
     <button class="storage-btn" id="reader-storage-btn" type="button" hidden>Storage</button>
+    <button class="reader-ai-btn" id="reader-ai-btn" type="button" hidden
+            title="Explain or summarize the current passage with NakliOS Local AI">✦ AI</button>
     <button class="reader-prefs-btn" id="reader-prefs-btn" type="button" title="Reading appearance">Aa</button>
     <button class="reader-search-btn" id="reader-search-btn" type="button" hidden
             aria-expanded="false" aria-controls="reader-searchbar" title="Find in book (⌘F)">Find</button>
@@ -736,6 +752,33 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   </div>
 </dialog>
 
+<dialog class="books-dialog books-ai-dialog" id="reader-ai-dialog"
+        aria-labelledby="reader-ai-title">
+  <div class="books-dialog-body">
+    <h3 id="reader-ai-title">Local AI reading companion</h3>
+    <p id="reader-ai-context">Preparing the current passage…</p>
+    <div class="books-ai-actions">
+      <button type="button" data-reader-ai-action="explain">Explain simply</button>
+      <button type="button" data-reader-ai-action="summarize">Summarize</button>
+      <button type="button" data-reader-ai-action="key-points">Key points</button>
+    </div>
+    <div class="books-dialog-text-field">
+      <label for="reader-ai-question">Or ask about this passage</label>
+      <input id="reader-ai-question" type="text" maxlength="500"
+             placeholder="What does the author mean here?">
+    </div>
+    <textarea class="books-ai-output" id="reader-ai-output" readonly
+              aria-label="Local AI response"></textarea>
+    <div class="books-ai-status" id="reader-ai-status" role="status" aria-live="polite"></div>
+    <div class="books-dialog-actions">
+      <button type="button" id="reader-ai-stop" hidden>Stop</button>
+      <button type="button" id="reader-ai-copy" disabled>Copy</button>
+      <button type="button" id="reader-ai-ask">Ask</button>
+      <button type="button" data-close-dialog="reader-ai-dialog">Close</button>
+    </div>
+  </div>
+</dialog>
+
 <!--
   naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode).
   Vendored inline per the single-file ethos. Standalone-safe (no-ops when not hosted).
@@ -755,9 +798,13 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     fs: false,
     fsBackends: [],
     fsBackend: null,
+    ai: false,
+    aiModel: null,
+    aiState: 'idle',
   };
   var pendingRpc = new Map();
   var rpcCounter = 0;
+  var aiRequests = new Map();
 
   function send(type, data) {
     if (!inNakliOS) return;
@@ -780,19 +827,110 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       }, 30000);
     });
   }
+  function makeAiStream(options) {
+    if (!inNakliOS) throw new Error('Not hosted — naklios.ai unavailable standalone');
+    if (!capabilities.ai) throw new Error('NakliOS Local AI is unavailable or not permitted');
+    options = options || {};
+    var requestId = 'a' + (++rpcCounter) + '_' + Date.now();
+    var queued = [], waiters = [], complete = false, failure = null;
+    function deliver(item) {
+      if (waiters.length) waiters.shift().resolve({ value:item, done:false });
+      else queued.push(item);
+    }
+    function finish() {
+      complete = true;
+      while (waiters.length) waiters.shift().resolve({ value:undefined, done:true });
+    }
+    function fail(error) {
+      failure = error;
+      complete = true;
+      while (waiters.length) waiters.shift().reject(error);
+    }
+    var stream = {
+      next: function () {
+        if (queued.length) return Promise.resolve({ value:queued.shift(), done:false });
+        if (failure) return Promise.reject(failure);
+        if (complete) return Promise.resolve({ value:undefined, done:true });
+        return new Promise(function (resolve, reject) { waiters.push({ resolve:resolve, reject:reject }); });
+      },
+      cancel: function () { send('naklios:ai:cancel', { requestId:requestId }); },
+    };
+    stream[Symbol.asyncIterator] = function () { return stream; };
+    aiRequests.set(requestId, {
+      deliver:deliver, finish:finish, fail:fail,
+      onStatus:typeof options.onStatus === 'function' ? options.onStatus : null,
+    });
+    send('naklios:ai:chat', {
+      requestId:requestId,
+      messages:Array.isArray(options.messages) ? options.messages : [],
+      maxTokens:options.max_tokens || options.maxTokens,
+    });
+    if (options.signal) {
+      if (options.signal.aborted) stream.cancel();
+      else options.signal.addEventListener('abort', function () { stream.cancel(); }, { once:true });
+    }
+    return stream;
+  }
+  async function createAiCompletion(options) {
+    options = options || {};
+    var stream = makeAiStream(options);
+    if (options.stream === true) return stream;
+    var content = '', finishReason = 'stop';
+    for await (var chunk of stream) {
+      var choice = chunk.choices && chunk.choices[0];
+      if (choice && choice.delta && choice.delta.content) content += choice.delta.content;
+      if (choice && choice.finish_reason) finishReason = choice.finish_reason;
+    }
+    return {
+      id:'naklios-local', object:'chat.completion',
+      model:capabilities.aiModel || 'localmind',
+      choices:[{ index:0, message:{ role:'assistant', content:content }, finish_reason:finishReason }],
+    };
+  }
   window.addEventListener('message', function (e) {
+    if (inNakliOS && e.source !== window.parent) return;
     var msg = e.data;
     if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'naklios:theme') {
       currentTheme = { id: msg.theme, colors: msg.colors, mood: msg.mood };
       themeListeners.forEach(function (cb) { try { cb(currentTheme); } catch (_) {} });
     } else if (msg.type === 'naklios:beforeclose') {
-      if (beforeCloseCb) { try { beforeCloseCb(); } catch (_) {} }
+      var closeWork;
+      try { closeWork = beforeCloseCb ? beforeCloseCb() : null; } catch (_) { closeWork = null; }
+      Promise.resolve(closeWork).catch(function () {}).then(function () {
+        send('naklios:beforeclose-ready', { requestId:msg.requestId });
+      });
     } else if (msg.type === 'naklios:capabilities') {
       if (typeof msg.fs === 'boolean') capabilities.fs = msg.fs;
       if (Array.isArray(msg.fsBackends)) capabilities.fsBackends = msg.fsBackends;
       capabilities.fsBackend = typeof msg.fsBackend === 'string' ? msg.fsBackend : null;
+      if (typeof msg.ai === 'boolean') capabilities.ai = msg.ai;
+      capabilities.aiModel = typeof msg.aiModel === 'string' ? msg.aiModel : null;
+      capabilities.aiState = typeof msg.aiState === 'string' ? msg.aiState : 'idle';
       capListeners.forEach(function (cb) { try { cb(capabilities); } catch (_) {} });
+    } else if (msg.type === 'naklios:ai:event' && msg.requestId) {
+      var aiRequest = aiRequests.get(msg.requestId);
+      if (!aiRequest) return;
+      if (msg.event === 'status') {
+        try { aiRequest.onStatus && aiRequest.onStatus(msg.status, msg.progress || null); } catch (_) {}
+      } else if (msg.event === 'token') {
+        aiRequest.deliver({
+          id:msg.requestId, object:'chat.completion.chunk',
+          model:msg.model || capabilities.aiModel || 'localmind',
+          choices:[{ index:0, delta:{ content:String(msg.token || '') }, finish_reason:null }],
+        });
+      } else if (msg.event === 'done') {
+        aiRequest.deliver({
+          id:msg.requestId, object:'chat.completion.chunk',
+          model:msg.model || capabilities.aiModel || 'localmind',
+          choices:[{ index:0, delta:{}, finish_reason:msg.finishReason || 'stop' }],
+        });
+        aiRequests.delete(msg.requestId);
+        aiRequest.finish();
+      } else if (msg.event === 'error') {
+        aiRequests.delete(msg.requestId);
+        aiRequest.fail(new Error(msg.error || 'NakliOS Local AI failed'));
+      }
     } else if (msg.type === 'naklios:fs:reply' && msg.requestId) {
       var p = pendingRpc.get(msg.requestId);
       if (!p) return;
@@ -804,7 +942,9 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   window.naklios = {
     version: 1,
     capabilities: capabilities,
-    ready: function () { send('naklios:ready'); },
+    ready: function () {
+      send('naklios:ready', { features:{ beforeCloseAck:true, aiStream:true } });
+    },
     title: function (s) { send('naklios:title', { title: String(s) }); },
     close: function () { send('naklios:close'); },
     openSettings: function (section) {
@@ -837,6 +977,14 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       delete:     function (path)       { return rpc('naklios:fs:delete', { path: path }); },
       exists:     function (path)       { return rpc('naklios:fs:exists', { path: path }); },
       useBackend: function (backend)    { return rpc('naklios:fs:selectBackend', { backend: backend }); },
+    },
+    ai: {
+      chat:{ completions:{ create:createAiCompletion } },
+      cancelAll:function () {
+        aiRequests.forEach(function (_, requestId) {
+          send('naklios:ai:cancel', { requestId:requestId });
+        });
+      },
     },
   };
 })();
@@ -888,6 +1036,15 @@ const confirmDialogOk = document.getElementById('confirm-dialog-ok');
 const bookmarkLabelDialog = document.getElementById('bookmark-label-dialog');
 const bookmarkLabelInput = document.getElementById('bookmark-label-input');
 const readerPrefsBtn = document.getElementById('reader-prefs-btn');
+const readerAiBtn = document.getElementById('reader-ai-btn');
+const readerAiDialog = document.getElementById('reader-ai-dialog');
+const readerAiContext = document.getElementById('reader-ai-context');
+const readerAiQuestion = document.getElementById('reader-ai-question');
+const readerAiOutput = document.getElementById('reader-ai-output');
+const readerAiStatus = document.getElementById('reader-ai-status');
+const readerAiStop = document.getElementById('reader-ai-stop');
+const readerAiCopy = document.getElementById('reader-ai-copy');
+const readerAiAsk = document.getElementById('reader-ai-ask');
 const readerPrefsDialog = document.getElementById('reader-prefs-dialog');
 const readerFontSize = document.getElementById('reader-font-size');
 const readerLineHeight = document.getElementById('reader-line-height');
@@ -1381,6 +1538,19 @@ class FoliateEngine {
     try { return await this.view?.book?.getCover?.(); }
     catch (_) { return null; }
   }
+  async getContextText(maxChars = 12000) {
+    const contents = this.view?.renderer?.getContents?.() || [];
+    for (const { doc } of contents) {
+      const selected = doc?.getSelection?.()?.toString?.().trim();
+      if (selected) return { text:selected.slice(0, maxChars), scope:'selection' };
+    }
+    const text = contents
+      .map(({ doc }) => doc?.body?.innerText || doc?.body?.textContent || '')
+      .join('\n')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return { text:text.slice(0, maxChars), scope:'current page' };
+  }
   async search(query) {
     if (!this.view || !query) return [];
     const request = ++this._searchRequest;
@@ -1569,6 +1739,20 @@ class PdfEngine {
     return await new Promise((resolve) =>
       canvas.toBlob((blob) => resolve(blob), 'image/webp', 0.82));
   }
+  async getContextText(maxChars = 12000) {
+    if (!this.pdfDoc) return { text:'', scope:'current page' };
+    const page = await this.pdfDoc.getPage(this.currentPage || 1);
+    const content = await page.getTextContent();
+    const text = content.items
+      .map((item) => item.str || '')
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return {
+      text:text.slice(0, maxChars),
+      scope:`page ${this.currentPage || 1}`,
+    };
+  }
   async search(query) {
     if (!this.pdfDoc || !query) return [];
     const needle = query.toLocaleLowerCase();
@@ -1712,6 +1896,22 @@ class TextEngine {
   }
   async getMetadata() { return {}; }   // No format-native metadata for plain text.
   async getCover() { return null; }
+  async getContextText(maxChars = 12000) {
+    const selection = window.getSelection?.();
+    const anchor = selection?.anchorNode;
+    const selected = anchor && this.viewer?.contains(anchor)
+      ? selection.toString().trim()
+      : '';
+    if (selected) return { text:selected.slice(0, maxChars), scope:'selection' };
+    const text = this.searchText || this.text || '';
+    const fraction = this.getPosition().fraction || 0;
+    const center = Math.floor(text.length * fraction);
+    const start = Math.max(0, center - Math.floor(maxChars / 3));
+    return {
+      text:text.slice(start, start + maxChars).trim(),
+      scope:this.isHtml ? 'current HTML passage' : 'current passage',
+    };
+  }
   async search(query) {
     if (!query) return [];
     const lower = this.searchText.toLocaleLowerCase();
@@ -2555,6 +2755,7 @@ async function openBookFromFile(file, persistInfo) {
     if (loadingIndicator) loadingIndicator.remove();
     console.log('Books: engine.load resolved for', file.name);
     readerSearchBtn.hidden = typeof activeEngine.search !== 'function';
+    updateReaderAiButton();
 
     const persisted = !!(persistInfo && persistInfo.bookId && naklios.capabilities.fs);
     if (persisted) {
@@ -2630,6 +2831,7 @@ async function openBookFromFile(file, persistInfo) {
   } catch (err) {
     if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
     readerSearchBtn.hidden = true;
+    updateReaderAiButton();
     showReaderError('Could not render <code>' + escapeHtml(file.name) + '</code>', err);
   }
 }
@@ -2779,6 +2981,163 @@ readerPrefsBtn.addEventListener('click', () => {
 [readerFontSize, readerLineHeight, readerPageWidth, readerProfile].forEach((control) => {
   control.addEventListener('input', applyReaderPrefsFromDialog);
   control.addEventListener('change', applyReaderPrefsFromDialog);
+});
+
+let readerAiPassage = null;
+let readerAiController = null;
+let readerAiRun = 0;
+
+function updateReaderAiButton() {
+  readerAiBtn.hidden = !(
+    naklios.capabilities.hosted &&
+    naklios.capabilities.ai &&
+    activeEngine &&
+    typeof activeEngine.getContextText === 'function'
+  );
+}
+
+function readerAiProgressLabel(status, progress) {
+  if (status === 'queued') return 'Waiting for the shared Local AI…';
+  if (status === 'generating') return 'Answering on this device…';
+  if (progress?.total && Number.isFinite(progress.loaded)) {
+    return 'Loading Local AI · ' + Math.round(progress.loaded / progress.total * 100) + '%';
+  }
+  return 'Loading Local AI for first use…';
+}
+
+async function openReaderAi() {
+  if (!activeEngine || !naklios.capabilities.ai) return;
+  readerAiRun++;
+  readerAiPassage = null;
+  readerAiOutput.value = '';
+  readerAiQuestion.value = '';
+  readerAiCopy.disabled = true;
+  readerAiStop.hidden = true;
+  readerAiStatus.textContent = 'Reading the current passage…';
+  readerAiContext.textContent = 'Preparing the current passage…';
+  if (!readerAiDialog.open) readerAiDialog.showModal();
+  try {
+    const context = await activeEngine.getContextText(12000);
+    if (!readerAiDialog.open) return;
+    if (!context?.text?.trim()) throw new Error('No readable text was found on the current page.');
+    readerAiPassage = context;
+    readerAiContext.textContent =
+      'Using the ' + (context.scope || 'current passage') +
+      ' (' + context.text.length.toLocaleString() + ' characters). Nothing is uploaded or added to your notes.';
+    readerAiStatus.textContent = 'Choose an action or ask a question.';
+  } catch (error) {
+    readerAiStatus.textContent = error?.message || String(error);
+  }
+}
+
+async function runReaderAi(kind, customQuestion = '') {
+  if (!readerAiPassage?.text) {
+    readerAiStatus.textContent = 'The current passage is not ready yet.';
+    return;
+  }
+  const prompts = {
+    explain:'Explain this passage in clear, simple language. Preserve important nuance.',
+    summarize:'Summarize this passage concisely.',
+    'key-points':'List the most important ideas in this passage as short bullet points.',
+  };
+  const request = customQuestion.trim() || prompts[kind];
+  if (!request) {
+    readerAiQuestion.focus();
+    return;
+  }
+  readerAiController?.abort();
+  const run = ++readerAiRun;
+  const controller = new AbortController();
+  readerAiController = controller;
+  readerAiOutput.value = '';
+  readerAiCopy.disabled = true;
+  readerAiStop.hidden = false;
+  readerAiAsk.disabled = true;
+  readerAiDialog.querySelectorAll('[data-reader-ai-action]').forEach((button) => {
+    button.disabled = true;
+  });
+  readerAiStatus.textContent = 'Queued…';
+  let responseText = '';
+  try {
+    const stream = await naklios.ai.chat.completions.create({
+      messages:[
+        {
+          role:'system',
+          content:'You are the private reading companion inside NakliOS Books. Answer only from the supplied passage. Say when the passage does not contain enough information. Be concise and do not claim to have read the rest of the book.',
+        },
+        {
+          role:'user',
+          content:request + '\n\nPASSAGE:\n' + readerAiPassage.text,
+        },
+      ],
+      max_tokens:512,
+      stream:true,
+      signal:controller.signal,
+      onStatus:(status, progress) => {
+        if (run === readerAiRun) readerAiStatus.textContent = readerAiProgressLabel(status, progress);
+      },
+    });
+    for await (const chunk of stream) {
+      if (run !== readerAiRun) break;
+      const choice = chunk.choices?.[0];
+      responseText += choice?.delta?.content || '';
+      readerAiOutput.value = responseText;
+      readerAiOutput.scrollTop = readerAiOutput.scrollHeight;
+      if (choice?.finish_reason === 'cancelled') readerAiStatus.textContent = 'Stopped.';
+    }
+    if (run === readerAiRun && !controller.signal.aborted) {
+      readerAiStatus.textContent = responseText.trim() ? 'Ready.' : 'No response was generated.';
+    }
+  } catch (error) {
+    if (run === readerAiRun) {
+      readerAiStatus.textContent = controller.signal.aborted
+        ? 'Stopped.'
+        : error?.message || String(error);
+    }
+  } finally {
+    if (run === readerAiRun) {
+      readerAiController = null;
+      readerAiStop.hidden = true;
+      readerAiAsk.disabled = false;
+      readerAiCopy.disabled = !responseText.trim();
+      readerAiDialog.querySelectorAll('[data-reader-ai-action]').forEach((button) => {
+        button.disabled = false;
+      });
+      updateReaderAiButton();
+    }
+  }
+}
+
+readerAiBtn.addEventListener('click', () => { void openReaderAi(); });
+readerAiDialog.querySelectorAll('[data-reader-ai-action]').forEach((button) => {
+  button.addEventListener('click', () => {
+    void runReaderAi(button.getAttribute('data-reader-ai-action'));
+  });
+});
+readerAiAsk.addEventListener('click', () => {
+  void runReaderAi('question', readerAiQuestion.value);
+});
+readerAiQuestion.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.isComposing) {
+    event.preventDefault();
+    void runReaderAi('question', readerAiQuestion.value);
+  }
+});
+readerAiStop.addEventListener('click', () => readerAiController?.abort());
+readerAiCopy.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(readerAiOutput.value);
+    readerAiStatus.textContent = 'Copied.';
+  } catch (_) {
+    readerAiOutput.focus();
+    readerAiOutput.select();
+    readerAiStatus.textContent = 'Select and copy the response.';
+  }
+});
+readerAiDialog.addEventListener('close', () => {
+  readerAiController?.abort();
+  readerAiController = null;
+  readerAiRun++;
 });
 
 document.querySelectorAll('[data-close-dialog]').forEach((button) => {
@@ -3034,12 +3393,15 @@ function enterReaderView(filename) {
 }
 
 function teardownReaderView() {
+  readerAiController?.abort();
+  if (readerAiDialog.open) readerAiDialog.close();
   resetReaderSearch();
   readerSearchbar.hidden = true;
   readerSearchBtn.hidden = true;
   readerSearchBtn.classList.remove('is-active');
   readerSearchBtn.setAttribute('aria-expanded', 'false');
   if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
+  updateReaderAiButton();
   activeSidecar = null;
   activeBookId = null;
   activeSourceFilename = null;
@@ -3206,6 +3568,7 @@ function boot() {
   let lastStorageSignature = '';
   function syncCapabilities(caps, force = false) {
     updateStorageButton();
+    updateReaderAiButton();
     const signature = String(!!caps.fs) + ':' + (caps.fsBackend || '') + ':' + connectedBackends().join(',');
     if (!force && !decided && !caps.fs) return;
     if (!force && decided && signature === lastStorageSignature) return;
