@@ -17,13 +17,14 @@ Without the trigger, the deferral is just an open question.
 
 ## Content / UX layers
 
-### Cover thumbnails
+### Cover thumbnails — shipped in v1.2
 
-Show extracted cover art (from ePub `<package>/Cover.jpg` or PDF page 1 render) in the library view instead of (or alongside) text-only filenames.
+Delivered: Foliate package covers and PDF page-one thumbnails are resized,
+cached under the active Books namespace, and rendered with a typographic
+fallback. Cache identity remains backend-local.
 
-**Why deferred:** Cover extraction is per-format work (epub.js can pull a cover blob; PDF needs rendering page 1 to canvas, encoding, caching). The library list works fine as text in v1.
-
-**Trigger to revisit:** When 3+ users say "this looks like a directory listing, not a library." Or when the library view feels visually empty enough to hurt usability.
+**Still deferred:** generated title cards persisted as images for formats that
+have no authored cover. The current CSS fallback is deliberately sufficient.
 
 ### Reader prefs panel — shipped in v1.1
 
@@ -47,13 +48,14 @@ Full-text search across all books in the library (or all *notes*, depending on s
 
 **Trigger to revisit:** Once library hits ~50+ books (volume makes search valuable) or once notes count makes "where did I write that?" a real question.
 
-### Cross-engine search (within the open book)
+### Cross-engine search (within the open book) — shipped in v1.2
 
-Search within the currently-open book — find a phrase, jump to occurrences with highlight overlays.
+Delivered: one Find surface searches Foliate books, PDF page text, and the
+Text engine, cycles through matches, shows excerpts, and jumps through the
+engine adapter. Foliate retains its native CFI highlights.
 
-**Why deferred:** The three engines need three different implementations. foliate-js has `view.search()` (returns CFI matches). pdf.js has a separate `findController` with a canvas-overlay highlight layer. TextEngine would need a custom substring index. Wiring all three behind one search UI is real engineering — call it 2–3 sessions of work.
-
-**Trigger to revisit:** v1 stable in real use; OR when a user opens a long book and wishes they could grep.
+**Still deferred:** PDF canvas text-layer highlight overlays. v1.2 jumps to
+the matching page and displays the excerpt without changing authored layout.
 
 ### CBZ + CBR (comic-book archives) support
 

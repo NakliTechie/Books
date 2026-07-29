@@ -126,8 +126,8 @@ body { display: flex; flex-direction: column; }
 
 .library { display: grid; gap: 6px; }
 .library .row {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  padding: 12px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px;
   background: var(--row);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -143,6 +143,22 @@ body { display: flex; flex-direction: column; }
   min-width: 0;
   padding-right: 14px;
 }
+.book-cover {
+  position:relative; flex:0 0 auto;
+  width:48px; height:68px; margin-right:12px;
+  overflow:hidden; border-radius:5px;
+  display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(145deg,
+    color-mix(in srgb,var(--brand) 35%,var(--panel)),
+    color-mix(in srgb,var(--brand) 15%,var(--row)));
+  border:1px solid var(--line);
+  color:var(--ink); font:700 17px/1 Georgia,serif;
+  box-shadow:0 2px 6px rgba(0,0,0,0.18);
+}
+.book-cover img { width:100%; height:100%; object-fit:cover; display:block; }
+.book-cover.is-loaded span { display:none; }
+.continue-card .book-cover { width:42px; height:60px; margin:0; grid-row:1 / span 4; }
+.continue-copy { min-width:0; display:grid; gap:4px; }
 .library .row .name {
   font-size: 14px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -191,7 +207,8 @@ body { display: flex; flex-direction: column; }
   color:var(--ink); font:inherit;
 }
 .continue-card {
-  display:grid; gap:4px; padding:11px 12px; text-align:left; cursor:pointer;
+  display:grid; grid-template-columns:auto minmax(0,1fr); gap:4px 10px;
+  padding:10px; text-align:left; cursor:pointer;
 }
 .continue-card:hover { border-color:var(--brand); background:var(--row); }
 .continue-card strong, .orphan-card strong {
@@ -241,6 +258,37 @@ body { display: flex; flex-direction: column; }
   background: transparent; color: var(--ink); border: 1px solid var(--line);
   padding: 6px 10px; border-radius: 6px; cursor: pointer;
   font-size: 16px; line-height: 1; font-family: inherit;
+}
+.reader-search-btn {
+  background:transparent; color:var(--ink); border:1px solid var(--line);
+  padding:6px 9px; border-radius:6px; cursor:pointer;
+  font:12px/1 inherit;
+}
+.reader-search-btn:hover, .reader-search-btn.is-active {
+  background:var(--row); border-color:var(--brand);
+}
+.reader-searchbar {
+  display:grid; grid-template-columns:minmax(180px,1fr) auto auto auto auto;
+  align-items:center; gap:7px; padding:8px 12px;
+  background:var(--panel); border-bottom:1px solid var(--line);
+}
+.reader-searchbar[hidden] { display:none; }
+.reader-searchbar input {
+  width:100%; min-width:0; background:var(--body); color:var(--ink);
+  border:1px solid var(--line); border-radius:6px; padding:7px 9px;
+  font:12px inherit;
+}
+.reader-searchbar button {
+  border:1px solid var(--line); border-radius:6px; padding:6px 9px;
+  background:transparent; color:var(--ink); cursor:pointer; font:12px/1 inherit;
+}
+.reader-searchbar button:hover:not(:disabled) { border-color:var(--brand); background:var(--row); }
+.reader-searchbar button:disabled { opacity:0.4; cursor:default; }
+.reader-search-count { color:var(--muted); font-size:11px; min-width:68px; text-align:center; }
+.reader-search-excerpt {
+  grid-column:1 / -1; min-height:1.3em;
+  color:var(--muted); font-size:11px; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap;
 }
 .reader-header .sidebar-toggle:hover { background: var(--row); border-color: var(--brand); }
 .reader-header .sidebar-toggle.is-active { background: var(--brand); color: var(--panel); border-color: var(--brand); }
@@ -534,6 +582,8 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   .reader-library { flex-basis:168px; }
   .reader-library-head { align-items:stretch; flex-direction:column; }
   .reader-open-file { text-align:left; }
+  .reader-searchbar { grid-template-columns:minmax(120px,1fr) auto auto auto; }
+  .reader-search-count { grid-column:1 / -1; text-align:left; }
 }
 </style>
 </head>
@@ -576,8 +626,19 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div class="status" id="reader-status"></div>
     <button class="storage-btn" id="reader-storage-btn" type="button" hidden>Storage</button>
     <button class="reader-prefs-btn" id="reader-prefs-btn" type="button" title="Reading appearance">Aa</button>
+    <button class="reader-search-btn" id="reader-search-btn" type="button" hidden
+            aria-expanded="false" aria-controls="reader-searchbar" title="Find in book (⌘F)">Find</button>
     <button class="sidebar-toggle" id="sidebar-toggle" type="button" hidden aria-label="Notes &amp; bookmarks">≡</button>
   </div>
+  <form class="reader-searchbar" id="reader-searchbar" role="search" hidden>
+    <input id="reader-search-input" type="search" autocomplete="off"
+           placeholder="Find in this book…" aria-label="Find in this book">
+    <button id="reader-search-prev" type="button" aria-label="Previous match">↑</button>
+    <button id="reader-search-next" type="button" aria-label="Next match">↓</button>
+    <span class="reader-search-count" id="reader-search-count" aria-live="polite">No search</span>
+    <button id="reader-search-close" type="button" aria-label="Close search">×</button>
+    <div class="reader-search-excerpt" id="reader-search-excerpt"></div>
+  </form>
   <div class="reader-body">
     <aside class="reader-library" id="reader-library" aria-label="Library">
       <div class="reader-library-head">
@@ -832,6 +893,14 @@ const readerFontSize = document.getElementById('reader-font-size');
 const readerLineHeight = document.getElementById('reader-line-height');
 const readerPageWidth = document.getElementById('reader-page-width');
 const readerProfile = document.getElementById('reader-profile');
+const readerSearchBtn = document.getElementById('reader-search-btn');
+const readerSearchbar = document.getElementById('reader-searchbar');
+const readerSearchInput = document.getElementById('reader-search-input');
+const readerSearchPrev = document.getElementById('reader-search-prev');
+const readerSearchNext = document.getElementById('reader-search-next');
+const readerSearchCount = document.getElementById('reader-search-count');
+const readerSearchClose = document.getElementById('reader-search-close');
+const readerSearchExcerpt = document.getElementById('reader-search-excerpt');
 
 bookmarkLabelInput.addEventListener('keydown', (event) => {
   if (event.key !== 'Enter' || event.isComposing) return;
@@ -849,6 +918,16 @@ let orphanSidecars = [];
 let orphanRecoveryTarget = null;
 let libraryFilter = '';
 let librarySort = localStorage.getItem('books.librarySort.v1') || 'recent';
+let readerSearchResults = [];
+let readerSearchIndex = -1;
+let readerSearchRun = 0;
+let readerSearchTimer = null;
+const coverObjectUrls = new Map();
+const coverLoadPromises = new Map();
+let coverHydrationGeneration = 0;
+let coverWriteSerial = 0;
+const coverWriteTokens = new Map();
+const pendingCoverCleanup = new Map();
 
 const DEFAULT_READER_PREFS = Object.freeze({
   fontSize: 17,
@@ -891,6 +970,167 @@ function toArrayBuffer(raw) {
   }
   if (typeof raw === 'string') return new TextEncoder().encode(raw).buffer;
   throw new Error('Unexpected response shape from naklios.fs.readBinary');
+}
+
+function makeSearchExcerpt(text, start, length) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  const from = Math.max(0, start - 48);
+  const to = Math.min(clean.length, start + length + 72);
+  return (from ? '…' : '') + clean.slice(from, to) + (to < clean.length ? '…' : '');
+}
+
+function coverInitial(title) {
+  const match = String(title || '').trim().match(/[\p{L}\p{N}]/u);
+  return match ? match[0].toUpperCase() : 'B';
+}
+
+function coverMarkup(sidecar, title, extraClass = '') {
+  const coverPath = sidecar && typeof sidecar.coverPath === 'string'
+    ? sidecar.coverPath : '';
+  return '<span class="book-cover ' + escapeHtml(extraClass) + '"' +
+    (coverPath ? ' data-cover-path="' + escapeHtml(coverPath) + '"' +
+      ' data-cover-mime="' + escapeHtml(sidecar.coverMime || 'image/webp') + '"' : '') +
+    ' aria-hidden="true"><span>' + escapeHtml(coverInitial(title)) + '</span></span>';
+}
+
+function loadCoverObjectUrl(path, mime, backendId, generation) {
+  const cacheKey = backendId + ':' + path;
+  const cached = coverObjectUrls.get(cacheKey);
+  if (cached) return Promise.resolve(cached);
+  const inFlight = coverLoadPromises.get(cacheKey);
+  if (inFlight?.generation === generation) return inFlight.promise;
+
+  const promise = (async () => {
+    const raw = await naklios.fs.readBinary(path);
+    if (
+      generation !== coverHydrationGeneration
+      || backendId !== activeBackendId()
+    ) return null;
+    const blob = new Blob([toArrayBuffer(raw)], { type: mime || 'image/webp' });
+    const created = URL.createObjectURL(blob);
+    if (
+      generation !== coverHydrationGeneration
+      || backendId !== activeBackendId()
+    ) {
+      URL.revokeObjectURL(created);
+      return null;
+    }
+    // A non-deduplicated older generation may have completed while this read
+    // was in flight. Reuse its tracked URL and revoke the loser.
+    const winner = coverObjectUrls.get(cacheKey);
+    if (winner) {
+      URL.revokeObjectURL(created);
+      return winner;
+    }
+    coverObjectUrls.set(cacheKey, created);
+    return created;
+  })();
+  coverLoadPromises.set(cacheKey, { generation, promise });
+  const release = () => {
+    if (coverLoadPromises.get(cacheKey)?.promise === promise) {
+      coverLoadPromises.delete(cacheKey);
+    }
+  };
+  promise.then(release, release);
+  return promise;
+}
+
+async function hydrateCoverImages(scope = document) {
+  const generation = coverHydrationGeneration;
+  const backendId = activeBackendId();
+  if (!backendId) return;
+  const covers = Array.from(scope.querySelectorAll(
+    '.book-cover[data-cover-path]:not(.is-loaded):not(.is-loading)'
+  ));
+  await Promise.all(covers.map(async (cover) => {
+    const path = cover.getAttribute('data-cover-path');
+    if (!path) return;
+    const cacheKey = backendId + ':' + path;
+    cover.classList.add('is-loading');
+    try {
+      let url = coverObjectUrls.get(cacheKey);
+      if (!url) {
+        url = await loadCoverObjectUrl(
+          path,
+          cover.getAttribute('data-cover-mime') || 'image/webp',
+          backendId,
+          generation,
+        );
+      }
+      if (
+        !url
+        ||
+        generation !== coverHydrationGeneration
+        || backendId !== activeBackendId()
+        || !cover.isConnected
+        || cover.getAttribute('data-cover-path') !== path
+      ) return;
+      const image = document.createElement('img');
+      image.alt = '';
+      image.src = url;
+      cover.appendChild(image);
+      cover.classList.add('is-loaded');
+    } catch (error) {
+      console.warn('Books: cover load failed for', path, error);
+    } finally {
+      cover.classList.remove('is-loading');
+    }
+  }));
+}
+
+function clearCoverObjectUrls() {
+  coverHydrationGeneration++;
+  coverLoadPromises.clear();
+  for (const url of coverObjectUrls.values()) URL.revokeObjectURL(url);
+  coverObjectUrls.clear();
+}
+
+function invalidateCoverWrite(bookId) {
+  coverWriteTokens.set(bookId, Symbol('invalidated-cover'));
+}
+
+function queueCoverCleanup(backendId, path) {
+  if (!backendId || !path) return;
+  if (!pendingCoverCleanup.has(backendId)) pendingCoverCleanup.set(backendId, new Set());
+  pendingCoverCleanup.get(backendId).add(path);
+  void drainCoverCleanup();
+}
+
+async function drainCoverCleanup() {
+  const backendId = activeBackendId();
+  const paths = pendingCoverCleanup.get(backendId);
+  if (!backendId || !paths || !paths.size) return;
+  for (const path of Array.from(paths)) {
+    try {
+      await naklios.fs.delete(path);
+      paths.delete(path);
+    } catch (_) {
+      // Keep it queued. If the backend changed during cleanup, it will be
+      // retried when this Folder or Crate becomes active again.
+      break;
+    }
+  }
+  if (!paths.size) pendingCoverCleanup.delete(backendId);
+}
+
+async function makeCoverThumbnail(blob) {
+  if (!(blob instanceof Blob) || blob.size === 0) return null;
+  if (typeof createImageBitmap !== 'function') return blob;
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(blob);
+    const scale = Math.min(1, 320 / bitmap.width, 480 / bitmap.height);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return await new Promise((resolve) =>
+      canvas.toBlob((value) => resolve(value || blob), 'image/webp', 0.82));
+  } catch (_) {
+    return blob;
+  } finally {
+    try { bitmap && bitmap.close(); } catch (_) {}
+  }
 }
 
 function clampNumber(value, min, max, fallback) {
@@ -1064,6 +1304,9 @@ function makeInitialSidecar({ bookId, sourceFilename, engineKey }) {
     note: '',
     bookmarks: [],
     readerPrefs: null,
+    coverPath: null,
+    coverMime: null,
+    coverUnavailable: false,
   };
 }
 
@@ -1078,6 +1321,8 @@ class FoliateEngine {
     this.view = null;
     this._cb = null;
     this._loaded = null;
+    this._searchRequest = 0;
+    this._searchTail = Promise.resolve();
   }
   async load(file) {
     await import(VENDOR_FOLIATE + 'view.js');
@@ -1131,6 +1376,62 @@ class FoliateEngine {
       author = creator.name || creator.value || null;
     }
     return { title, author };
+  }
+  async getCover() {
+    try { return await this.view?.book?.getCover?.(); }
+    catch (_) { return null; }
+  }
+  async search(query) {
+    if (!this.view || !query) return [];
+    const request = ++this._searchRequest;
+    const previous = this._searchTail.catch(() => {});
+    let release;
+    this._searchTail = new Promise((resolve) => { release = resolve; });
+    await previous;
+    try {
+      if (!this.view || request !== this._searchRequest) return [];
+      const results = [];
+      const iterator = this.view.search({
+        query,
+        matchCase: false,
+        matchDiacritics: false,
+        matchWholeWords: false,
+      });
+      for await (const item of iterator) {
+        if (request !== this._searchRequest || !this.view) {
+          try { await iterator.return?.(); } catch (_) {}
+          break;
+        }
+        if (!item || item === 'done' || !Array.isArray(item.subitems)) continue;
+        for (const match of item.subitems) {
+          results.push({
+            label: item.label || 'Book',
+            excerpt: [match.excerpt?.pre, match.excerpt?.match, match.excerpt?.post]
+              .filter(Boolean).join(''),
+            cfi: match.cfi,
+          });
+          if (results.length >= 500) {
+            try { await iterator.return?.(); } catch (_) {}
+            return request === this._searchRequest ? results : [];
+          }
+        }
+      }
+      return request === this._searchRequest ? results : [];
+    } finally {
+      release();
+    }
+  }
+  async jumpToSearchResult(result) {
+    if (this.view && result?.cfi) await this.view.goTo(result.cfi);
+  }
+  clearSearch() {
+    const request = ++this._searchRequest;
+    const pending = this._searchTail;
+    try { this.view?.clearSearch?.(); } catch (_) {}
+    void pending.catch(() => {}).then(() => {
+      if (request !== this._searchRequest) return;
+      try { this.view?.clearSearch?.(); } catch (_) {}
+    });
   }
   async next() { if (this.view) { try { await this.view.next(); } catch (_) {} } }
   async prev() { if (this.view) { try { await this.view.prev(); } catch (_) {} } }
@@ -1262,6 +1563,37 @@ class PdfEngine {
       };
     } catch (_) { return {}; }
   }
+  async getCover() {
+    const canvas = this.viewer?.querySelector('canvas[data-page-num="1"]');
+    if (!canvas) return null;
+    return await new Promise((resolve) =>
+      canvas.toBlob((blob) => resolve(blob), 'image/webp', 0.82));
+  }
+  async search(query) {
+    if (!this.pdfDoc || !query) return [];
+    const needle = query.toLocaleLowerCase();
+    const results = [];
+    for (let pageNum = 1; pageNum <= this.numPages; pageNum++) {
+      const page = await this.pdfDoc.getPage(pageNum);
+      const content = await page.getTextContent();
+      const text = content.items.map((item) => item.str || '').join(' ').replace(/\s+/g, ' ');
+      const lower = text.toLocaleLowerCase();
+      let index = -1;
+      while ((index = lower.indexOf(needle, index + 1)) !== -1) {
+        results.push({
+          label: 'Page ' + pageNum,
+          excerpt: makeSearchExcerpt(text, index, query.length),
+          page: pageNum,
+        });
+        if (results.length >= 500) return results;
+      }
+    }
+    return results;
+  }
+  async jumpToSearchResult(result) {
+    if (result?.page) await this.jumpTo({ page: result.page, scrollY: 0 });
+  }
+  clearSearch() { /* PDF result navigation is page-based; no overlay to clear. */ }
   async next() {
     if (!this.viewer || !this.numPages) return;
     if (this.currentPage >= this.numPages) return;
@@ -1321,24 +1653,27 @@ class TextEngine {
     this.inner = null;
     this.pre = null;
     this.frame = null;
+    this.text = '';
+    this.searchText = '';
+    this.isHtml = false;
     this._cb = null;
     this._scrollT = null;
   }
   async load(file) {
     const ext = extOf(file.name);
     const text = await file.text();
+    this.text = text;
+    this.isHtml = ext === 'html' || ext === 'htm';
+    this.searchText = this.isHtml
+      ? new DOMParser().parseFromString(text, 'text/html').body.textContent || ''
+      : text;
     this.viewer = document.createElement('div');
     Object.assign(this.viewer.style, {
       overflowY: 'auto', height: '100%', width: '100%',
       background: 'var(--panel)', color: 'var(--ink)',
     });
     if (ext === 'html' || ext === 'htm') {
-      const iframe = document.createElement('iframe');
-      iframe.setAttribute('sandbox', '');
-      Object.assign(iframe.style, { width: '100%', height: '100%', border: 'none', background: '#fff' });
-      iframe.srcdoc = text;
-      this.viewer.appendChild(iframe);
-      this.frame = iframe;
+      this.renderHtmlFrame();
     } else {
       const inner = document.createElement('div');
       Object.assign(inner.style, { maxWidth: '720px', margin: '0 auto', padding: '40px 20px 80px' });
@@ -1376,6 +1711,80 @@ class TextEngine {
     this.viewer.scrollTop = f * total;
   }
   async getMetadata() { return {}; }   // No format-native metadata for plain text.
+  async getCover() { return null; }
+  async search(query) {
+    if (!query) return [];
+    const lower = this.searchText.toLocaleLowerCase();
+    const needle = query.toLocaleLowerCase();
+    const results = [];
+    let index = -1;
+    while ((index = lower.indexOf(needle, index + 1)) !== -1) {
+      results.push({
+        label: this.isHtml ? 'HTML text' : 'Text',
+        excerpt: makeSearchExcerpt(this.searchText, index, query.length),
+        offset: index,
+        length: query.length,
+        fraction: index / Math.max(1, this.searchText.length),
+      });
+      if (results.length >= 500) break;
+    }
+    return results;
+  }
+  async jumpToSearchResult(result) {
+    if (!result) return;
+    if (this.pre && Number.isFinite(result.offset)) {
+      const before = this.text.slice(0, result.offset);
+      const match = this.text.slice(result.offset, result.offset + result.length);
+      const after = this.text.slice(result.offset + result.length);
+      const mark = document.createElement('mark');
+      mark.textContent = match;
+      this.pre.replaceChildren(
+        document.createTextNode(before),
+        mark,
+        document.createTextNode(after),
+      );
+      mark.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+    if (this.isHtml && Number.isFinite(result.offset)) {
+      // The HTML iframe intentionally has an opaque origin. During search,
+      // show a parent-owned plain-text projection so the match can actually
+      // be highlighted and scrolled without weakening the sandbox.
+      const inner = document.createElement('div');
+      Object.assign(inner.style, { maxWidth: '720px', margin: '0 auto', padding: '40px 20px 80px' });
+      const pre = document.createElement('pre');
+      Object.assign(pre.style, {
+        whiteSpace: 'pre-wrap', wordWrap: 'break-word',
+        fontFamily: 'Georgia, "Iowan Old Style", "Palatino Linotype", serif',
+        fontSize: '17px', lineHeight: '1.7', margin: '0', color: 'var(--ink)',
+      });
+      const before = this.searchText.slice(0, result.offset);
+      const match = this.searchText.slice(result.offset, result.offset + result.length);
+      const after = this.searchText.slice(result.offset + result.length);
+      const mark = document.createElement('mark');
+      mark.textContent = match;
+      pre.append(document.createTextNode(before), mark, document.createTextNode(after));
+      inner.appendChild(pre);
+      this.viewer.replaceChildren(inner);
+      this.htmlSearchPreview = true;
+      mark.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }
+  clearSearch() {
+    if (this.pre && this.pre.textContent !== this.text) this.pre.textContent = this.text;
+    if (this.isHtml && this.htmlSearchPreview) {
+      this.htmlSearchPreview = false;
+      this.renderHtmlFrame();
+    }
+  }
+  renderHtmlFrame() {
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', '');
+    Object.assign(iframe.style, { width: '100%', height: '100%', border: 'none', background: '#fff' });
+    iframe.srcdoc = this.text;
+    this.viewer.replaceChildren(iframe);
+    this.frame = iframe;
+  }
   async next() {
     if (!this.viewer) return;
     this.viewer.scrollBy({ top: this.viewer.clientHeight * 0.9, behavior: 'smooth' });
@@ -1406,6 +1815,7 @@ class TextEngine {
   }
   onRelocate(cb) { this._cb = cb; }
   destroy() {
+    this.clearSearch();
     if (this.viewer) { try { this.container.removeChild(this.viewer); } catch (_) {} this.viewer = null; }
     this._cb = null;
   }
@@ -1524,13 +1934,17 @@ function renderContinueReading() {
       recent.map(({ filename, sidecar }) =>
         '<button class="continue-card" type="button" data-continue-filename="' +
           escapeHtml(filename) + '">' +
-          '<strong>' + escapeHtml(sidecar.title || filename.replace(/\.[a-z0-9]+$/i, '')) + '</strong>' +
-          (sidecar.author ? '<small>' + escapeHtml(sidecar.author) + '</small>' : '') +
-          '<span class="continue-progress">' + escapeHtml(positionLabel(sidecar.position)) + '</span>' +
-          '<small>' + escapeHtml(formatRelativeTime(sidecar.lastOpened)) + '</small>' +
+          coverMarkup(sidecar, sidecar.title || filename) +
+          '<span class="continue-copy">' +
+            '<strong>' + escapeHtml(sidecar.title || filename.replace(/\.[a-z0-9]+$/i, '')) + '</strong>' +
+            (sidecar.author ? '<small>' + escapeHtml(sidecar.author) + '</small>' : '') +
+            '<span class="continue-progress">' + escapeHtml(positionLabel(sidecar.position)) + '</span>' +
+            '<small>' + escapeHtml(formatRelativeTime(sidecar.lastOpened)) + '</small>' +
+          '</span>' +
         '</button>'
       ).join('') +
     '</div>';
+  void hydrateCoverImages(section);
 }
 
 function renderOrphanSidecars() {
@@ -1591,6 +2005,7 @@ function renderLibraryRows() {
     const author = (sidecar && sidecar.author) || '';
     const lastRead = (sidecar && sidecar.lastOpened) ? formatRelativeTime(sidecar.lastOpened) : '';
     return '<div class="row" data-filename="' + escapeHtml(filename) + '">' +
+             coverMarkup(sidecar, title) +
              '<div class="row-text">' +
                '<div class="name">' + escapeHtml(title) + '</div>' +
                (author ? '<div class="author">' + escapeHtml(author) + '</div>' : '') +
@@ -1604,6 +2019,7 @@ function renderLibraryRows() {
              '</div>' +
            '</div>';
   }).join('');
+  void hydrateCoverImages(list);
 }
 
 function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
@@ -1872,9 +2288,25 @@ async function removeBookFromLibrary(filename, sidecar) {
   });
   if (!confirmed) return;
   try {
+    if (sidecar?.bookId) {
+      invalidateCoverWrite(sidecar.bookId);
+      const pending = pendingWrites.get(sidecar.bookId);
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingWrites.delete(sidecar.bookId);
+      }
+    }
     await naklios.fs.delete('library/' + filename);
     if (sidecar && sidecar.bookId) {
       try {
+        if (sidecar.coverPath) {
+          try { await naklios.fs.delete(sidecar.coverPath); }
+          catch (_) { /* a missing cache must not block deliberate book removal */ }
+          const cacheKey = activeBackendId() + ':' + sidecar.coverPath;
+          const url = coverObjectUrls.get(cacheKey);
+          if (url) URL.revokeObjectURL(url);
+          coverObjectUrls.delete(cacheKey);
+        }
         await naklios.fs.delete('notes/' + sidecar.bookId + '.json');
       } catch (sidecarError) {
         showToast(
@@ -2035,6 +2467,55 @@ async function openBookFromLibrary(filename, preferredBookId = null) {
   }
 }
 
+async function cacheActiveCover() {
+  if (
+    !activeEngine || !activeSidecar || !activeBookId
+    || activeSidecar.coverPath || activeSidecar.coverUnavailable
+    || !naklios.capabilities.fs
+  ) return;
+  const engine = activeEngine;
+  const sidecar = activeSidecar;
+  const bookId = activeBookId;
+  const backendId = activeBackendId();
+  const token = Symbol('cover-write');
+  coverWriteTokens.set(bookId, token);
+  const isCurrent = () =>
+    token === coverWriteTokens.get(bookId)
+    && engine === activeEngine && sidecar === activeSidecar
+    && bookId === activeBookId && backendId === activeBackendId();
+  try {
+    const source = await engine.getCover?.();
+    if (!isCurrent()) return;
+    if (!source) {
+      sidecar.coverUnavailable = true;
+      writeSidecarDebounced(bookId, sidecar);
+      return;
+    }
+    const thumbnail = await makeCoverThumbnail(source);
+    if (!thumbnail || !isCurrent()) return;
+    const coverPath = 'covers/' + bookId + '-' +
+      Date.now().toString(36) + '-' + (++coverWriteSerial).toString(36) + '.cover';
+    await naklios.fs.write(coverPath, new Uint8Array(await thumbnail.arrayBuffer()));
+    if (!isCurrent()) {
+      queueCoverCleanup(backendId, coverPath);
+      return;
+    }
+    sidecar.coverPath = coverPath;
+    sidecar.coverMime = thumbnail.type || source.type || 'image/webp';
+    sidecar.coverUnavailable = false;
+    const cachedBook = libraryCache.find(
+      (entry) => entry.filename === sidecar.sourceFilename
+    );
+    if (cachedBook) cachedBook.sidecar = sidecar;
+    writeSidecarDebounced(bookId, sidecar);
+    renderReaderLibrary();
+  } catch (error) {
+    // Extraction is format-specific and best-effort. A damaged cover must not
+    // prevent reading or poison the sidecar with a permanent failure.
+    console.warn('Books: cover extraction failed', error);
+  }
+}
+
 // persistInfo: { bookId, sourceFilename } when hosted; null when standalone (A4).
 async function openBookFromFile(file, persistInfo) {
   // Enter reader view first so errors are visible — unsupported-format
@@ -2043,6 +2524,11 @@ async function openBookFromFile(file, persistInfo) {
   activeSourceFilename = (persistInfo && persistInfo.sourceFilename) || file.name;
   renderReaderLibrary();
   setReaderLoading('Loading…');
+  resetReaderSearch();
+  readerSearchbar.hidden = true;
+  readerSearchBtn.hidden = true;
+  readerSearchBtn.classList.remove('is-active');
+  readerSearchBtn.setAttribute('aria-expanded', 'false');
 
   // Tear down any previous engine
   if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
@@ -2068,6 +2554,7 @@ async function openBookFromFile(file, persistInfo) {
     const loadingIndicator = readerContent.querySelector('.loading');
     if (loadingIndicator) loadingIndicator.remove();
     console.log('Books: engine.load resolved for', file.name);
+    readerSearchBtn.hidden = typeof activeEngine.search !== 'function';
 
     const persisted = !!(persistInfo && persistInfo.bookId && naklios.capabilities.fs);
     if (persisted) {
@@ -2102,6 +2589,7 @@ async function openBookFromFile(file, persistInfo) {
       const cachedBook = libraryCache.find((entry) => entry.filename === persistInfo.sourceFilename);
       if (cachedBook) cachedBook.sidecar = activeSidecar;
       renderReaderLibrary();
+      void cacheActiveCover();
 
       // Record open + initial position
       activeSidecar.lastOpened = new Date().toISOString();
@@ -2141,6 +2629,7 @@ async function openBookFromFile(file, persistInfo) {
     if (persisted || (toc && toc.length)) sidebarToggle.hidden = false;
   } catch (err) {
     if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
+    readerSearchBtn.hidden = true;
     showReaderError('Could not render <code>' + escapeHtml(file.name) + '</code>', err);
   }
 }
@@ -2154,6 +2643,105 @@ function describePosition(engineKey, pos) {
   if (typeof pos.fraction === 'number') return Math.round(pos.fraction * 100) + '%';
   return '';
 }
+
+function resetReaderSearch() {
+  readerSearchRun++;
+  clearTimeout(readerSearchTimer);
+  readerSearchTimer = null;
+  readerSearchResults = [];
+  readerSearchIndex = -1;
+  try { activeEngine?.clearSearch?.(); } catch (_) {}
+  readerSearchCount.textContent = 'No search';
+  readerSearchExcerpt.textContent = '';
+  readerSearchPrev.disabled = true;
+  readerSearchNext.disabled = true;
+}
+
+function openReaderSearch() {
+  if (!activeEngine) return;
+  readerSearchbar.hidden = false;
+  readerSearchBtn.classList.add('is-active');
+  readerSearchBtn.setAttribute('aria-expanded', 'true');
+  readerSearchInput.focus();
+  readerSearchInput.select();
+}
+
+function closeReaderSearch() {
+  resetReaderSearch();
+  readerSearchbar.hidden = true;
+  readerSearchBtn.classList.remove('is-active');
+  readerSearchBtn.setAttribute('aria-expanded', 'false');
+  readerSearchInput.value = '';
+  readerSearchBtn.focus();
+}
+
+async function showReaderSearchResult(index) {
+  if (!readerSearchResults.length || !activeEngine) return;
+  readerSearchIndex =
+    (index + readerSearchResults.length) % readerSearchResults.length;
+  const result = readerSearchResults[readerSearchIndex];
+  readerSearchCount.textContent =
+    (readerSearchIndex + 1) + ' of ' + readerSearchResults.length;
+  readerSearchExcerpt.textContent =
+    (result.label ? result.label + ' · ' : '') + (result.excerpt || '');
+  await activeEngine.jumpToSearchResult?.(result);
+}
+
+async function runReaderSearch() {
+  const query = readerSearchInput.value.trim();
+  const engine = activeEngine;
+  const run = ++readerSearchRun;
+  try { engine?.clearSearch?.(); } catch (_) {}
+  readerSearchResults = [];
+  readerSearchIndex = -1;
+  readerSearchExcerpt.textContent = '';
+  if (!query || !engine) {
+    readerSearchCount.textContent = 'No search';
+    readerSearchPrev.disabled = true;
+    readerSearchNext.disabled = true;
+    return;
+  }
+  readerSearchCount.textContent = 'Searching…';
+  readerSearchPrev.disabled = true;
+  readerSearchNext.disabled = true;
+  try {
+    const results = await engine.search?.(query);
+    if (run !== readerSearchRun || engine !== activeEngine) return;
+    readerSearchResults = Array.isArray(results) ? results : [];
+    if (!readerSearchResults.length) {
+      readerSearchCount.textContent = 'No matches';
+      readerSearchExcerpt.textContent = 'Try a different word or phrase.';
+      return;
+    }
+    readerSearchPrev.disabled = false;
+    readerSearchNext.disabled = false;
+    await showReaderSearchResult(0);
+  } catch (error) {
+    if (run !== readerSearchRun) return;
+    readerSearchCount.textContent = 'Search failed';
+    readerSearchExcerpt.textContent = error?.message || 'This format could not be searched.';
+  }
+}
+
+readerSearchBtn.addEventListener('click', () => {
+  if (readerSearchbar.hidden) openReaderSearch();
+  else closeReaderSearch();
+});
+readerSearchbar.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void runReaderSearch();
+});
+readerSearchInput.addEventListener('input', () => {
+  clearTimeout(readerSearchTimer);
+  readerSearchTimer = setTimeout(() => void runReaderSearch(), 250);
+});
+readerSearchPrev.addEventListener('click', () => {
+  void showReaderSearchResult(readerSearchIndex - 1);
+});
+readerSearchNext.addEventListener('click', () => {
+  void showReaderSearchResult(readerSearchIndex + 1);
+});
+readerSearchClose.addEventListener('click', closeReaderSearch);
 
 function syncReaderPrefsControls() {
   const p = normaliseReaderPrefs(activeReaderPrefs);
@@ -2247,6 +2835,8 @@ async function switchLibraryBackend(target) {
     storageDialog.close();
     updateStorageButton();
     libraryFilter = '';
+    clearCoverObjectUrls();
+    void drainCoverCleanup();
     await listLibrary();
     showToast('Now using ' + backendLabel(target) + '. Nothing was copied or deleted.');
   } catch (err) {
@@ -2444,6 +3034,11 @@ function enterReaderView(filename) {
 }
 
 function teardownReaderView() {
+  resetReaderSearch();
+  readerSearchbar.hidden = true;
+  readerSearchBtn.hidden = true;
+  readerSearchBtn.classList.remove('is-active');
+  readerSearchBtn.setAttribute('aria-expanded', 'false');
   if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
   activeSidecar = null;
   activeBookId = null;
@@ -2614,8 +3209,10 @@ function boot() {
     const signature = String(!!caps.fs) + ':' + (caps.fsBackend || '') + ':' + connectedBackends().join(',');
     if (!force && !decided && !caps.fs) return;
     if (!force && decided && signature === lastStorageSignature) return;
+    if (decided && signature !== lastStorageSignature) clearCoverObjectUrls();
     decided = true;
     lastStorageSignature = signature;
+    void drainCoverCleanup();
     if (!caps.fs) renderHostedNoStorage();
     else if (!reader.classList.contains('is-open')) void listLibrary();
   }
@@ -2642,6 +3239,7 @@ function boot() {
 
   // Flush pending sidecar writes on close
   window.addEventListener('beforeunload', flushPendingWritesSync);
+  window.addEventListener('beforeunload', clearCoverObjectUrls);
   naklios.beforeClose(flushPendingWritesSync);
 
   // Keyboard navigation in the reader view.
@@ -2649,6 +3247,16 @@ function boot() {
   // and bookmark labels doesn't trigger page flips.
   window.addEventListener('keydown', async (e) => {
     if (!reader.classList.contains('is-open')) return;
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+      e.preventDefault();
+      openReaderSearch();
+      return;
+    }
+    if (e.key === 'Escape' && !readerSearchbar.hidden) {
+      e.preventDefault();
+      closeReaderSearch();
+      return;
+    }
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     if (e.key === 'ArrowRight' || e.code === 'Space' || e.key === ' ') {

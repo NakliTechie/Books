@@ -1,6 +1,6 @@
 # books
 
-> **Lifecycle:** `living` — v1 shipped; v1.1 base-utilities upgrade implemented locally.
+> **Lifecycle:** `living` — v1.2 library and search upgrade.
 
 Books is a single-file, browser-native reader for ePub, PDF, MOBI, AZW3, FB2, TXT, Markdown, and HTML, slotted into NakliOS as the `books` app. Books and their sidecars live under `apps/books/` in the Folder or encrypted Crate selected for Books. Each backend remains a separate library; switching never copies or deletes data.
 
@@ -16,6 +16,17 @@ Standalone mode remains a one-book, in-memory preview. NakliOS always keeps Book
 - Reader appearance controls for font size, line height, text width, and color profile.
 - Appearance defaults persist locally; hosted books can store a per-book override in their sidecar.
 - PDF pages retain their authored layout.
+
+## v1.2 highlights
+
+- Library rows and Continue Reading show cached cover thumbnails. Foliate
+  formats use the package cover, PDFs use page one, and unreadable/missing
+  covers retain a typographic fallback without blocking the book.
+- Cover files stay inside the active Books Folder or Crate namespace and are
+  never reused across a storage switch.
+- Find-in-book (`Cmd/Ctrl+F`) searches EPUB/MOBI/AZW3/FB2 through Foliate's
+  CFI-aware engine, PDF text page by page, and TXT/Markdown/HTML through the
+  text adapter. Results cycle through one common accessible search bar.
 
 ## How this fits in the repo
 
@@ -56,6 +67,7 @@ naklios-universe/
 - [x] Stage 6 — Security sweep
 - [x] Stage 7 — Frontend walkthrough documented
 - [x] v1.1 — Folder/Crate switching, library management, and reader preferences
+- [x] v1.2 — cached covers and cross-engine in-book search
 - [x] Contract test at `scripts/test-books-v1_1.mjs`
 - [x] Safe two-backend browser fixture at `test/host-harness.html`
 
