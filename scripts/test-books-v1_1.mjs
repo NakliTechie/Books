@@ -39,6 +39,8 @@ assert.match(html, /scrollbar-color:\s*var\(--line\)\s*transparent/, 'Books scro
 assert.match(html, /id="reader-library"/, 'reader keeps the library visible in a sidebar');
 assert.match(html, /id="reader-library-list"/, 'reader sidebar includes the library contents');
 assert.match(html, /id="reader-open-file"/, 'reader includes an explicit file-open control');
+assert.match(html, /id="reader-searchbar"/, 'reader includes an in-book search surface');
+assert.match(html, /Find in book \(⌘F\)/, 'reader advertises the standard search shortcut');
 assert.match(html, /function renderReaderLibrary\(\)/, 'reader library can refresh without leaving the book');
 assert.match(
   html,
@@ -103,6 +105,26 @@ for (const id of [
   assert.match(html, new RegExp(`id="${id}"`), `reader preference control ${id} exists`);
 }
 assert.match(html, /readerPrefs:\s*null/, 'new sidecars support per-book reader preferences');
+assert.match(html, /coverPath:\s*null/, 'new sidecars track a backend-local cached cover');
+assert.match(html, /covers\/' \+ activeBookId|covers\/' \+ bookId/,
+  'cover thumbnails are written to the Books namespace');
+assert.match(html, /makeCoverThumbnail\(source\)/,
+  'format covers are resized before caching when the browser can decode them');
+assert.match(
+  html,
+  /const isCurrent = \(\) =>[\s\S]*?token === coverWriteTokens\.get\(bookId\)[\s\S]*?backendId === activeBackendId\(\)/,
+  'late cover extraction must not cross a removed book or backend switch',
+);
+assert.match(html, /clearCoverObjectUrls\(\)/,
+  'cover blob URLs have an explicit storage-switch and teardown cleanup path');
+assert.match(html, /engine\.getCover\?\.\(\)/,
+  'cover extraction stays behind the common engine interface');
+assert.match(html, /this\.view\?\.book\?\.getCover\?\.\(\)/,
+  'Foliate formats use their package cover');
+assert.match(html, /canvas\[data-page-num="1"\]/,
+  'PDF covers use the rendered first page');
+assert.match(html, /class="book-cover/,
+  'library rows render visual cover slots with a stable fallback');
 assert.match(html, /activeSidecar\.readerPrefs/, 'reader preferences persist into the active sidecar');
 assert.match(html, /applyPreferences\(prefs\)/, 'reader engines implement preference application');
 assert.match(html, /PDFs retain their authored page layout/, 'PDF preference behavior is explicit');
@@ -121,6 +143,23 @@ assert.match(
   /src\.startsWith\('blob:'\)[\s\S]*?\(\?:xhtml\|html\)[\s\S]*?srcdoc\s*=\s*await response\.text\(\)[\s\S]*?this\.#iframe\.srcdoc\s*=\s*srcdoc/,
   'vendored paginator uses srcdoc for XHTML blob sections that Chromium may leave pending',
 );
+for (const method of [
+  'async search(query)',
+  'async jumpToSearchResult(result)',
+  'clearSearch()',
+]) {
+  assert.ok(html.includes(method), `reader engines expose ${method}`);
+}
+assert.match(html, /const iterator = this\.view\.search[\s\S]*?for await \(const item of iterator\)/,
+  'Foliate search uses its CFI-aware full-book search');
+assert.match(html, /await page\.getTextContent\(\)/,
+  'PDF search extracts authored text page by page');
+assert.match(html, /this\.searchText\.toLocaleLowerCase\(\)/,
+  'plain-text search uses the loaded document text');
+assert.match(html, /await activeEngine\.jumpToSearchResult\?\.\(result\)/,
+  'cycling matches jumps through the active engine adapter');
+assert.match(html, /\(e\.metaKey \|\| e\.ctrlKey\) && e\.key\.toLowerCase\(\) === 'f'/,
+  'Cmd/Ctrl+F opens Books search instead of browser find');
 assert.match(harness, /fsa:\s*new Map/, 'browser fixture provides an isolated Folder library');
 assert.match(harness, /crate:\s*new Map/, 'browser fixture provides an isolated Crate library');
 assert.match(harness, /\['library\/Harness\.epub',\s*minimalEpub\(\)\]/, 'browser fixture provides a real binary EPUB path');
@@ -132,6 +171,14 @@ assert.match(
   /getElementById\('next-btn'\)[\s\S]*?next\.click\(\)[\s\S]*?prev\.click\(\)[\s\S]*?next\.click\(\)/,
   'browser harness exercises Next, Previous, then an advanced page',
 );
+assert.match(harness, /properties="cover-image"/,
+  'real EPUB fixture includes a package-declared cover');
+assert.match(
+  harness,
+  /reader-search-input[\s\S]*?deterministic[\s\S]*?reader-search-count[\s\S]*?1 of/,
+  'browser harness searches the real EPUB and observes a result');
+assert.ok(harness.includes('^covers\\/Harness-[a-z0-9-]+\\.cover$'),
+  'browser harness proves the EPUB cover reaches hosted storage');
 assert.match(
   harness,
   /positionFromStore\(\)[\s\S]*?back-btn[\s\S]*?reopenedRow\.click\(\)[\s\S]*?hosted EPUB position restoration/,
