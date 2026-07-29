@@ -18,6 +18,8 @@ for (const [index, match] of [...harness.matchAll(/<script>([\s\S]*?)<\/script>/
 assert.match(html, /fsBackends:\s*\[\]/, 'vendored SDK exposes connected storage backends');
 assert.match(html, /fsBackend:\s*null/, 'vendored SDK exposes the active backend');
 assert.match(html, /useBackend:\s*function/, 'vendored SDK supports host-mediated backend switching');
+assert.match(html, /openSettings:\s*function/, 'vendored SDK can open trusted NakliOS settings');
+assert.match(html, /Open Storage settings…/, 'disconnected Books offers a direct storage recovery action');
 assert.match(html, /Nothing is copied or deleted/, 'storage picker explains backend isolation');
 assert.match(html, /async function flushPendingWrites\(\)/, 'backend switching can await reading-state writes');
 assert.match(

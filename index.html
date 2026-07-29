@@ -746,6 +746,9 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     ready: function () { send('naklios:ready'); },
     title: function (s) { send('naklios:title', { title: String(s) }); },
     close: function () { send('naklios:close'); },
+    openSettings: function (section) {
+      send('naklios:open-settings', { section: String(section || '') });
+    },
     beforeClose: function (cb) { beforeCloseCb = typeof cb === 'function' ? cb : null; },
     theme: {
       get current() { return currentTheme; },
@@ -1436,7 +1439,11 @@ function renderHostedNoStorage() {
     '<div class="center"><div class="card">' +
       '<h2>📖 No storage connected</h2>' +
       "<p>Connect a Folder or Crate in NakliOS settings. Books keeps each library, reading position, bookmarks, and notes inside that selected backend.</p>" +
+      '<button class="add-btn-secondary" id="open-storage-settings" type="button">Open Storage settings…</button>' +
     '</div></div>';
+  document.getElementById('open-storage-settings')?.addEventListener('click', () => {
+    naklios.openSettings('storage');
+  });
 }
 
 function renderLibraryEmpty() {
@@ -2219,7 +2226,10 @@ function showStorageDialog() {
           '<small>' + (id === 'crate' ? 'Encrypted, multi-device storage' : 'Mounted local folder') + '</small>' +
         '</button>'
       ).join('')
-    : '<p>No Folder or Crate is connected. Connect one in NakliOS settings first.</p>';
+    : '<button class="books-dialog-choice" type="button" data-open-settings>' +
+        '<strong>Open NakliOS Storage settings…</strong>' +
+        '<small>Connect a Folder or encrypted Crate, then return here.</small>' +
+      '</button>';
   storageDialog.showModal();
 }
 
@@ -2250,6 +2260,11 @@ async function switchLibraryBackend(target) {
 storageBtn.addEventListener('click', showStorageDialog);
 readerStorageBtn.addEventListener('click', showStorageDialog);
 storageDialogList.addEventListener('click', (event) => {
+  if (event.target.closest('[data-open-settings]')) {
+    storageDialog.close();
+    naklios.openSettings('storage');
+    return;
+  }
   const choice = event.target.closest('[data-backend]');
   if (choice) switchLibraryBackend(choice.getAttribute('data-backend'));
 });
