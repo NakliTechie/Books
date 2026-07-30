@@ -494,6 +494,94 @@ Books' current installation or a central service?
 
 ---
 
+## Phase 7A — Standalone folder libraries and durable sidecars
+
+**Status:** Pending architecture and performance spike. This extends
+standalone Books with an optional user-granted folder backend; it does not
+remove the permission-free IndexedDB Browser backend.
+
+**Question:** Can Books use an existing filesystem collection in place, keep
+canonical metadata beside it, and reconcile large libraries without making
+startup or reading depend on a full rescan?
+
+### Product contract
+
+1. Add **Add folder** beside **Add book** in standalone mode.
+2. Treat each selected root as an explicit physical library. Do not silently
+   merge it with Browser, NakliOS Folder, Crate, or another selected root.
+3. Read supported source files in place. Do not duplicate their bytes into
+   IndexedDB by default.
+4. Store canonical portable records in a documented Books-owned sidecar
+   directory inside the selected root:
+   - Work, edition, and asset manifests.
+   - Reading positions, bookmarks, highlights, and notes.
+   - User-authored metadata, shelves, saved views, and concept curation.
+   - Version, tombstone, conflict, migration, and repair records.
+5. Keep originals immutable. Only the sidecar directory is writable unless a
+   separate, explicit file-management action is approved.
+6. Treat a remembered directory handle in IndexedDB as a convenience pointer,
+   never as the sole copy of canonical user data.
+7. On lost permission, show the library as disconnected and offer re-grant.
+   Never interpret permission loss as file deletion.
+8. Keep the root usable with user-selected backup, NAS, cloud-drive, or
+   peer-sync tools. Books does not choose or activate a transport, but must
+   reconcile externally delivered sources and sidecar revisions.
+
+### Reconciliation and scale work
+
+1. Define a versioned folder layout, reserved directory name, checksums, and
+   migration rules before writing user folders.
+2. Implement a cheap inventory pass using relative path, file type, byte size,
+   and modification time; hash and parse only new or plausibly changed files.
+3. Make scans incremental, checkpointed, resumable, pausable, cancellable, and
+   observable. Reading an already-known book must not wait for the scan.
+4. Reconcile new and changed books while connected through manual refresh,
+   focus/visibility refresh, and a bounded background cadence. Do not promise
+   a native filesystem watcher where the platform does not provide one.
+5. Route missing sources into a reviewable availability/tombstone flow.
+   Require repeated confirmation or an explicit user action before treating a
+   disappearance as deletion.
+6. Detect likely renames through stable fingerprints without duplicating a
+   work or discarding its metadata.
+7. Add recursive-scan controls, exclusions, supported-extension filtering,
+   and clear handling for unreadable or partially granted subdirectories.
+8. Virtualize library rendering and bound concurrent filesystem, parsing,
+   cover, and indexing work.
+9. Define journaled or otherwise recoverable sidecar writes so interruption
+   cannot leave canonical metadata half-written.
+10. Decide whether derived indexes and media are stored in a folder cache
+    subtree, browser cache, or either; they remain rebuildable in every case.
+11. Apply the existing version, tombstone, and conflict contract when an
+    external sync tool delivers concurrent or partial sidecar changes.
+
+### Benchmarks and tests
+
+- 1k-book normal collection, 10k-book large collection, and a stress-scale
+  mixed tree with unrelated files and deep nesting.
+- Cold inventory, warm no-change rescan, one-file change, bulk add, rename,
+  move, and external delete.
+- Externally synchronized additions, concurrent metadata edits, partial
+  sidecar delivery, and conflict recovery.
+- Reload, tab close, browser crash, permission revocation, directory rename,
+  malformed sidecar, and interrupted sidecar write.
+- Browser site-data deletion followed by folder reconnect restores canonical
+  metadata and annotations from the folder.
+- Source files remain byte-identical after import, reading, metadata edits,
+  rebuilding, and repair.
+- Browser, NakliOS Folder, and Crate contract tests continue to pass without
+  accidental cross-backend copying.
+
+### Exit gate
+
+- The portable folder format and recovery behavior are documented before beta.
+- A warm rescan is proportional to changed inventory, not total book content.
+- Large scans never block opening a known book or monopolize the main thread.
+- Removing browser site data does not remove canonical folder metadata.
+- Permission loss and missing files are recoverable, visible states—not silent
+  deletion events.
+
+---
+
 ## Phase 8 — Additional formats and extraction breadth
 
 **Status:** Parked behind semantic-core stability.
@@ -654,6 +742,7 @@ Each accepted large bet receives a separate spec, threat model, and work plan.
 | DjVu support | `DEFERRED.md` | Phase 8 | Parked |
 | Legacy AZW support | `DEFERRED.md` | Phase 8 | Rejected for core |
 | Multiple libraries / shelves | `DEFERRED.md` | Phase 3 shelves; Phase 7 backend movement | Shelves shipped; backend movement parked |
+| Standalone folder libraries and durable sidecars | `DEFERRED.md` | Phase 7A | Pending architecture and performance spike |
 | Cross-device conflict resolution | `DEFERRED.md` | Phase 7 | Contract shipped; transport pending decision |
 | Library index format migration | `DEFERRED.md` | Phase 1 | Shipped |
 
@@ -691,7 +780,9 @@ opening one of the remaining gates rather than silently expanding scope:
    caching, and consent bar.
 5. Decide whether to select a sovereign sync transport for the documented
    record/conflict contract.
-6. Re-rank the parked Phase 8 formats and Phase 9 Calibre-shaped separate bets.
+6. Run the standalone folder-library spike and approve its portable sidecar
+   layout, permission recovery, reconciliation semantics, and scale targets.
+7. Re-rank the parked Phase 8 formats and Phase 9 Calibre-shaped separate bets.
 
 The standing product test remains:
 

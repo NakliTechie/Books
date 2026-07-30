@@ -30,6 +30,7 @@ This is the consolidated queue, not a committed release roadmap:
 | Local embeddings / semantic-similarity index | Pending product decision | Demonstrate material value beyond lexical retrieval and define storage/privacy |
 | Metadata and cover provider | Pending policy decision | Approve licensing, attribution, caching, and destination consent |
 | Sovereign sync transport and mobile continuity | Pending product decision | Select a transport for the shipped version/tombstone/conflict contract |
+| Standalone folder libraries with durable sidecar metadata | Pending architecture and performance spike | Approve the folder layout, reconciliation rules, permission recovery, and large-library benchmarks |
 | TTS, dictionaries, reading profiles, and deeper reader controls | Pending per-feature evaluation | Rank against observed reader demand and accessibility impact |
 | Generated title cards and other derived media | Pending product decision | Open the Phase 6 artifact pipeline |
 | CBZ/CBR and DjVu | Parked | Approve dedicated reader/extractor contracts and representative corpora |
@@ -218,6 +219,58 @@ bookmarks, notes, and cached covers without requiring a directory permission.
 The earlier FSA-handle proposal was not used: IndexedDB gives the standalone
 site a permission-free library while the shared `naklios.fs` surface keeps the
 reader code identical across Browser, Folder, and Crate backends.
+
+### Standalone folder libraries and durable sidecars
+
+**Status:** Pending. IndexedDB remains the shipped, permission-free Browser
+backend; this work adds an optional folder-backed standalone library rather
+than replacing it.
+
+The user can choose **Add folder** and grant Books access to an existing
+collection. Books reconciles supported files in that folder, reads sources in
+place instead of copying them into IndexedDB, and writes canonical portable
+metadata into a Books-owned sidecar directory inside the selected folder.
+That folder metadata includes work/edition manifests, reading state,
+annotations, user edits, curation, and sync/tombstone records. Search indexes,
+thumbnails, embeddings, and other reproducible caches remain explicitly
+derived and may be kept locally or in a separate cache subtree.
+Because the library remains an ordinary directory, the user's existing
+backup, NAS, cloud-drive, or peer-sync tool can carry sources and portable
+sidecars together. Books does not silently choose that transport; it
+reconciles externally arrived changes through the version/conflict contract.
+
+The directory handle may be remembered in IndexedDB as a reconnect
+convenience, but IndexedDB must not be the only copy of canonical metadata.
+Losing browser site data should not erase the library's reading history or
+user-authored records when the source folder still exists.
+
+Folder reconciliation must be incremental and reviewable:
+
+- Inventory paths, sizes, and modification times first; fingerprint only new
+  or changed candidates.
+- Checkpoint long scans, run them away from the main interaction path, and
+  expose progress, pause, cancel, and manual rescan controls.
+- Reconcile additions and changes automatically while connected. A missing
+  file or lost permission is not an immediate destructive delete; removals
+  enter a reviewable/tombstoned state.
+- Support recursive scanning with explicit exclusions and never traverse or
+  write outside the granted root.
+- Keep source files immutable. Books writes only to its documented sidecar
+  area unless the user explicitly requests a file operation.
+- Virtualize large library views and benchmark cold scan, warm rescan, change
+  detection, memory, and recovery on collections large enough to expose
+  browser limits.
+
+Open architecture questions include the sidecar directory name and schema,
+atomic/journaled writes across browser implementations, case and path
+normalization, rename detection, external metadata edits, multiple folder
+roots, permission re-grant UX, and whether optional derived data belongs in
+the folder. The spike must also test conflicts and partial updates caused by
+external folder-sync tools.
+
+**Trigger to revisit:** Run the Phase 7A spike with representative 1k, 10k,
+and stress-scale collections, then approve the portable directory contract
+and reconciliation behavior.
 
 ### Cross-device sync conflict resolution
 

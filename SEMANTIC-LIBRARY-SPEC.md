@@ -31,6 +31,9 @@ The existing product remains the base:
 - The faithful Foliate, PDF, and Text readers continue to work.
 - Browser, Folder, and Crate remain distinct storage backends.
 - Standalone operation remains permission-free through IndexedDB.
+- A future optional standalone folder backend may read an existing collection
+  in place and keep canonical portable sidecars inside that folder; IndexedDB
+  remains available for users who do not grant directory access.
 - NakliOS hosting continues through the cross-origin SDK contract.
 - Existing source files, positions, bookmarks, notes, covers, and preferences
   remain valid during migration.
@@ -523,6 +526,27 @@ Secrets, raw credentials, and unrelated prompts are never written into library
 records.
 
 ## Portability and synchronization
+
+### Future standalone folder library
+
+Standalone Books may attach a user-selected directory as a distinct physical
+library. Source books remain in place and immutable. Canonical work records,
+reading state, annotations, user metadata, and reconciliation history live in
+a documented Books-owned sidecar directory within the granted root, rather
+than existing only in origin-scoped browser storage.
+
+A directory handle remembered in IndexedDB is only a reconnect convenience.
+The folder must remain recoverable after browser site-data loss. Folder
+reconciliation is incremental, checkpointed, and non-destructive: lost
+permission or a temporarily missing source produces a visible disconnected or
+review state, never an inferred permanent delete.
+
+The directory stays compatible with the user's chosen backup or sync tool.
+Books does not silently select a cloud transport; externally delivered changes
+are reconciled using the library's version, tombstone, and conflict rules.
+
+The design, directory format, and scale gates are pending in Phase 7A of the
+work plan.
 
 ### Export and restore
 
