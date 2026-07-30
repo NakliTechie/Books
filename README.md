@@ -101,6 +101,8 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
 - [SPEC.md](SPEC.md)
 - [walkthroughs.md](walkthroughs.md)
 - [DEFERRED.md](DEFERRED.md)
+- [CALIBRE-RESEARCH.md](CALIBRE-RESEARCH.md) — official feature inventory and
+  next-session comparison worksheet for 2026-07-31
 
 ## Context
 
