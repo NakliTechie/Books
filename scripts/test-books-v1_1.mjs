@@ -10,7 +10,7 @@ const paginator = readFileSync(
 
 for (const [index, match] of [...html.matchAll(/<script(?:\s+type="module")?>([\s\S]*?)<\/script>/g)].entries()) {
   const parseable = match[1].replace(
-    /import\s*\{[\s\S]*?\}\s*from\s*['"][^'"]+['"];\s*/,
+    /import\s*\{[\s\S]*?\}\s*from\s*['"][^'"]+['"];\s*/g,
     '',
   );
   assert.doesNotThrow(() => new Function(parseable), `inline Books script ${index + 1} parses`);
@@ -44,6 +44,8 @@ assert.match(html, /requestStandalonePersistence\(\)/,
   'standalone adds request durable browser storage when available');
 assert.match(html, /from '\.\/semantic-library\.js'/,
   'Books loads the shared semantic-library domain model');
+assert.match(html, /from '\.\/semantic-processing\.js'/,
+  'Books loads the shared local processing pipeline');
 assert.match(html, /async function ensureSemanticFoundation\(/,
   'library scans reconcile portable work manifests');
 assert.match(html, /async function syncPortableAnnotationsForManifest\(/,
@@ -62,6 +64,18 @@ assert.match(
   html,
   /semantic catalog unavailable; using source scan/,
   'catalog failure preserves the faithful source-scan reader fallback',
+);
+assert.match(html, /async function extractSectionsForAsset\(/,
+  'background processing uses format-aware parsers');
+assert.match(
+  html,
+  /error\.code = 'ocr-required'[\s\S]*?waiting-for-ocr/,
+  'image-only PDFs report an explicit OCR requirement',
+);
+assert.match(
+  html,
+  /function scheduleSemanticProcessing\(\)[\s\S]*?setTimeout[\s\S]*?runSemanticProcessingQueue/,
+  'semantic work is scheduled after reading readiness instead of blocking scans',
 );
 assert.match(html, /useBackend:\s*function/, 'vendored SDK supports host-mediated backend switching');
 assert.match(html, /ai:\s*false/, 'vendored SDK exposes Local AI capability state');
@@ -84,6 +98,29 @@ assert.match(
 
 assert.match(html, /id="library-filter"/, 'library includes a filter');
 assert.match(html, /id="library-sort"/, 'library includes a sort chooser');
+assert.match(html, /id="semantic-search-input"/,
+  'library includes full-text search across local passage indexes');
+assert.match(html, /async function runSemanticLibrarySearch\(/,
+  'library full-text search reads its offline per-work indexes');
+assert.match(
+  html,
+  /searchLexicalIndex\(index, normalized\)[\s\S]*?data-semantic-result/,
+  'library full-text results retain navigable passage identities',
+);
+assert.match(
+  html,
+  /async function openSemanticSearchResult\([\s\S]*?activeEngine\.jumpTo/,
+  'library full-text results jump back to a faithful reader anchor',
+);
+assert.match(html, /id="work-details-dialog"/,
+  'portable work metadata has an app-styled editor');
+assert.match(html, /function openWorkDetails\(/,
+  'work details load portable metadata and local processing state');
+assert.match(
+  html,
+  /updateWorkDetails\(current[\s\S]*?portable-metadata-changed[\s\S]*?scheduleSemanticProcessing/,
+  'metadata edits persist canonically and refresh affected search metadata',
+);
 assert.match(html, /scrollbar-color:\s*var\(--line\)\s*transparent/, 'Books scrollbars use its active theme');
 assert.match(html, /id="reader-library"/, 'reader keeps the library visible in a sidebar');
 assert.match(html, /id="reader-library-list"/, 'reader sidebar includes the library contents');
@@ -270,6 +307,21 @@ assert.match(
   harness,
   /jsonFromStore\('annotations\/' \+ recoveredWorkId \+ '\.json'\)[\s\S]*?annotation\.kind === 'note'[\s\S]*?annotation\.kind === 'bookmark'/,
   'browser harness verifies recovered notes and bookmarks become portable annotations',
+);
+assert.match(
+  harness,
+  /jobs\/' \+ sampleWorkId[\s\S]*?deterministicSemantics[\s\S]*?semantic\/' \+ sampleWorkId \+ '\/passages\.json'[\s\S]*?indexes\/works\/' \+ sampleWorkId[\s\S]*?concept\.evidence/,
+  'browser harness verifies the resumable local processing outputs',
+);
+assert.match(
+  harness,
+  /semantic-search-input[\s\S]*?data-semantic-result[\s\S]*?Search result/,
+  'browser harness verifies library search navigates to the source reader',
+);
+assert.match(
+  harness,
+  /work-details-dialog[\s\S]*?Sample Field Notes[\s\S]*?portable work metadata write/,
+  'browser harness verifies user-owned work metadata editing',
 );
 
 console.log('Books persistent storage and library contract: PASS');

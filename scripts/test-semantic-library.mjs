@@ -10,6 +10,9 @@ import {
   rebuildCatalog,
   semanticAnnotationsPath,
   semanticManifestPath,
+  sha256Fingerprint,
+  updateAssetFingerprint,
+  updateWorkDetails,
   updateWorkMetadata,
   workForFilename,
 } from '../semantic-library.js';
@@ -113,6 +116,66 @@ assert.equal(metadata.manifest.title, 'Field Notes');
 assert.deepEqual(metadata.manifest.authors, [
   { name: 'A. Researcher', source: 'legacy-sidecar' },
 ]);
+
+const sourceBytes = new TextEncoder().encode('immutable source bytes');
+const fingerprint = await sha256Fingerprint(sourceBytes);
+assert.match(fingerprint, /^sha256:[a-f0-9]{64}$/);
+const fingerprinted = updateAssetFingerprint(
+  first.manifests[0],
+  first.manifests[0].assets[0].assetId,
+  { fingerprint, byteLength: sourceBytes.byteLength },
+  now,
+);
+assert.equal(fingerprinted.changed, true);
+assert.equal(fingerprinted.manifest.assets[0].fingerprintStatus, 'complete');
+assert.equal(fingerprinted.manifest.assets[0].fingerprint, fingerprint);
+assert.equal(fingerprinted.manifest.assets[0].byteLength, sourceBytes.byteLength);
+assert.equal(
+  updateAssetFingerprint(
+    fingerprinted.manifest,
+    fingerprinted.manifest.assets[0].assetId,
+    { fingerprint, byteLength: sourceBytes.byteLength },
+    now,
+  ).changed,
+  false,
+  'repeating the same fingerprint is idempotent',
+);
+
+const details = updateWorkDetails(first.manifests[0], {
+  title: 'Pride & Prejudice',
+  authors: ['Jane Austen'],
+  tags: ['classic', 'fiction', 'classic'],
+  shelves: ['Favourites'],
+  rating: 5,
+}, now);
+assert.equal(details.changed, true);
+assert.equal(details.manifest.title, 'Pride & Prejudice');
+assert.deepEqual(details.manifest.authors, [{ name: 'Jane Austen', source: 'user' }]);
+assert.deepEqual(details.manifest.userMetadata.tags, ['classic', 'fiction']);
+assert.deepEqual(details.manifest.userMetadata.shelves, ['Favourites']);
+assert.equal(details.manifest.userMetadata.rating, 5);
+assert.equal(details.manifest.metadataProvenance.title, 'user');
+assert.equal(details.manifest.metadataProvenance.authors, 'user');
+const protectedUserDetails = updateWorkMetadata(details.manifest, {
+  bookId: 'Pride_Prejudice',
+  title: 'Stale Sidecar Title',
+  author: 'Stale Sidecar Author',
+}, now);
+assert.equal(protectedUserDetails.manifest.title, 'Pride & Prejudice');
+assert.deepEqual(protectedUserDetails.manifest.authors, [
+  { name: 'Jane Austen', source: 'user' },
+]);
+assert.equal(
+  updateWorkDetails(details.manifest, {
+    title: 'Pride & Prejudice',
+    authors: ['Jane Austen'],
+    tags: ['fiction', 'classic'],
+    shelves: ['Favourites'],
+    rating: 5,
+  }, now).changed,
+  false,
+  'repeating normalized work details is idempotent',
+);
 
 const annotationFirst = reconcileLegacyAnnotations({
   manifest: first.manifests[0],

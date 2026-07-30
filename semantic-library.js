@@ -78,6 +78,10 @@ export function makeWorkManifest({
     workId,
     title,
     authors: authorRecords(sidecar?.author),
+    metadataProvenance: {
+      title: sidecar?.title ? 'legacy-sidecar' : 'filename',
+      authors: sidecar?.author ? 'legacy-sidecar' : null,
+    },
     userMetadata: {
       rating: null,
       tags: [],
@@ -120,12 +124,24 @@ export function updateWorkMetadata(manifest, sidecar, now = () => new Date().toI
   let changed = false;
   const title = typeof sidecar.title === 'string' ? sidecar.title.trim() : '';
   const authors = authorRecords(sidecar.author);
-  if (title && next.title !== title) {
+  if (title && next.title !== title && next.metadataProvenance?.title !== 'user') {
     next.title = title;
+    next.metadataProvenance = {
+      ...(next.metadataProvenance || {}),
+      title: 'legacy-sidecar',
+    };
     changed = true;
   }
-  if (authors.length && !jsonEqual(next.authors, authors)) {
+  if (
+    authors.length
+    && !jsonEqual(next.authors, authors)
+    && next.metadataProvenance?.authors !== 'user'
+  ) {
     next.authors = authors;
+    next.metadataProvenance = {
+      ...(next.metadataProvenance || {}),
+      authors: 'legacy-sidecar',
+    };
     changed = true;
   }
   const legacyBookId = sidecar.bookId;
@@ -141,6 +157,98 @@ export function updateWorkMetadata(manifest, sidecar, now = () => new Date().toI
   }
   if (changed) next.updatedAt = isoNow(now);
   return { manifest: next, changed };
+}
+
+export function updateWorkDetails(
+  manifest,
+  { title, authors, tags, shelves, rating },
+  now = () => new Date().toISOString(),
+) {
+  if (!manifest) return { manifest, changed: false };
+  const next = cloneJson(manifest);
+  const normalizedTitle = typeof title === 'string' ? title.trim() : next.title;
+  const normalizedAuthors = (Array.isArray(authors) ? authors : [authors])
+    .map((value) => typeof value === 'string' ? value.trim() : '')
+    .filter(Boolean)
+    .map((name) => ({ name, source: 'user' }));
+  const normalizeList = (value) => Array.from(new Set(
+    (Array.isArray(value) ? value : [value])
+      .map((item) => typeof item === 'string' ? item.trim() : '')
+      .filter(Boolean),
+  )).sort((left, right) => left.localeCompare(right));
+  const normalizedTags = normalizeList(tags);
+  const normalizedShelves = normalizeList(shelves);
+  const normalizedRating = rating == null || rating === ''
+    ? null : Math.max(0, Math.min(5, Number(rating)));
+
+  if (normalizedTitle) next.title = normalizedTitle;
+  next.authors = normalizedAuthors;
+  next.metadataProvenance = {
+    ...(next.metadataProvenance || {}),
+    title: 'user',
+    authors: 'user',
+  };
+  next.userMetadata = {
+    ...(next.userMetadata || {}),
+    tags: normalizedTags,
+    shelves: normalizedShelves,
+    rating: Number.isFinite(normalizedRating) ? normalizedRating : null,
+  };
+  const comparableBefore = {
+    title: manifest.title,
+    authors: manifest.authors || [],
+    userMetadata: manifest.userMetadata || {},
+    metadataProvenance: manifest.metadataProvenance || {},
+  };
+  const comparableAfter = {
+    title: next.title,
+    authors: next.authors,
+    userMetadata: next.userMetadata,
+    metadataProvenance: next.metadataProvenance,
+  };
+  if (jsonEqual(comparableBefore, comparableAfter)) {
+    return { manifest, changed: false };
+  }
+  next.updatedAt = isoNow(now);
+  return { manifest: next, changed: true };
+}
+
+export function updateAssetFingerprint(
+  manifest,
+  assetId,
+  { fingerprint, byteLength },
+  now = () => new Date().toISOString(),
+) {
+  const next = cloneJson(manifest);
+  const asset = next.assets.find((candidate) => candidate.assetId === assetId);
+  if (!asset) return { manifest, changed: false };
+  const normalizedLength = Number.isFinite(Number(byteLength))
+    ? Number(byteLength) : null;
+  if (
+    asset.fingerprint === fingerprint
+    && asset.byteLength === normalizedLength
+    && asset.fingerprintStatus === 'complete'
+  ) return { manifest, changed: false };
+  const updatedAt = isoNow(now);
+  asset.fingerprint = fingerprint;
+  asset.byteLength = normalizedLength;
+  asset.fingerprintStatus = 'complete';
+  asset.updatedAt = updatedAt;
+  next.updatedAt = updatedAt;
+  return { manifest: next, changed: true };
+}
+
+export async function sha256Fingerprint(value) {
+  let buffer;
+  if (value instanceof ArrayBuffer) buffer = value;
+  else if (ArrayBuffer.isView(value)) {
+    buffer = value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+  } else {
+    throw new Error('A binary value is required for asset fingerprinting.');
+  }
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', buffer);
+  return 'sha256:' + Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, '0')).join('');
 }
 
 function normalizeManifest(manifest) {

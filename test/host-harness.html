@@ -387,9 +387,83 @@
       ) {
         throw new Error('Recovered v1 reading data was not migrated portably');
       }
+      const sampleWorkId = recoveredCatalog?.aliases?.sourceFilenames?.['Sample.md'];
+      const sampleJob = await waitFor(() => {
+        const job = sampleWorkId
+          ? jsonFromStore('jobs/' + sampleWorkId + '.json')
+          : null;
+        return job?.stages?.deterministicSemantics?.status === 'complete'
+          ? job : null;
+      }, 'local background semantic processing');
+      const samplePassages = jsonFromStore(
+        'semantic/' + sampleWorkId + '/passages.json'
+      );
+      const sampleIndex = jsonFromStore('indexes/works/' + sampleWorkId + '.json');
+      const sampleSemantics = jsonFromStore(
+        'semantic/' + sampleWorkId + '/records.json'
+      );
+      if (
+        sampleJob.stages.fingerprint.status !== 'complete'
+        || !samplePassages?.passages?.length
+        || sampleIndex?.recordType !== 'books.lexical-index'
+        || !sampleSemantics?.concepts?.length
+        || !sampleSemantics.concepts.every(
+          (concept) => concept.evidence?.every((item) => item.passageId)
+        )
+      ) {
+        throw new Error('Local semantic pipeline did not produce grounded records');
+      }
+      app.getElementById('back-btn').click();
+      const semanticSearch = await waitFor(
+        () => app.getElementById('semantic-search-input'),
+        'library semantic search control',
+      );
+      semanticSearch.value = 'quiet';
+      semanticSearch.dispatchEvent(new Event('input', { bubbles: true }));
+      const semanticResult = await waitFor(
+        () => app.querySelector('[data-semantic-result]'),
+        'library semantic passage result',
+      );
+      if (!semanticResult.textContent.includes('Sample')) {
+        throw new Error('Semantic search result did not identify its source work');
+      }
+      semanticResult.click();
+      await waitFor(
+        () => app.getElementById('reader').classList.contains('is-open')
+          && app.getElementById('reader-title').textContent.includes('Sample')
+          && app.getElementById('reader-status').textContent.includes('Search result'),
+        'semantic result faithful-reader navigation',
+      );
+      app.getElementById('back-btn').click();
+      const detailsButton = await waitFor(
+        () => app.querySelector(
+          '.row[data-filename="Sample.md"] [data-action="details"]'
+        ),
+        'portable work details button',
+      );
+      detailsButton.click();
+      await waitFor(
+        () => app.getElementById('work-details-dialog').open,
+        'portable work details dialog',
+      );
+      app.getElementById('work-title-input').value = 'Sample Field Notes';
+      app.getElementById('work-tags-input').value = 'research, local-first';
+      app.getElementById('work-details-form').requestSubmit();
+      await waitFor(() => {
+        const catalog = jsonFromStore('catalog/catalog.json');
+        const summary = catalog?.works?.find((work) => work.workId === sampleWorkId);
+        return summary?.title === 'Sample Field Notes'
+          && summary.tags.includes('local-first');
+      }, 'portable work metadata write');
+      if (
+        !app.querySelector('.row[data-filename="Sample.md"]')
+          ?.textContent.includes('Sample Field Notes')
+      ) {
+        throw new Error('Saved portable metadata did not refresh the work row');
+      }
 
       setStatus(
-        'PASS · EPUB, semantic migration, portable annotations, and recovery work',
+        'PASS · EPUB, migration, passages, semantic search, work details, and recovery work',
         'pass',
       );
     } catch (error) {

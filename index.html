@@ -22,6 +22,10 @@
   scrollbar-width: thin;
   scrollbar-color: var(--line) transparent;
 }
+.sr-only {
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+}
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track,
 *::-webkit-scrollbar-corner { background: transparent; }
@@ -177,6 +181,7 @@ body { display: flex; flex-direction: column; }
   gap: 3px;
 }
 .library .row-details { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+.library .row-actions { display:flex; align-items:center; gap:2px; }
 .library .row-action {
   margin-left:7px; background:transparent; color:var(--muted);
   border:1px solid transparent; border-radius:5px; padding:4px 7px;
@@ -466,6 +471,33 @@ body { display: flex; flex-direction: column; }
 }
 .library-filter { flex:1; }
 .library-sort { flex:0 0 auto; }
+.semantic-search {
+  width:100%; margin-bottom:10px; display:flex; align-items:center; gap:8px;
+}
+.semantic-search input {
+  width:100%; min-width:0; background:var(--panel); color:var(--ink);
+  border:1px solid var(--line); border-radius:7px; padding:9px 11px; font:12px inherit;
+}
+.semantic-search input:focus {
+  outline:2px solid color-mix(in srgb,var(--brand) 42%,transparent); outline-offset:-1px;
+}
+.semantic-search-results {
+  margin:0 0 16px; padding:10px; border:1px solid var(--line); border-radius:9px;
+  background:color-mix(in srgb,var(--panel) 88%,var(--row)); display:grid; gap:7px;
+}
+.semantic-search-results[hidden] { display:none; }
+.semantic-result {
+  width:100%; display:grid; gap:4px; padding:10px; text-align:left; cursor:pointer;
+  border:1px solid transparent; border-radius:7px; background:var(--panel); color:var(--ink);
+  font:inherit;
+}
+.semantic-result:hover { border-color:var(--brand); background:var(--row); }
+.semantic-result strong { font-size:12px; }
+.semantic-result span { color:var(--muted); font-size:10px; }
+.semantic-result p {
+  margin:0; color:var(--ink); font:12px/1.5 Georgia,"Iowan Old Style",serif;
+}
+.semantic-search-state { margin:0; color:var(--muted); font-size:11px; }
 .add-btn {
   background: var(--brand); color: var(--panel);
   border: none; border-radius: 6px;
@@ -586,6 +618,16 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   border-radius:8px; padding:10px 12px; font:13px/1.55 system-ui,sans-serif;
 }
 .books-ai-status { min-height:18px; margin:8px 0 0; color:var(--muted); font-size:11px; }
+.work-details-dialog { width:min(620px, calc(100vw - 32px)) !important; }
+.work-processing-state {
+  margin:10px 0; padding:9px 10px; border-radius:7px; background:var(--row);
+  color:var(--muted); font-size:11px; line-height:1.45;
+}
+.work-concepts { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 0; }
+.work-concept {
+  border:1px solid var(--line); border-radius:999px; padding:5px 8px;
+  background:var(--body); color:var(--ink); font-size:10px;
+}
 @media (max-width:600px) {
   .topbar { gap:8px; padding:10px 12px; }
   .topbar-actions { min-width:0; }
@@ -717,6 +759,50 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div class="books-dialog-actions">
       <button type="submit" value="cancel">Cancel</button>
       <button class="primary" type="submit" value="save">Save label</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="books-dialog work-details-dialog" id="work-details-dialog"
+        aria-labelledby="work-details-title">
+  <form class="books-dialog-body" id="work-details-form">
+    <h3 id="work-details-title">Book details</h3>
+    <p>Edit portable work metadata. Source files are never modified.</p>
+    <div class="books-dialog-text-field">
+      <label for="work-title-input">Title</label>
+      <input id="work-title-input" type="text" maxlength="500" required>
+    </div>
+    <div class="books-dialog-text-field">
+      <label for="work-authors-input">Authors <span aria-hidden="true">·</span> comma separated</label>
+      <input id="work-authors-input" type="text" maxlength="1000">
+    </div>
+    <div class="books-dialog-text-field">
+      <label for="work-tags-input">Tags <span aria-hidden="true">·</span> comma separated</label>
+      <input id="work-tags-input" type="text" maxlength="1000">
+    </div>
+    <div class="books-dialog-text-field">
+      <label for="work-shelves-input">Shelves <span aria-hidden="true">·</span> comma separated</label>
+      <input id="work-shelves-input" type="text" maxlength="1000">
+    </div>
+    <div class="books-dialog-field">
+      <label for="work-rating-input">Rating</label>
+      <select id="work-rating-input">
+        <option value="">Not rated</option>
+        <option value="1">1 of 5</option>
+        <option value="2">2 of 5</option>
+        <option value="3">3 of 5</option>
+        <option value="4">4 of 5</option>
+        <option value="5">5 of 5</option>
+      </select>
+    </div>
+    <div class="work-processing-state" id="work-processing-state">Checking local processing…</div>
+    <div>
+      <strong style="font-size:12px">Key concepts</strong>
+      <div class="work-concepts" id="work-concepts"></div>
+    </div>
+    <div class="books-dialog-actions">
+      <button type="button" data-close-dialog="work-details-dialog">Cancel</button>
+      <button class="primary" type="submit">Save details</button>
     </div>
   </form>
 </dialog>
@@ -1279,9 +1365,25 @@ import {
   rebuildCatalog,
   semanticManifestPath,
   semanticAnnotationsPath,
+  sha256Fingerprint,
+  updateAssetFingerprint,
+  updateWorkDetails,
   updateWorkMetadata,
   workForFilename,
 } from './semantic-library.js';
+import {
+  buildLexicalIndex,
+  extractDeterministicSemantics,
+  makeProcessingRun,
+  normalizePassageText,
+  passagesPath,
+  processingRunPath,
+  searchLexicalIndex,
+  segmentSections,
+  semanticRecordsPath,
+  updateProcessingStage,
+  workLexicalIndexPath,
+} from './semantic-processing.js';
 
 const VENDOR_FOLIATE = './vendor/foliate-js@1.0.1/';
 const VENDOR_PDFJS   = './vendor/pdfjs-dist@5.7.284/';
@@ -1324,6 +1426,15 @@ const confirmDialogCancel = document.getElementById('confirm-dialog-cancel');
 const confirmDialogOk = document.getElementById('confirm-dialog-ok');
 const bookmarkLabelDialog = document.getElementById('bookmark-label-dialog');
 const bookmarkLabelInput = document.getElementById('bookmark-label-input');
+const workDetailsDialog = document.getElementById('work-details-dialog');
+const workDetailsForm = document.getElementById('work-details-form');
+const workTitleInput = document.getElementById('work-title-input');
+const workAuthorsInput = document.getElementById('work-authors-input');
+const workTagsInput = document.getElementById('work-tags-input');
+const workShelvesInput = document.getElementById('work-shelves-input');
+const workRatingInput = document.getElementById('work-rating-input');
+const workProcessingState = document.getElementById('work-processing-state');
+const workConcepts = document.getElementById('work-concepts');
 const readerPrefsBtn = document.getElementById('reader-prefs-btn');
 const readerAiBtn = document.getElementById('reader-ai-btn');
 const readerAiDialog = document.getElementById('reader-ai-dialog');
@@ -1362,6 +1473,12 @@ let bookOpenInProgress = false;
 let libraryCache = [];
 let semanticCatalog = null;
 let semanticManifests = new Map();
+let semanticProcessingTimer = null;
+let semanticProcessingTail = Promise.resolve();
+let semanticSearchTimer = null;
+let semanticSearchRun = 0;
+let semanticSearchResults = new Map();
+let workDetailsWorkId = null;
 let orphanSidecars = [];
 let orphanRecoveryTarget = null;
 let libraryFilter = '';
@@ -1887,6 +2004,489 @@ async function syncSemanticMetadata(filename, sidecar) {
   }
   const cached = libraryCache.find((entry) => entry.filename === filename);
   if (cached) cached.work = workForFilename(semanticCatalog, filename);
+}
+
+function commaSeparatedValues(value) {
+  return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function processingSummary(run) {
+  if (!run?.stages) return 'Queued for local processing.';
+  const labels = {
+    fingerprint: 'Fingerprint',
+    passages: 'Passages',
+    lexicalIndex: 'Search',
+    deterministicSemantics: 'Concepts',
+    modelSemantics: 'Local/BYOK enrichment',
+  };
+  return Object.entries(run.stages).map(([stage, value]) => {
+    const status = value?.status || 'pending';
+    const suffix = status === 'complete'
+      ? 'ready'
+      : status === 'waiting-for-ocr'
+        ? 'needs OCR'
+        : status === 'waiting-for-provider'
+          ? 'optional'
+          : status;
+    return (labels[stage] || stage) + ': ' + suffix;
+  }).join(' · ');
+}
+
+async function openWorkDetails(filename) {
+  const entry = libraryCache.find((candidate) => candidate.filename === filename);
+  const manifest = entry?.work && semanticManifests.get(entry.work.workId);
+  if (!manifest) {
+    showToast('Portable work details are not available yet.', { error: true });
+    return;
+  }
+  workDetailsWorkId = manifest.workId;
+  workTitleInput.value = manifest.title || '';
+  workAuthorsInput.value = (manifest.authors || []).map((author) => author.name).join(', ');
+  workTagsInput.value = (manifest.userMetadata?.tags || []).join(', ');
+  workShelvesInput.value = (manifest.userMetadata?.shelves || []).join(', ');
+  workRatingInput.value = manifest.userMetadata?.rating == null
+    ? '' : String(manifest.userMetadata.rating);
+  workProcessingState.textContent = 'Checking local processing…';
+  workConcepts.innerHTML = '<span class="semantic-search-state">Concepts are generated locally.</span>';
+  workDetailsDialog.showModal();
+
+  const [run, semantics] = await Promise.all([
+    readJsonRecord(processingRunPath(manifest.workId)),
+    readJsonRecord(semanticRecordsPath(manifest.workId)),
+  ]);
+  if (!workDetailsDialog.open || workDetailsWorkId !== manifest.workId) return;
+  workProcessingState.textContent = processingSummary(run);
+  const concepts = (semantics?.concepts || []).filter(
+    (concept) => !concept.userState?.hidden,
+  );
+  workConcepts.innerHTML = concepts.length
+    ? concepts.slice(0, 24).map((concept) =>
+        '<span class="work-concept" title="' +
+          escapeHtml((concept.evidence?.length || 0) + ' source passage(s)') + '">' +
+          escapeHtml(concept.userState?.labelOverride || concept.label) +
+        '</span>'
+      ).join('')
+    : '<span class="semantic-search-state">No concepts yet. Processing may still be running.</span>';
+}
+
+workDetailsDialog.addEventListener('close', () => {
+  workDetailsWorkId = null;
+});
+
+workDetailsForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const current = workDetailsWorkId && semanticManifests.get(workDetailsWorkId);
+  if (!current) return;
+  const update = updateWorkDetails(current, {
+    title: workTitleInput.value,
+    authors: commaSeparatedValues(workAuthorsInput.value),
+    tags: commaSeparatedValues(workTagsInput.value),
+    shelves: commaSeparatedValues(workShelvesInput.value),
+    rating: workRatingInput.value,
+  });
+  if (!update.changed) {
+    workDetailsDialog.close();
+    return;
+  }
+  try {
+    await naklios.fs.write(
+      semanticManifestPath(update.manifest.workId),
+      JSON.stringify(update.manifest, null, 2),
+    );
+    semanticManifests.set(update.manifest.workId, update.manifest);
+    const rebuilt = rebuildCatalog(Array.from(semanticManifests.values()), semanticCatalog);
+    semanticCatalog = rebuilt.catalog;
+    if (rebuilt.changed) {
+      await naklios.fs.write(
+        SEMANTIC_CATALOG_PATH,
+        JSON.stringify(rebuilt.catalog, null, 2),
+      );
+    }
+    const run = await readJsonRecord(processingRunPath(update.manifest.workId));
+    if (run) {
+      await writeProcessingRun(updateProcessingStage(
+        run,
+        'lexicalIndex',
+        'pending',
+        { reason: 'portable-metadata-changed' },
+      ));
+    }
+    for (const entry of libraryCache) {
+      if (entry.work?.workId === update.manifest.workId) {
+        entry.work = semanticCatalog.works.find(
+          (work) => work.workId === update.manifest.workId,
+        );
+      }
+    }
+    workDetailsDialog.close();
+    renderLibraryRows();
+    renderReaderLibrary();
+    scheduleSemanticProcessing();
+    showToast('Saved portable book details.');
+  } catch (error) {
+    showToast("Couldn't save details: " + String(error?.message || error), {
+      error: true,
+      duration: 5500,
+    });
+  }
+});
+
+function processingStillOwnsBackend(backendId) {
+  return backendId && backendId === activeBackendId() && naklios.capabilities.fs;
+}
+
+async function writeProcessingRun(run) {
+  await naklios.fs.write(processingRunPath(run.workId), JSON.stringify(run, null, 2));
+  return run;
+}
+
+function textSectionsFromSource(text, format) {
+  if (format === 'html' || format === 'htm') {
+    const doc = new DOMParser().parseFromString(text, 'text/html');
+    for (const element of doc.querySelectorAll('script, style, noscript, template')) {
+      element.remove();
+    }
+    const sections = [];
+    let current = { label: doc.title || 'Document', parts: [] };
+    for (const element of doc.body.querySelectorAll('h1, h2, h3, p, li, blockquote, pre')) {
+      const value = normalizePassageText(element.textContent);
+      if (!value) continue;
+      if (/^H[1-3]$/.test(element.tagName) && current.parts.length) {
+        sections.push({
+          label: current.label,
+          text: current.parts.join('\n\n'),
+          anchor: { kind: 'text-offset', sectionIndex: sections.length },
+        });
+        current = { label: value, parts: [] };
+      } else if (/^H[1-3]$/.test(element.tagName)) {
+        current.label = value;
+      } else {
+        current.parts.push(value);
+      }
+    }
+    if (current.parts.length) {
+      sections.push({
+        label: current.label,
+        text: current.parts.join('\n\n'),
+        anchor: { kind: 'text-offset', sectionIndex: sections.length },
+      });
+    }
+    return sections.length ? sections : [{
+      label: doc.title || 'Document',
+      text: doc.body.textContent || '',
+      anchor: { kind: 'text-offset', sectionIndex: 0 },
+    }];
+  }
+
+  if (format === 'md') {
+    const sections = [];
+    let label = 'Document';
+    let parts = [];
+    const push = () => {
+      if (!parts.length) return;
+      sections.push({
+        label,
+        text: parts.join('\n'),
+        anchor: { kind: 'text-offset', sectionIndex: sections.length },
+      });
+      parts = [];
+    };
+    for (const line of String(text).split('\n')) {
+      const heading = line.match(/^#{1,3}\s+(.+?)\s*#*\s*$/);
+      if (heading) {
+        push();
+        label = heading[1];
+      } else {
+        parts.push(line);
+      }
+    }
+    push();
+    if (sections.length) return sections;
+  }
+
+  return [{
+    label: 'Document',
+    text,
+    anchor: { kind: 'text-offset', sectionIndex: 0 },
+  }];
+}
+
+function foliateSectionLabels(book) {
+  const labels = new Map();
+  const visit = (items) => {
+    for (const item of items || []) {
+      try {
+        const resolved = book.resolveHref?.(item.href);
+        if (Number.isFinite(resolved?.index) && !labels.has(resolved.index)) {
+          labels.set(resolved.index, String(item.label || '').trim());
+        }
+      } catch (_) {}
+      if (item.subitems) visit(item.subitems);
+    }
+  };
+  visit(book.toc);
+  return labels;
+}
+
+async function extractSectionsForAsset(asset, binary) {
+  const format = asset.format;
+  if (format === 'txt' || format === 'md' || format === 'html' || format === 'htm') {
+    return textSectionsFromSource(new TextDecoder().decode(binary), format);
+  }
+
+  if (format === 'pdf') {
+    const pdfjs = await import(VENDOR_PDFJS + 'build/pdf.min.mjs');
+    pdfjs.GlobalWorkerOptions.workerSrc = VENDOR_PDFJS + 'build/pdf.worker.min.mjs';
+    const doc = await pdfjs.getDocument({
+      data: binary.slice(0),
+      cMapUrl: VENDOR_PDFJS + 'cmaps/',
+      cMapPacked: true,
+      standardFontDataUrl: VENDOR_PDFJS + 'standard_fonts/',
+    }).promise;
+    const sections = [];
+    try {
+      for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
+        const page = await doc.getPage(pageNumber);
+        const content = await page.getTextContent();
+        sections.push({
+          label: 'Page ' + pageNumber,
+          text: content.items.map((item) => item.str || '').join(' '),
+          anchor: { kind: 'pdf-page', page: pageNumber },
+        });
+      }
+    } finally {
+      try { await doc.destroy(); } catch (_) {}
+    }
+    if (!sections.some((section) => normalizePassageText(section.text))) {
+      const error = new Error('This PDF has no readable text layer. OCR is required.');
+      error.code = 'ocr-required';
+      throw error;
+    }
+    return sections;
+  }
+
+  if (format === 'epub' || format === 'mobi' || format === 'azw3' || format === 'fb2') {
+    const { makeBook } = await import(VENDOR_FOLIATE + 'view.js');
+    const file = new File([binary], asset.sourceFilename);
+    const book = await makeBook(file);
+    const labels = foliateSectionLabels(book);
+    const sections = [];
+    for (let index = 0; index < (book.sections || []).length; index++) {
+      const section = book.sections[index];
+      if (!section?.createDocument || section.linear === 'no') continue;
+      const doc = await section.createDocument();
+      for (const element of doc.querySelectorAll('script, style, noscript, template')) {
+        element.remove();
+      }
+      sections.push({
+        label: labels.get(index) || 'Section ' + (index + 1),
+        text: doc.body?.innerText || doc.body?.textContent || '',
+        anchor: {
+          kind: 'foliate-section',
+          sectionIndex: index,
+          cfi: section.cfi || null,
+        },
+      });
+      try { section.unload?.(); } catch (_) {}
+    }
+    return sections;
+  }
+
+  throw new Error('No semantic parser is available for .' + format);
+}
+
+async function processSemanticWork(manifest, backendId) {
+  const asset = manifest.assets.find((candidate) => candidate.availability === 'available');
+  if (!asset || !processingStillOwnsBackend(backendId)) return;
+  const runPath = processingRunPath(manifest.workId);
+  const previousRun = await readJsonRecord(runPath);
+  let run = makeProcessingRun({
+    workId: manifest.workId,
+    assetId: asset.assetId,
+    previous: previousRun,
+  });
+  let currentStage = 'fingerprint';
+  let binary = null;
+
+  try {
+    if (asset.fingerprintStatus !== 'complete') {
+      run = await writeProcessingRun(
+        updateProcessingStage(run, currentStage, 'running'),
+      );
+      binary = toArrayBuffer(await naklios.fs.readBinary(asset.sourcePath));
+      const fingerprint = await sha256Fingerprint(binary);
+      const update = updateAssetFingerprint(manifest, asset.assetId, {
+        fingerprint,
+        byteLength: binary.byteLength,
+      });
+      if (update.changed && processingStillOwnsBackend(backendId)) {
+        manifest = update.manifest;
+        semanticManifests.set(manifest.workId, manifest);
+        await naklios.fs.write(
+          semanticManifestPath(manifest.workId),
+          JSON.stringify(manifest, null, 2),
+        );
+      }
+      run = await writeProcessingRun(updateProcessingStage(
+        run,
+        currentStage,
+        'complete',
+        { fingerprint, byteLength: binary.byteLength },
+      ));
+    } else if (run.stages.fingerprint.status !== 'complete') {
+      run = await writeProcessingRun(updateProcessingStage(
+        run,
+        currentStage,
+        'complete',
+        {
+          fingerprint: asset.fingerprint,
+          byteLength: asset.byteLength,
+        },
+      ));
+    }
+
+    currentStage = 'passages';
+    let passageRecord = await readJsonRecord(passagesPath(manifest.workId));
+    if (
+      run.stages.passages.status !== 'complete'
+      || !passageRecord
+      || passageRecord.assetId !== asset.assetId
+      || passageRecord.extractorVersion !== 'passages-v1'
+    ) {
+      run = await writeProcessingRun(
+        updateProcessingStage(run, currentStage, 'running'),
+      );
+      if (!binary) binary = toArrayBuffer(await naklios.fs.readBinary(asset.sourcePath));
+      const sections = await extractSectionsForAsset(asset, binary);
+      const passages = await segmentSections({
+        workId: manifest.workId,
+        assetId: asset.assetId,
+        format: asset.format,
+        sections,
+      });
+      passageRecord = {
+        schemaVersion: 1,
+        recordType: 'books.passages',
+        extractorVersion: 'passages-v1',
+        workId: manifest.workId,
+        assetId: asset.assetId,
+        passages,
+        updatedAt: new Date().toISOString(),
+      };
+      if (!processingStillOwnsBackend(backendId)) return;
+      await naklios.fs.write(
+        passagesPath(manifest.workId),
+        JSON.stringify(passageRecord, null, 2),
+      );
+      run = await writeProcessingRun(updateProcessingStage(
+        run,
+        currentStage,
+        'complete',
+        { passageCount: passages.length, extractorVersion: 'passages-v1' },
+      ));
+    }
+
+    currentStage = 'lexicalIndex';
+    let lexicalIndex = await readJsonRecord(workLexicalIndexPath(manifest.workId));
+    if (
+      run.stages.lexicalIndex.status !== 'complete'
+      || !lexicalIndex
+      || lexicalIndex.indexVersion !== 'lexical-v1'
+      || lexicalIndex.assetId !== asset.assetId
+    ) {
+      run = await writeProcessingRun(
+        updateProcessingStage(run, currentStage, 'running'),
+      );
+      lexicalIndex = {
+        ...buildLexicalIndex({
+          workId: manifest.workId,
+          title: manifest.title,
+          authors: manifest.authors,
+          passages: passageRecord.passages,
+        }),
+        assetId: asset.assetId,
+        updatedAt: new Date().toISOString(),
+      };
+      if (!processingStillOwnsBackend(backendId)) return;
+      await naklios.fs.write(
+        workLexicalIndexPath(manifest.workId),
+        JSON.stringify(lexicalIndex),
+      );
+      run = await writeProcessingRun(updateProcessingStage(
+        run,
+        currentStage,
+        'complete',
+        {
+          termCount: Object.keys(lexicalIndex.postings).length,
+          indexVersion: 'lexical-v1',
+        },
+      ));
+    }
+
+    currentStage = 'deterministicSemantics';
+    const existingSemantics = await readJsonRecord(semanticRecordsPath(manifest.workId));
+    if (
+      run.stages.deterministicSemantics.status !== 'complete'
+      || !existingSemantics
+      || existingSemantics.extractorVersion !== 'deterministic-semantics-v1'
+      || existingSemantics.assetId !== asset.assetId
+    ) {
+      run = await writeProcessingRun(
+        updateProcessingStage(run, currentStage, 'running'),
+      );
+      const semantics = {
+        ...extractDeterministicSemantics({
+          workId: manifest.workId,
+          passages: passageRecord.passages,
+          lexicalIndex,
+        }),
+        assetId: asset.assetId,
+        updatedAt: new Date().toISOString(),
+      };
+      if (!processingStillOwnsBackend(backendId)) return;
+      await naklios.fs.write(
+        semanticRecordsPath(manifest.workId),
+        JSON.stringify(semantics, null, 2),
+      );
+      await writeProcessingRun(updateProcessingStage(
+        run,
+        currentStage,
+        'complete',
+        {
+          conceptCount: semantics.concepts.length,
+          sceneCount: semantics.scenes.length,
+          extractorVersion: 'deterministic-semantics-v1',
+        },
+      ));
+    }
+  } catch (error) {
+    if (!processingStillOwnsBackend(backendId)) return;
+    const status = error?.code === 'ocr-required' ? 'waiting-for-ocr' : 'failed';
+    await writeProcessingRun(updateProcessingStage(run, currentStage, status, {
+      error: String(error?.message || error),
+      code: error?.code || 'processing-failed',
+    }));
+    console.warn('Books: background processing stopped for', manifest.workId, error);
+  }
+}
+
+async function runSemanticProcessingQueue(backendId) {
+  for (const manifest of semanticManifests.values()) {
+    if (!processingStillOwnsBackend(backendId)) return;
+    await processSemanticWork(manifest, backendId);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+function scheduleSemanticProcessing() {
+  clearTimeout(semanticProcessingTimer);
+  const backendId = activeBackendId();
+  if (!backendId) return;
+  semanticProcessingTimer = setTimeout(() => {
+    semanticProcessingTail = semanticProcessingTail
+      .catch(() => {})
+      .then(() => runSemanticProcessingQueue(backendId));
+  }, 750);
 }
 
 // ============================================================
@@ -2639,11 +3239,115 @@ function renderLibraryRows() {
                  (lastRead ? '<div class="last-read">' + escapeHtml(lastRead) + '</div>' : '') +
                  '<div class="meta">' + escapeHtml(ext) + '</div>' +
                '</div>' +
-               '<button class="row-action" type="button" data-action="remove" title="Remove from this library">Remove</button>' +
+               '<div class="row-actions">' +
+                 '<button class="row-action" type="button" data-action="details" title="Edit portable work details">Details</button>' +
+                 '<button class="row-action" type="button" data-action="remove" title="Remove from this library">Remove</button>' +
+               '</div>' +
              '</div>' +
            '</div>';
   }).join('');
   void hydrateCoverImages(list);
+}
+
+function passageExcerptForQuery(passage, query) {
+  const text = String(passage?.text || '').replace(/\s+/g, ' ').trim();
+  const terms = String(query).toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const lower = text.toLocaleLowerCase();
+  const found = terms
+    .map((term) => lower.indexOf(term))
+    .filter((index) => index >= 0)
+    .sort((left, right) => left - right)[0] ?? 0;
+  const start = Math.max(0, found - 70);
+  const end = Math.min(text.length, found + 190);
+  return (start ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '');
+}
+
+async function runSemanticLibrarySearch(query) {
+  const container = document.getElementById('semantic-search-results');
+  if (!container) return;
+  const normalized = query.trim();
+  const run = ++semanticSearchRun;
+  semanticSearchResults = new Map();
+  if (normalized.length < 2) {
+    container.hidden = true;
+    container.innerHTML = '';
+    return;
+  }
+  container.hidden = false;
+  container.innerHTML = '<p class="semantic-search-state">Searching local passages…</p>';
+  const matches = [];
+  const seenWorks = new Set();
+  for (const entry of libraryCache) {
+    const workId = entry.work?.workId;
+    if (!workId || seenWorks.has(workId)) continue;
+    seenWorks.add(workId);
+    const [index, passageRecord] = await Promise.all([
+      readJsonRecord(workLexicalIndexPath(workId)),
+      readJsonRecord(passagesPath(workId)),
+    ]);
+    if (run !== semanticSearchRun) return;
+    if (!index || !passageRecord?.passages) continue;
+    for (const result of searchLexicalIndex(index, normalized).slice(0, 4)) {
+      const passage = passageRecord.passages[result.passageIndex];
+      if (!passage) continue;
+      matches.push({
+        key: workId + ':' + passage.passageId,
+        filename: entry.filename,
+        work: entry.work,
+        passage,
+        passageCount: passageRecord.passages.length,
+        score: result.score,
+      });
+    }
+  }
+  if (run !== semanticSearchRun) return;
+  matches.sort((left, right) => right.score - left.score);
+  const visible = matches.slice(0, 30);
+  for (const match of visible) semanticSearchResults.set(match.key, match);
+  if (!visible.length) {
+    container.innerHTML =
+      '<p class="semantic-search-state">No indexed passage matches yet. ' +
+      'Books continues processing locally in the background.</p>';
+    return;
+  }
+  container.innerHTML = visible.map((match) =>
+    '<button class="semantic-result" type="button" data-semantic-result="' +
+      escapeHtml(match.key) + '">' +
+      '<strong>' + escapeHtml(match.work?.title || match.filename) + '</strong>' +
+      '<span>' + escapeHtml(match.passage.structure?.label || 'Passage') + '</span>' +
+      '<p>' + escapeHtml(passageExcerptForQuery(match.passage, normalized)) + '</p>' +
+    '</button>'
+  ).join('');
+}
+
+async function openSemanticSearchResult(key) {
+  const result = semanticSearchResults.get(key);
+  if (!result) return;
+  await openBookFromLibrary(result.filename);
+  if (!activeEngine) return;
+  const anchor = result.passage.anchor?.engine || {};
+  try {
+    if (anchor.kind === 'pdf-page') {
+      await activeEngine.jumpTo({ page: anchor.page, scrollY: 0 });
+    } else if (anchor.kind === 'foliate-section') {
+      await activeEngine.jumpTo({
+        cfi: anchor.cfi,
+        sectionIndex: anchor.sectionIndex,
+        fraction: result.passage.order / Math.max(1, result.passageCount),
+      });
+    } else {
+      await activeEngine.jumpTo({
+        fraction: result.passage.order / Math.max(1, result.passageCount),
+      });
+    }
+    readerStatus.textContent = 'Search result · ' +
+      (result.passage.structure?.label || 'passage');
+  } catch (error) {
+    showToast('The passage was found, but its source anchor could not be opened.', {
+      error: true,
+      duration: 5000,
+    });
+  }
 }
 
 function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
@@ -2662,6 +3366,13 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
       '</div>' +
       '<button class="add-btn compact" id="add-book-btn" type="button">＋ Add book…</button>' +
     '</div>' +
+    '<label class="semantic-search">' +
+      '<span class="sr-only">Search inside every indexed book</span>' +
+      '<input id="semantic-search-input" type="search" autocomplete="off" ' +
+        'placeholder="Search inside every book…">' +
+    '</label>' +
+    '<section class="semantic-search-results" id="semantic-search-results" ' +
+      'aria-live="polite" aria-label="Library passage search results" hidden></section>' +
     '<div class="library"></div>' +
     '<section class="orphan-section" id="orphan-section" aria-label="Reading data without its book"></section>';
   renderLibraryRows();
@@ -2669,6 +3380,7 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   if (addBtn) addBtn.addEventListener('click', openLibraryFilePicker);
   const filter = document.getElementById('library-filter');
   const sort = document.getElementById('library-sort');
+  const semanticInput = document.getElementById('semantic-search-input');
   filter.addEventListener('input', () => {
     libraryFilter = filter.value;
     renderLibraryRows();
@@ -2678,10 +3390,27 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
     localStorage.setItem('books.librarySort.v1', librarySort);
     renderLibraryRows();
   });
+  semanticInput.addEventListener('input', () => {
+    clearTimeout(semanticSearchTimer);
+    semanticSearchTimer = setTimeout(
+      () => void runSemanticLibrarySearch(semanticInput.value),
+      180,
+    );
+  });
+  root.querySelector('#semantic-search-results').addEventListener('click', (event) => {
+    const result = event.target.closest('[data-semantic-result]');
+    if (result) {
+      void openSemanticSearchResult(result.getAttribute('data-semantic-result'));
+    }
+  });
   root.querySelector('.library').addEventListener('click', (event) => {
     const row = event.target.closest('.row[data-filename]');
     if (!row) return;
     const filename = row.getAttribute('data-filename');
+    if (event.target.closest('[data-action="details"]')) {
+      void openWorkDetails(filename);
+      return;
+    }
     if (event.target.closest('[data-action="remove"]')) {
       const item = libraryCache.find((entry) => entry.filename === filename);
       removeBookFromLibrary(filename, item && item.sidecar);
@@ -3974,6 +4703,7 @@ async function listLibrary() {
       sidecar: sidecarByFilename.get(filename) || null,
       work: workForFilename(semanticCatalog, filename),
     }));
+    scheduleSemanticProcessing();
 
     // Sort: lastOpened desc (sidecar'd first), then alphabetical for the rest
     decorated.sort((a, b) => {
