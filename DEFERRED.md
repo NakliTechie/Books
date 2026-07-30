@@ -1,6 +1,10 @@
 # books — Deferred to v2+
 
 > **Lifecycle:** `living` — running list of features and design decisions intentionally pushed past v1. Update as decisions land. The point of this doc is to make sure things we knowingly deferred are not lost — they're parked, not forgotten.
+>
+> The complete execution mapping for these items now lives in
+> [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md). This file
+> remains the source of deferral history, rationale, and revisit triggers.
 
 ## Convention
 

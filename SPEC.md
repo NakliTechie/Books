@@ -1,6 +1,11 @@
 # books — Spec
 
 > **Lifecycle:** `living` — v1 decisions locked 2026-05-18; standalone architecture revised for v1.4 on 2026-07-30.
+>
+> This document remains the shipped v1.4 contract. The proposed v2+ private
+> semantic library extension is specified separately in
+> [SEMANTIC-LIBRARY-SPEC.md](SEMANTIC-LIBRARY-SPEC.md), with pending execution
+> phases in [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md).
 
 ## Goal
 

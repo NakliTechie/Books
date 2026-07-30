@@ -6,6 +6,17 @@ Books is a single-file, browser-native reader for ePub, PDF, MOBI, AZW3, FB2, TX
 
 Standalone books and sidecars persist in origin-scoped IndexedDB on the current device. Inside NakliOS, they live under `apps/books/` in the selected Folder or encrypted Crate. Browser, Folder, and Crate remain separate libraries; switching never copies or deletes data.
 
+## Proposed v2+ direction
+
+The modern take is not “Calibre in a browser.” It is a **private semantic
+library**: the user owns the files, but the library actively helps them
+understand, read, connect, and remember what is inside.
+
+This direction is planning-only. The proposed product and architecture live in
+[SEMANTIC-LIBRARY-SPEC.md](SEMANTIC-LIBRARY-SPEC.md); the gated execution
+sequence and complete pending-item map live in
+[SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md).
+
 ## v1.4 highlights
 
 - Full standalone library with persistent books, positions, bookmarks, notes,
@@ -57,7 +68,10 @@ naklios-universe/
 │   ├── sdk/naklios.js            ← SDK Books vendors inline
 │   └── index.html                ← Books registry entry + storage host
 └── Books/                        ← THIS INITIATIVE
-    ├── SPEC.md                   ← architectural decisions
+    ├── SPEC.md                   ← shipped v1.4 architectural decisions
+    ├── SEMANTIC-LIBRARY-SPEC.md  ← proposed v2+ product and architecture
+    ├── SEMANTIC-LIBRARY-WORKPLAN.md ← pending phases and decision gates
+    ├── CALIBRE-RESEARCH.md       ← comparison input, not a parity mandate
     ├── walkthroughs.md           ← open scope-defining questions
     ├── DEFERRED.md               ← v2+ items with revisit triggers
     └── README.md                 ← this file (quickstart + status)
@@ -102,7 +116,11 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
 - [walkthroughs.md](walkthroughs.md)
 - [DEFERRED.md](DEFERRED.md)
 - [CALIBRE-RESEARCH.md](CALIBRE-RESEARCH.md) — official feature inventory and
-  next-session comparison worksheet for 2026-07-31
+  comparison worksheet
+- [SEMANTIC-LIBRARY-SPEC.md](SEMANTIC-LIBRARY-SPEC.md) — proposed private
+  semantic library extension
+- [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md) — phased,
+  gated plan containing all pending work
 
 ## Context
 

@@ -3,9 +3,11 @@
 > **Lifecycle:** `research` — captured 2026-07-30 from Calibre's official
 > website and Calibre 9.11.0 manual.
 >
-> **Next-session marker:** This is the next Books product-planning item for
-> 2026-07-31. Research only; none of the features below are approved for
-> implementation yet.
+> **Planning status:** Consumed as input to
+> [SEMANTIC-LIBRARY-SPEC.md](SEMANTIC-LIBRARY-SPEC.md) and
+> [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md). The Phase 0
+> Adopt / Adapt / Reject decisions remain pending; none of the comparison
+> features is approved merely by appearing here.
 
 ## Purpose
 
@@ -14,7 +16,7 @@ Calibre is a desktop e-book manager, conversion suite, editor, device bridge,
 content server, and reader. Books is currently a browser-native, local-first
 reader that also runs inside NakliOS.
 
-Tomorrow's job is to classify the inventory below:
+The Phase 0 job is to classify the inventory below:
 
 - **Adopt** — the user need and interaction fit Books directly.
 - **Adapt** — keep the user value, redesign it for a browser/local-first app.
@@ -250,7 +252,7 @@ reader are separate future work, not Calibre parity items.
 
 ## Candidate comparison backlog — not approved
 
-These are the most plausible clusters to evaluate tomorrow:
+These are the most plausible clusters to evaluate during Phase 0:
 
 1. **Library record and metadata model:** work-level identity, multiple formats,
    richer fields, metadata editing, and optional provider enrichment.
@@ -267,7 +269,7 @@ These are the most plausible clusters to evaluate tomorrow:
 7. **Large separate bets:** conversion, editing, device drivers, Content
    server/sync, news acquisition, plugins, and CLI automation.
 
-## Tomorrow's decision worksheet
+## Phase 0 decision worksheet
 
 For every candidate cluster:
 
@@ -281,9 +283,10 @@ For every candidate cluster:
    companion.
 7. Place accepted work into a release sequence before implementation begins.
 
-The first strategic question is: **Does Books remain principally a private
-reader, or grow into a private library manager?** That decision determines
-which parts of Calibre are signal and which are distraction.
+The extension spec answers the broad strategic question: Books grows into a
+private semantic library. Phase 0 must still decide which library-management
+capabilities are necessary to make that direction useful, and which parts of
+Calibre remain distraction.
 
 ## Official sources
 
