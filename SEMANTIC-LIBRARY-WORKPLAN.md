@@ -516,6 +516,16 @@ Semantic indexing creates stronger pressure for OCR than v1 reading did.
 Evaluate local OCR cost, languages, page anchoring, confidence, storage, and
 whether OCR belongs in Books or an external preprocessing tool.
 
+The first candidate is Baidu PaddleOCR. Compare its official browser SDK,
+self-hosted local pipeline, and optional hosted API. Do not treat a hosted
+quota as unlimited: the preferred “unlimited” route is local inference under
+the user's own compute and storage budget. Any remote route requires explicit
+page-image transmission consent.
+
+The evaluation must include structured page output, reading order, tables,
+formulas, coordinates, multilingual books, cancellation/resume, runtime and
+model size, licensing, provenance, and removable/rebuildable OCR artifacts.
+
 ### DjVu
 
 Remain parked until meaningful demand or a materially lighter browser library.
@@ -639,6 +649,7 @@ Each accepted large bet receives a separate spec, threat model, and work plan.
 | Inline highlights with notes | `DEFERRED.md` | Phase 4 | Shipped |
 | Search across library | `DEFERRED.md` | Phases 2–3 | Shipped |
 | PDF text-layer highlight overlays | `DEFERRED.md` | Phase 4 | Shipped |
+| Scanned-PDF OCR / PaddleOCR evaluation | `DEFERRED.md` | Phase 8 | Pending evaluation |
 | CBZ + CBR support | `DEFERRED.md` | Phase 8 | Parked |
 | DjVu support | `DEFERRED.md` | Phase 8 | Parked |
 | Legacy AZW support | `DEFERRED.md` | Phase 8 | Rejected for core |
@@ -671,14 +682,16 @@ Each accepted large bet receives a separate spec, threat model, and work plan.
 The approved foundation is built and release-tested. Future work must begin by
 opening one of the remaining gates rather than silently expanding scope:
 
-1. Decide whether to design source-grounded illustration generation (Phase 6).
-2. Decide whether embeddings add enough value beyond lexical retrieval to
+1. Run the gated scanned-PDF OCR evaluation, with PaddleOCR as the first
+   candidate.
+2. Decide whether to design source-grounded illustration generation (Phase 6).
+3. Decide whether embeddings add enough value beyond lexical retrieval to
    justify their storage and privacy model.
-3. Decide whether any metadata provider meets the licensing, attribution,
+4. Decide whether any metadata provider meets the licensing, attribution,
    caching, and consent bar.
-4. Decide whether to select a sovereign sync transport for the documented
+5. Decide whether to select a sovereign sync transport for the documented
    record/conflict contract.
-5. Re-rank the parked Phase 8 formats and Phase 9 Calibre-shaped separate bets.
+6. Re-rank the parked Phase 8 formats and Phase 9 Calibre-shaped separate bets.
 
 The standing product test remains:
 

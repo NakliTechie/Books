@@ -19,6 +19,65 @@ Without the trigger, the deferral is just an open question.
 
 ---
 
+## Current future queue — 2026-07-30
+
+This is the consolidated queue, not a committed release roadmap:
+
+| Capability | State | Revisit gate |
+|---|---|---|
+| Scanned-PDF OCR, with Baidu PaddleOCR as the first candidate | Pending evaluation | Complete the OCR privacy, runtime, quality, anchoring, and licensing spike below |
+| Source-grounded AI illustrations | Pending product decision | Approve the Phase 6 generation policy |
+| Local embeddings / semantic-similarity index | Pending product decision | Demonstrate material value beyond lexical retrieval and define storage/privacy |
+| Metadata and cover provider | Pending policy decision | Approve licensing, attribution, caching, and destination consent |
+| Sovereign sync transport and mobile continuity | Pending product decision | Select a transport for the shipped version/tombstone/conflict contract |
+| TTS, dictionaries, reading profiles, and deeper reader controls | Pending per-feature evaluation | Rank against observed reader demand and accessibility impact |
+| Generated title cards and other derived media | Pending product decision | Open the Phase 6 artifact pipeline |
+| CBZ/CBR and DjVu | Parked | Approve dedicated reader/extractor contracts and representative corpora |
+| Multiple physical libraries and backend movement | Parked | Approve explicit cross-backend movement semantics |
+| Conversion, polishing, news acquisition, CLI automation, and other Calibre-shaped bets | Separate bets | Reassess independently; none belongs in core by default |
+
+### Scanned-PDF OCR — evaluate Baidu PaddleOCR
+
+**Status:** Pending evaluation. Do not integrate it into the current release.
+
+PaddleOCR is the first candidate because it can run locally, is Apache-2.0,
+supports multilingual recognition and structured document parsing, and now has
+an official browser inference SDK. Treat “unlimited” as a property of
+self-hosted/local inference under the user's own compute budget—not as an
+assumption about any hosted API quota.
+
+Evaluate three capability routes:
+
+1. In-browser inference through PaddleOCR.js where the model/runtime size and
+   browser memory budget are acceptable.
+2. A visible local PaddleOCR service through the same local-provider boundary
+   used by Books AI.
+3. The hosted PaddleOCR API only as an optional, explicitly consented remote
+   destination. Page images must never be transmitted silently.
+
+The spike must measure:
+
+- Born-scanned, skewed, low-contrast, multilingual, vertical, and mixed-script
+  book pages.
+- Text order, headings, tables, formulas, footnotes, figures, and page
+  coordinates—not merely raw character accuracy.
+- Apple Silicon and ordinary CPU latency, memory, model-download size, battery
+  impact, cancellation, and resumability.
+- Browser, Folder, and Crate storage consumption.
+- Model, weight, browser-SDK, and commercial-use licensing.
+- Confidence reporting and the UI for “unavailable”, “queued”, “partial”, and
+  “needs review”.
+
+If adopted, OCR output is versioned derived data with page/region anchors,
+confidence, model provenance, and a visible route to the scanned source page.
+It must be removable and rebuildable without changing the PDF, annotations, or
+portable records.
+
+**Trigger to revisit:** A dedicated OCR spike is scheduled with a
+representative scanned-book corpus and local/BYOK runtime budget.
+
+---
+
 ## Content / UX layers
 
 ### Local concept metadata + AI-illustrated native reader
