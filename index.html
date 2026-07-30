@@ -627,6 +627,32 @@ body { display: flex; flex-direction: column; }
 }
 .library-tools-actions button:hover { border-color:var(--brand); }
 .library-tools-actions button:disabled { opacity:.5; cursor:not-allowed; }
+.trash-section {
+  margin-top:14px; padding-top:12px; border-top:1px solid var(--line);
+}
+.trash-section-head {
+  display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+  margin-bottom:8px;
+}
+.trash-section-head strong { font-size:12px; }
+.trash-section-head span { color:var(--muted); font-size:10px; }
+.trash-list { display:grid; gap:7px; }
+.trash-row {
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px;
+  padding:9px 10px; border:1px solid var(--line); border-radius:7px;
+  background:var(--body);
+}
+.trash-row-copy { min-width:0; display:grid; gap:3px; }
+.trash-row-copy strong {
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px;
+}
+.trash-row-copy span { color:var(--muted); font-size:10px; }
+.trash-row-actions { display:flex; align-items:center; gap:5px; }
+.trash-row-actions button {
+  border:1px solid var(--line); border-radius:5px; padding:5px 7px;
+  background:var(--row); color:var(--ink); cursor:pointer; font:10px inherit;
+}
+.trash-row-actions button[data-trash-action="delete"] { color:var(--brand); }
 .add-btn {
   background: var(--brand); color: var(--panel);
   border: none; border-radius: 6px;
@@ -964,6 +990,13 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <button type="button" id="library-export-btn">Export library</button>
       <button type="button" id="library-import-btn">Import bundle</button>
     </div>
+    <section class="trash-section" aria-labelledby="trash-section-title">
+      <div class="trash-section-head">
+        <strong id="trash-section-title">Trash</strong>
+        <span id="trash-count">Checking…</span>
+      </div>
+      <div class="trash-list" id="trash-list"></div>
+    </section>
     <div class="books-dialog-actions">
       <button type="button" data-close-dialog="library-tools-dialog">Close</button>
     </div>
@@ -1567,12 +1600,15 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 import {
   addPortableAnnotation,
   createPortableBundle,
+  markAssetTrashed,
   reconcileLegacyAnnotations,
   reanchorPortableAnnotations,
   SEMANTIC_CATALOG_PATH,
   SEMANTIC_WORKS_PREFIX,
   reconcileSemanticLibrary,
   rebuildCatalog,
+  removeTrashedAsset,
+  restoreTrashedAsset,
   semanticManifestPath,
   semanticAnnotationsPath,
   sha256Fingerprint,
@@ -1602,6 +1638,10 @@ const VENDOR_FOLIATE = './vendor/foliate-js@1.0.1/';
 const VENDOR_PDFJS   = './vendor/pdfjs-dist@5.7.284/';
 
 const SUPPORTED_EXTS = ['epub','pdf','mobi','azw3','fb2','txt','md','html','htm'];
+const TRASH_ITEMS_PREFIX = 'trash/items/';
+const TRASH_ASSETS_PREFIX = 'trash/assets/';
+const TRASH_SIDECARS_PREFIX = 'trash/sidecars/';
+const TRASH_COVERS_PREFIX = 'trash/covers/';
 const ENGINE_BY_EXT = {
   epub:'foliate', mobi:'foliate', azw3:'foliate', fb2:'foliate',
   pdf:'pdf',
@@ -1643,6 +1683,8 @@ const libraryRebuildBtn = document.getElementById('library-rebuild-btn');
 const libraryExportBtn = document.getElementById('library-export-btn');
 const libraryImportBtn = document.getElementById('library-import-btn');
 const portableLibraryImportInput = document.getElementById('portable-library-import-input');
+const trashCount = document.getElementById('trash-count');
+const trashList = document.getElementById('trash-list');
 const noteArea = document.getElementById('note-area');
 const tocSection = document.getElementById('toc-section');
 const tocList = document.getElementById('toc-list');
@@ -1717,6 +1759,7 @@ let semanticSearchRun = 0;
 let semanticSearchResults = new Map();
 let workDetailsWorkId = null;
 let latestLibraryValidation = null;
+let activeTrashRecords = [];
 let orphanSidecars = [];
 let orphanRecoveryTarget = null;
 let libraryFilter = '';
@@ -2239,6 +2282,33 @@ async function ensureSemanticFoundation(sourceFilenames, sidecars) {
     result.manifests.map((manifest) => [manifest.workId, manifest]),
   );
   return result;
+}
+
+async function persistSemanticManifest(manifest) {
+  await naklios.fs.write(
+    semanticManifestPath(manifest.workId),
+    JSON.stringify(manifest, null, 2),
+  );
+  semanticManifests.set(manifest.workId, manifest);
+  const rebuilt = rebuildCatalog(
+    Array.from(semanticManifests.values()),
+    semanticCatalog,
+  );
+  semanticCatalog = rebuilt.catalog;
+  if (rebuilt.changed) {
+    await naklios.fs.write(
+      SEMANTIC_CATALOG_PATH,
+      JSON.stringify(rebuilt.catalog, null, 2),
+    );
+  }
+  for (const entry of libraryCache) {
+    if (entry.work?.workId === manifest.workId) {
+      entry.work = semanticCatalog.works.find(
+        (work) => work.workId === manifest.workId,
+      ) || null;
+    }
+  }
+  return manifest;
 }
 
 async function syncSemanticMetadata(filename, sidecar) {
@@ -4335,6 +4405,301 @@ async function readAllLegacySidecars() {
   return records.filter((record) => record?.bookId && record?.sourceFilename);
 }
 
+function trashPathsFor(trashId) {
+  return {
+    item:TRASH_ITEMS_PREFIX + trashId + '.json',
+    source:TRASH_ASSETS_PREFIX + trashId + '.source',
+    sidecar:TRASH_SIDECARS_PREFIX + trashId + '.json',
+    cover:TRASH_COVERS_PREFIX + trashId + '.cover',
+  };
+}
+
+async function deletePathIfPresent(path) {
+  if (!path) return;
+  try {
+    if (await naklios.fs.exists(path)) await naklios.fs.delete(path);
+  } catch (error) {
+    console.warn('Books: trash cleanup failed for', path, error);
+    throw error;
+  }
+}
+
+async function readTrashRecords() {
+  let entries = [];
+  try {
+    entries = stripListPrefix(
+      await naklios.fs.list(TRASH_ITEMS_PREFIX),
+      TRASH_ITEMS_PREFIX,
+    );
+  } catch (_) {
+    return [];
+  }
+  const records = await Promise.all(
+    entries
+      .filter((filename) => /^[a-zA-Z0-9_-]+\.json$/.test(filename))
+      .map((filename) => readJsonRecord(TRASH_ITEMS_PREFIX + filename)),
+  );
+  return records
+    .filter((record) =>
+      record?.recordType === 'books.trash'
+      && typeof record.trashId === 'string'
+      && record.filename)
+    .sort((left, right) =>
+      String(right.trashedAt || '').localeCompare(String(left.trashedAt || '')));
+}
+
+function renderTrashRecords(records) {
+  activeTrashRecords = records;
+  trashCount.textContent = records.length
+    ? records.length + ' recoverable item' + (records.length === 1 ? '' : 's')
+    : 'Empty';
+  trashList.innerHTML = records.length
+    ? records.map((record) => {
+        const status = record.status || 'complete';
+        const age = formatRelativeTime(record.trashedAt);
+        let actions;
+        if (status === 'complete') {
+          actions =
+            '<button type="button" data-trash-action="restore">Restore</button>' +
+            '<button type="button" data-trash-action="delete">Delete forever</button>';
+        } else if (status === 'deleting') {
+          actions =
+            '<button type="button" data-trash-action="delete">Finish delete</button>';
+        } else if (status === 'prepared' || status === 'source-removed') {
+          actions =
+            '<button type="button" data-trash-action="restore">Restore</button>' +
+            '<button type="button" data-trash-action="cleanup">Discard copy</button>';
+        } else {
+          actions =
+            '<button type="button" data-trash-action="cleanup">Clean up copy</button>';
+        }
+        return (
+          '<div class="trash-row" data-trash-id="' + escapeHtml(record.trashId) + '">' +
+            '<div class="trash-row-copy">' +
+              '<strong>' + escapeHtml(record.title || record.filename) + '</strong>' +
+              '<span>' + escapeHtml(
+                record.filename + ' · ' + status + (age ? ' · ' + age : '')
+              ) + '</span>' +
+            '</div>' +
+            '<div class="trash-row-actions">' + actions + '</div>' +
+          '</div>'
+        );
+      }).join('')
+    : '<p class="semantic-search-state">Removed books stay recoverable here until you delete them forever.</p>';
+}
+
+async function refreshTrashRecords() {
+  trashCount.textContent = 'Checking…';
+  try {
+    renderTrashRecords(await readTrashRecords());
+  } catch (error) {
+    trashCount.textContent = 'Unavailable';
+    trashList.innerHTML =
+      '<p class="semantic-search-state">Trash could not be read: ' +
+        escapeHtml(String(error?.message || error)) + '</p>';
+  }
+}
+
+async function cleanupTrashCopies(record) {
+  const paths = record.paths || trashPathsFor(record.trashId);
+  if (
+    record.status === 'prepared'
+    && record.livePaths?.source
+    && !(await naklios.fs.exists(record.livePaths.source))
+  ) {
+    showToast(
+      'The live original is missing. Restore this item instead of discarding its only recoverable copy.',
+      { error:true, duration:6500 },
+    );
+    return;
+  }
+  for (const path of [paths.source, paths.sidecar, paths.cover]) {
+    await deletePathIfPresent(path);
+  }
+  await deletePathIfPresent(paths.item || trashPathsFor(record.trashId).item);
+  await refreshTrashRecords();
+}
+
+async function restoreTrashRecord(record) {
+  if (
+    !record
+    || !['complete', 'prepared', 'source-removed'].includes(record.status)
+  ) return;
+  const live = record.livePaths || {};
+  const paths = record.paths || trashPathsFor(record.trashId);
+  const conflicts = [];
+  for (const path of [live.source, live.sidecar, live.cover].filter(Boolean)) {
+    if (await naklios.fs.exists(path)) conflicts.push(path);
+  }
+  if (conflicts.length) {
+    showToast(
+      'Restore stopped: ' + conflicts[0] +
+        ' already exists. Books will not overwrite or silently rebind it.',
+      { error:true, duration:6500 },
+    );
+    return;
+  }
+  const confirmed = await askForConfirmation({
+    title:'Restore this book?',
+    message:'"' + record.filename + '" and its saved reading data will return to this ' +
+      backendLabel(activeBackendId()) + '.',
+    confirmLabel:'Restore',
+  });
+  if (!confirmed) return;
+
+  const writtenPaths = [];
+  try {
+    const source = toArrayBuffer(await naklios.fs.readBinary(paths.source));
+    if (
+      record.fingerprint
+      && await sha256Fingerprint(source) !== record.fingerprint
+    ) {
+      throw new Error('The recoverable original no longer matches its checksum.');
+    }
+    await naklios.fs.write(live.source, new Uint8Array(source));
+    writtenPaths.push(live.source);
+    if (live.sidecar && paths.sidecar && await naklios.fs.exists(paths.sidecar)) {
+      await naklios.fs.write(live.sidecar, await naklios.fs.read(paths.sidecar));
+      writtenPaths.push(live.sidecar);
+    }
+    if (live.cover && paths.cover && await naklios.fs.exists(paths.cover)) {
+      const cover = toArrayBuffer(await naklios.fs.readBinary(paths.cover));
+      await naklios.fs.write(live.cover, new Uint8Array(cover));
+      writtenPaths.push(live.cover);
+    }
+
+    const manifest = semanticManifests.get(record.workId)
+      || await readJsonRecord(semanticManifestPath(record.workId));
+    if (manifest) {
+      const update = restoreTrashedAsset(
+        manifest,
+        record.assetId,
+        { trashId:record.trashId },
+      );
+      const currentAsset = manifest.assets?.find(
+        (asset) => asset.assetId === record.assetId,
+      );
+      if (update.changed) {
+        await persistSemanticManifest(update.manifest);
+      } else if (
+        currentAsset?.availability !== 'available'
+        && currentAsset?.availability !== 'missing'
+      ) {
+        throw new Error('The canonical asset is no longer in this Trash entry.');
+      }
+    }
+    const restoredRecord = {
+      ...record,
+      status:'restored',
+      restoredAt:new Date().toISOString(),
+    };
+    await naklios.fs.write(
+      paths.item,
+      JSON.stringify(restoredRecord, null, 2),
+    );
+    await cleanupTrashCopies(restoredRecord);
+    await listLibrary();
+    showToast('Restored "' + record.filename + '" with its reading data.');
+  } catch (error) {
+    for (const path of writtenPaths.reverse()) {
+      try { await deletePathIfPresent(path); } catch (_) {}
+    }
+    showToast("Couldn't restore: " + String(error?.message || error), {
+      error:true,
+      duration:6500,
+    });
+  }
+}
+
+async function permanentlyDeleteTrashRecord(record) {
+  if (!record || !['complete', 'deleting'].includes(record.status)) return;
+  if (record.status === 'complete') {
+    const confirmed = await askForConfirmation({
+      title:'Delete this book forever?',
+      message:'The recoverable original for "' + record.filename +
+        '" will be permanently deleted. If this is the work’s last asset, its ' +
+        'portable annotations and local derived data will also be removed.',
+      confirmLabel:'Delete forever',
+    });
+    if (!confirmed) return;
+  }
+  const paths = record.paths || trashPathsFor(record.trashId);
+  try {
+    const deletingRecord = {
+      ...record,
+      status:'deleting',
+      deletionStartedAt:record.deletionStartedAt || new Date().toISOString(),
+    };
+    await naklios.fs.write(paths.item, JSON.stringify(deletingRecord, null, 2));
+    const manifest = semanticManifests.get(record.workId)
+      || await readJsonRecord(semanticManifestPath(record.workId));
+    let updatedManifest = manifest;
+    const currentAsset = manifest?.assets?.find(
+      (asset) => asset.assetId === record.assetId,
+    );
+    if (
+      currentAsset?.availability === 'trashed'
+      && currentAsset.trash?.trashId === record.trashId
+    ) {
+      const update = removeTrashedAsset(
+        manifest,
+        record.assetId,
+        { trashId:record.trashId },
+      );
+      if (!update.changed) {
+        throw new Error('The canonical asset no longer matches this Trash entry.');
+      }
+      updatedManifest = update.manifest;
+      await persistSemanticManifest(updatedManifest);
+    } else if (currentAsset?.availability !== 'removed') {
+      throw new Error('The canonical asset no longer matches this Trash entry.');
+    }
+    const remainingAssets = updatedManifest?.assets?.filter(
+      (asset) => asset.availability !== 'removed',
+    ) || [];
+    if (!remainingAssets.length && record.workId) {
+      for (const path of [
+        semanticAnnotationsPath(record.workId),
+        passagesPath(record.workId),
+        workLexicalIndexPath(record.workId),
+        semanticRecordsPath(record.workId),
+        processingRunPath(record.workId),
+      ]) {
+        await deletePathIfPresent(path);
+      }
+    }
+    for (const path of [paths.source, paths.sidecar, paths.cover]) {
+      await deletePathIfPresent(path);
+    }
+    await deletePathIfPresent(paths.item);
+    await refreshTrashRecords();
+    showToast('Permanently deleted "' + record.filename + '".');
+  } catch (error) {
+    await refreshTrashRecords();
+    showToast(
+      'Permanent deletion paused safely: ' + String(error?.message || error) +
+        '. Choose Finish delete to retry cleanup.',
+      { error:true, duration:7000 },
+    );
+  }
+}
+
+trashList.addEventListener('click', (event) => {
+  const action = event.target.closest('[data-trash-action]');
+  const row = event.target.closest('[data-trash-id]');
+  const record = row && activeTrashRecords.find(
+    (candidate) => candidate.trashId === row.dataset.trashId,
+  );
+  if (!action || !record) return;
+  if (action.dataset.trashAction === 'restore') {
+    void restoreTrashRecord(record);
+  } else if (action.dataset.trashAction === 'delete') {
+    void permanentlyDeleteTrashRecord(record);
+  } else if (action.dataset.trashAction === 'cleanup') {
+    void cleanupTrashCopies(record);
+  }
+});
+
 function renderLibraryValidation(report, heading = null) {
   latestLibraryValidation = report;
   const issueCount = report.errors.length + report.warnings.length;
@@ -4420,12 +4785,15 @@ async function validateActiveLibrary() {
 async function openLibraryTools() {
   latestLibraryValidation = null;
   libraryRebuildBtn.disabled = true;
+  trashCount.textContent = 'Checking…';
+  trashList.innerHTML = '';
   libraryToolsDialog.showModal();
-  try {
-    await validateActiveLibrary();
-  } catch (error) {
-    console.warn('Books: library validation failed', error);
-  }
+  await Promise.all([
+    validateActiveLibrary().catch((error) => {
+      console.warn('Books: library validation failed', error);
+    }),
+    refreshTrashRecords(),
+  ]);
 }
 
 async function rebuildActiveCatalog() {
@@ -5010,13 +5378,35 @@ function askForBookmarkLabel(initialValue) {
 
 async function removeBookFromLibrary(filename, sidecar) {
   const confirmed = await askForConfirmation({
-    title: 'Remove this book?',
-    message: '"' + filename + '" and its Books notes, bookmarks, and reading position will be removed from the current ' +
-      backendLabel(activeBackendId()) + '. Other storage backends are untouched.',
-    confirmLabel: 'Remove',
+    title: 'Move this book to Trash?',
+    message: '"' + filename + '" and its Books reading data will leave the current library, ' +
+      'but remain recoverable in Library tools → Trash. Other storage backends are untouched.',
+    confirmLabel: 'Move to Trash',
   });
   if (!confirmed) return;
+  const work = workForFilename(semanticCatalog, filename);
+  const manifest = work && semanticManifests.get(work.workId);
+  const asset = manifest?.assets?.find(
+    (candidate) =>
+      candidate.sourceFilename === filename
+      && candidate.availability !== 'removed',
+  );
+  if (!manifest || !asset) {
+    showToast(
+      'Portable work identity is not ready yet. Validate the library before removing this book.',
+      { error:true, duration:6000 },
+    );
+    return;
+  }
+  const randomPart = globalThis.crypto?.randomUUID?.()
+    || Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  const trashId = 'trash_' + randomPart.toLowerCase();
+  const paths = trashPathsFor(trashId);
+  const sidecarPath = sidecar?.bookId ? 'notes/' + sidecar.bookId + '.json' : null;
+  const coverPath = sidecar?.coverPath || null;
+  let sourceDeleted = false;
   try {
+    await flushPendingWrites();
     if (sidecar?.bookId) {
       invalidateCoverWrite(sidecar.bookId);
       const pending = pendingWrites.get(sidecar.bookId);
@@ -5025,32 +5415,93 @@ async function removeBookFromLibrary(filename, sidecar) {
         pendingWrites.delete(sidecar.bookId);
       }
     }
-    await naklios.fs.delete('library/' + filename);
-    if (sidecar && sidecar.bookId) {
-      try {
-        if (sidecar.coverPath) {
-          try { await naklios.fs.delete(sidecar.coverPath); }
-          catch (_) { /* a missing cache must not block deliberate book removal */ }
-          const cacheKey = activeBackendId() + ':' + sidecar.coverPath;
-          const url = coverObjectUrls.get(cacheKey);
-          if (url) URL.revokeObjectURL(url);
-          coverObjectUrls.delete(cacheKey);
-        }
-        await naklios.fs.delete('notes/' + sidecar.bookId + '.json');
-      } catch (sidecarError) {
-        showToast(
-          'Book removed, but its notes could not be removed: ' +
-            String(sidecarError && sidecarError.message || sidecarError),
-          { error: true, duration: 6000 },
-        );
-        await listLibrary();
-        return;
-      }
+
+    const source = toArrayBuffer(
+      await naklios.fs.readBinary('library/' + filename),
+    );
+    const fingerprint = await sha256Fingerprint(source);
+    await naklios.fs.write(paths.source, new Uint8Array(source));
+    const hasSidecar = sidecarPath && await naklios.fs.exists(sidecarPath);
+    if (hasSidecar) {
+      await naklios.fs.write(paths.sidecar, await naklios.fs.read(sidecarPath));
     }
-    showToast('Removed "' + filename + '"');
+    const hasCover = coverPath && await naklios.fs.exists(coverPath);
+    if (hasCover) {
+      const cover = toArrayBuffer(await naklios.fs.readBinary(coverPath));
+      await naklios.fs.write(paths.cover, new Uint8Array(cover));
+    }
+
+    let trashRecord = {
+      schemaVersion:1,
+      recordType:'books.trash',
+      trashId,
+      status:'prepared',
+      workId:manifest.workId,
+      assetId:asset.assetId,
+      title:manifest.title,
+      filename,
+      format:asset.format,
+      byteLength:source.byteLength,
+      fingerprint,
+      trashedAt:new Date().toISOString(),
+      paths:{
+        item:paths.item,
+        source:paths.source,
+        sidecar:hasSidecar ? paths.sidecar : null,
+        cover:hasCover ? paths.cover : null,
+      },
+      livePaths:{
+        source:'library/' + filename,
+        sidecar:hasSidecar ? sidecarPath : null,
+        cover:hasCover ? coverPath : null,
+      },
+    };
+    await naklios.fs.write(paths.item, JSON.stringify(trashRecord, null, 2));
+
+    await naklios.fs.delete('library/' + filename);
+    sourceDeleted = true;
+    trashRecord = {
+      ...trashRecord,
+      status:'source-removed',
+      sourceRemovedAt:new Date().toISOString(),
+    };
+    await naklios.fs.write(paths.item, JSON.stringify(trashRecord, null, 2));
+    if (hasCover) {
+      await deletePathIfPresent(coverPath);
+      const cacheKey = activeBackendId() + ':' + coverPath;
+      const url = coverObjectUrls.get(cacheKey);
+      if (url) URL.revokeObjectURL(url);
+      coverObjectUrls.delete(cacheKey);
+    }
+    if (hasSidecar) await deletePathIfPresent(sidecarPath);
+
+    const update = markAssetTrashed(
+      manifest,
+      asset.assetId,
+      { trashId },
+    );
+    if (!update.changed) {
+      throw new Error('The canonical asset could not be marked as recoverable Trash.');
+    }
+    await persistSemanticManifest(update.manifest);
+    trashRecord = {
+      ...trashRecord,
+      status:'complete',
+      completedAt:new Date().toISOString(),
+    };
+    await naklios.fs.write(paths.item, JSON.stringify(trashRecord, null, 2));
+    showToast('Moved "' + filename + '" to recoverable Trash.');
     await listLibrary();
+    if (libraryToolsDialog.open) await refreshTrashRecords();
   } catch (err) {
-    showToast("Couldn't remove: " + String(err && err.message || err), { error: true, duration: 5000 });
+    showToast(
+      (sourceDeleted
+        ? 'Removal paused after preserving the original in Trash: '
+        : 'The book was not removed: ') +
+        String(err && err.message || err),
+      { error:true, duration:7000 },
+    );
+    await listLibrary();
   }
 }
 

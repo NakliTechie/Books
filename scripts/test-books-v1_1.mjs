@@ -204,6 +204,23 @@ assert.doesNotMatch(
   /removeBookFromLibrary[\s\S]{0,1500}\bconfirm\s*\(/,
   'book removal must not use the browser confirm popup',
 );
+assert.match(html, /id="trash-list"/,
+  'library tools expose recoverable Trash');
+assert.match(
+  html,
+  /removeBookFromLibrary[\s\S]*?write\(paths\.source[\s\S]*?write\(paths\.item[\s\S]*?delete\('library\/' \+ filename\)[\s\S]*?markAssetTrashed/,
+  'removal preserves the original and a recovery record before deleting the live source',
+);
+assert.match(
+  html,
+  /function restoreTrashRecord\([\s\S]*?already exists[\s\S]*?restoreTrashedAsset[\s\S]*?cleanupTrashCopies/,
+  'Trash restore refuses overwrite, restores canonical identity, then cleans its copy',
+);
+assert.match(
+  html,
+  /function permanentlyDeleteTrashRecord\([\s\S]*?Delete this book forever[\s\S]*?removeTrashedAsset/,
+  'permanent deletion is a separate confirmed endpoint',
+);
 assert.match(html, /id="bookmark-label-dialog"/, 'bookmark renaming has an app-styled dialog');
 assert.match(html, /function askForBookmarkLabel\(/, 'bookmark label dialog has a promise-based adapter');
 assert.match(
@@ -423,6 +440,11 @@ assert.match(
   harness,
   /library-tools-btn[\s\S]*?library validation report[\s\S]*?portable library export[\s\S]*?portable import confirmation after preflight[\s\S]*?conflict-safe portable library import/,
   'browser harness verifies validation plus original-file export and safe import',
+);
+assert.match(
+  harness,
+  /Move this book to Trash[\s\S]*?recoverable trash record[\s\S]*?recoverable Trash restore action[\s\S]*?Trash restores original bytes and portable identity/,
+  'browser harness verifies reversible removal through Trash',
 );
 assert.match(
   harness,

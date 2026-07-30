@@ -240,6 +240,94 @@ export function updateAssetFingerprint(
   return { manifest: next, changed: true };
 }
 
+export function markAssetTrashed(
+  manifest,
+  assetId,
+  { trashId },
+  now = () => new Date().toISOString(),
+) {
+  if (!manifest || !assetId || !trashId) {
+    return { manifest, changed:false };
+  }
+  const next = cloneJson(manifest);
+  const asset = next.assets.find((candidate) => candidate.assetId === assetId);
+  if (!asset || asset.availability === 'removed') {
+    return { manifest, changed:false };
+  }
+  if (asset.availability === 'trashed' && asset.trash?.trashId === trashId) {
+    return { manifest, changed:false };
+  }
+  const timestamp = isoNow(now);
+  asset.availability = 'trashed';
+  asset.trash = {
+    trashId:String(trashId),
+    trashedAt:timestamp,
+  };
+  asset.updatedAt = timestamp;
+  next.updatedAt = timestamp;
+  return { manifest:next, changed:true };
+}
+
+export function restoreTrashedAsset(
+  manifest,
+  assetId,
+  { trashId },
+  now = () => new Date().toISOString(),
+) {
+  if (!manifest || !assetId || !trashId) {
+    return { manifest, changed:false };
+  }
+  const next = cloneJson(manifest);
+  const asset = next.assets.find((candidate) => candidate.assetId === assetId);
+  if (
+    !asset
+    || asset.availability !== 'trashed'
+    || asset.trash?.trashId !== trashId
+  ) {
+    return { manifest, changed:false };
+  }
+  const timestamp = isoNow(now);
+  asset.availability = 'available';
+  asset.trashHistory = (asset.trashHistory || []).concat([{
+    ...asset.trash,
+    restoredAt:timestamp,
+  }]);
+  delete asset.trash;
+  asset.updatedAt = timestamp;
+  next.updatedAt = timestamp;
+  return { manifest:next, changed:true };
+}
+
+export function removeTrashedAsset(
+  manifest,
+  assetId,
+  { trashId },
+  now = () => new Date().toISOString(),
+) {
+  if (!manifest || !assetId || !trashId) {
+    return { manifest, changed:false };
+  }
+  const next = cloneJson(manifest);
+  const asset = next.assets.find((candidate) => candidate.assetId === assetId);
+  if (
+    !asset
+    || asset.availability !== 'trashed'
+    || asset.trash?.trashId !== trashId
+  ) {
+    return { manifest, changed:false };
+  }
+  const timestamp = isoNow(now);
+  asset.availability = 'removed';
+  asset.trashHistory = (asset.trashHistory || []).concat([{
+    ...asset.trash,
+    removedAt:timestamp,
+  }]);
+  delete asset.trash;
+  asset.updatedAt = timestamp;
+  next.updatedAt = timestamp;
+  return { manifest:next, changed:true };
+}
+
 export async function sha256Fingerprint(value) {
   let buffer;
   if (value instanceof ArrayBuffer) buffer = value;
@@ -274,7 +362,8 @@ function catalogPayload(manifests) {
   const works = manifests
     .map((manifest) => {
       const sourceFilenames = manifest.assets
-        .filter((asset) => asset.availability !== 'removed')
+        .filter((asset) =>
+          asset.availability === 'available' || asset.availability === 'missing')
         .map((asset) => asset.sourceFilename)
         .filter(Boolean)
         .sort();
@@ -289,7 +378,8 @@ function catalogPayload(manifests) {
         title: manifest.title,
         authors: cloneJson(manifest.authors || []),
         sourceFilenames,
-        assetCount: manifest.assets.filter((asset) => asset.availability !== 'removed').length,
+        assetCount: manifest.assets.filter((asset) =>
+          asset.availability === 'available' || asset.availability === 'missing').length,
         availableAssetCount: manifest.assets.filter((asset) => asset.availability === 'available').length,
         tags: cloneJson(manifest.userMetadata?.tags || []),
         shelves: cloneJson(manifest.userMetadata?.shelves || []),
@@ -402,6 +492,9 @@ export function validateSemanticLibrary({
         });
       }
       if (asset?.assetId) assetIds.add(asset.assetId);
+      if (asset?.availability === 'trashed' || asset?.availability === 'removed') {
+        continue;
+      }
       if (!asset?.sourceFilename) continue;
       const claims = claimedSources.get(asset.sourceFilename) || [];
       claims.push(manifest.workId);
@@ -455,7 +548,12 @@ export function validateSemanticLibrary({
   const fingerprintGroups = new Map();
   for (const manifest of validManifests) {
     for (const asset of manifest.assets) {
-      if (!asset?.fingerprint || asset.fingerprintStatus !== 'complete') continue;
+      if (
+        !asset?.fingerprint
+        || asset.fingerprintStatus !== 'complete'
+        || asset.availability === 'trashed'
+        || asset.availability === 'removed'
+      ) continue;
       const rows = fingerprintGroups.get(asset.fingerprint) || [];
       rows.push({
         workId: manifest.workId,
@@ -481,6 +579,10 @@ export function validateSemanticLibrary({
 
   const groupingCandidates = new Map();
   for (const manifest of validManifests) {
+    if (!manifest.assets.some((asset) =>
+      asset.availability === 'available' || asset.availability === 'missing')) {
+      continue;
+    }
     const grouping = groupingKeyFor(manifest);
     if (!grouping.title) continue;
     const rows = groupingCandidates.get(grouping.key) || [];
@@ -696,7 +798,12 @@ export function reconcileSemanticLibrary({
 
   for (const manifest of manifests) {
     for (const asset of manifest.assets) {
-      if (asset?.sourceFilename && !assetByFilename.has(asset.sourceFilename)) {
+      if (
+        asset?.sourceFilename
+        && asset.availability !== 'trashed'
+        && asset.availability !== 'removed'
+        && !assetByFilename.has(asset.sourceFilename)
+      ) {
         assetByFilename.set(asset.sourceFilename, { manifest, asset });
       }
     }
@@ -746,6 +853,7 @@ export function reconcileSemanticLibrary({
     for (const asset of manifest.assets) {
       if (
         asset.availability !== 'removed'
+        && asset.availability !== 'trashed'
         && !availableSources.has(asset.sourceFilename)
         && asset.availability !== 'missing'
       ) {

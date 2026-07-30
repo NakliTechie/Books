@@ -22,7 +22,8 @@ execution sequence and complete pending-item map in
 The foundation now includes work/edition/asset identity, resumable local
 passage indexing and concepts, Books-native reading, portable highlights,
 library-wide annotation memory, library validation, catalog rebuild, and
-conflict-safe portable export/import.
+conflict-safe portable export/import. Book removal now uses recoverable Trash;
+permanent deletion is a separate confirmed action.
 
 ## v1.4 highlights
 
@@ -41,7 +42,8 @@ conflict-safe portable export/import.
 - Library filter and sort by recently read, title, or author.
 - A Continue Reading rail reopens the five most recently read books at their saved positions.
 - Sidecars whose book file is missing stay visible and can only be recovered with the exact original filename; notes and positions are never silently rebound or deleted.
-- Safe removal through an in-app modal; duplicate filenames are refused instead of overwritten.
+- Recoverable removal through an in-app Trash; duplicate filenames are refused
+  instead of overwritten, and permanent deletion requires a separate confirmation.
 - Reader appearance controls for font size, line height, text width, and color profile.
 - Appearance defaults persist locally; hosted books can store a per-book override in their sidecar.
 - PDF pages retain their authored layout.
@@ -114,7 +116,8 @@ naklios-universe/
 - [x] v1.3 — selection/page-scoped NakliOS AI reading companion
 - [x] v1.4 — persistent standalone library + Cloudflare Workers deployment
 - [x] Semantic foundation — work identity, local passages/search/concepts,
-      Native reader, portable highlights, validation, and backup/import
+      Native reader, portable highlights, validation, backup/import, and
+      recoverable Trash
 - [x] Contract test at `scripts/test-books-v1_1.mjs`
 - [x] Safe two-backend browser fixture at `test/host-harness.html`
 

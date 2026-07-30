@@ -8,10 +8,13 @@ import {
   SEMANTIC_SCHEMA_VERSION,
   SEMANTIC_WORKS_PREFIX,
   legacyBookIdFor,
+  markAssetTrashed,
   reconcileLegacyAnnotations,
   reanchorPortableAnnotations,
   reconcileSemanticLibrary,
   rebuildCatalog,
+  removeTrashedAsset,
+  restoreTrashedAsset,
   semanticAnnotationsPath,
   semanticManifestPath,
   sha256Fingerprint,
@@ -149,6 +152,51 @@ assert.equal(
   false,
   'repeating the same fingerprint is idempotent',
 );
+
+const trashed = markAssetTrashed(
+  fingerprinted.manifest,
+  fingerprinted.manifest.assets[0].assetId,
+  { trashId:'trash_test' },
+  now,
+);
+assert.equal(trashed.changed, true);
+assert.equal(trashed.manifest.assets[0].availability, 'trashed');
+assert.equal(trashed.manifest.assets[0].trash.trashId, 'trash_test');
+assert.equal(
+  rebuildCatalog([trashed.manifest], null, now).catalog.works[0].assetCount,
+  0,
+  'trashed originals disappear from the visible rebuildable catalog',
+);
+const trashedReconcile = reconcileSemanticLibrary({
+  sourceFilenames: [],
+  existingManifests: [trashed.manifest],
+  now,
+  createId,
+});
+assert.equal(
+  trashedReconcile.manifests[0].assets[0].availability,
+  'trashed',
+  'a source scan never degrades an intentional trash state into missing',
+);
+const restored = restoreTrashedAsset(
+  trashed.manifest,
+  trashed.manifest.assets[0].assetId,
+  { trashId:'trash_test' },
+  now,
+);
+assert.equal(restored.changed, true);
+assert.equal(restored.manifest.assets[0].availability, 'available');
+assert.equal(restored.manifest.assets[0].trash, undefined);
+assert.equal(restored.manifest.assets[0].trashHistory[0].trashId, 'trash_test');
+const removed = removeTrashedAsset(
+  trashed.manifest,
+  trashed.manifest.assets[0].assetId,
+  { trashId:'trash_test' },
+  now,
+);
+assert.equal(removed.changed, true);
+assert.equal(removed.manifest.assets[0].availability, 'removed');
+assert.ok(removed.manifest.assets[0].trashHistory[0].removedAt);
 
 const details = updateWorkDetails(first.manifests[0], {
   title: 'Pride & Prejudice',

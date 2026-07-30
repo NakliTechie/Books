@@ -664,12 +664,63 @@
           && stores.fsa.has('catalog/works/work_harness-import.json')
           && app.querySelector(
             '.row[data-filename="Imported Field Guide.txt"]'
-          ),
+        ),
         'conflict-safe portable library import',
+      );
+      app.querySelector(
+        '.row[data-filename="Imported Field Guide.txt"] [data-action="remove"]'
+      ).click();
+      await waitFor(
+        () => app.getElementById('confirm-dialog').open
+          && app.getElementById('confirm-dialog-title').textContent.includes(
+            'Move this book to Trash'
+          ),
+        'recoverable trash confirmation',
+      );
+      app.getElementById('confirm-dialog-ok').click();
+      const trashItemPath = await waitFor(
+        () => [...stores.fsa.keys()].find(
+          (path) => /^trash\/items\/trash_.+\.json$/.test(path)
+        ),
+        'recoverable trash record',
+      );
+      const trashRecord = jsonFromStore(trashItemPath);
+      await waitFor(
+        () => !stores.fsa.has('library/Imported Field Guide.txt')
+          && stores.fsa.has(trashRecord.paths.source)
+          && !app.querySelector(
+            '.row[data-filename="Imported Field Guide.txt"]'
+          ),
+        'book moved out of the live library without losing its original',
+      );
+      app.getElementById('library-tools-btn').click();
+      const restoreButton = await waitFor(
+        () => app.querySelector(
+          '[data-trash-id="' + trashRecord.trashId + '"] ' +
+          '[data-trash-action="restore"]'
+        ),
+        'recoverable Trash restore action',
+      );
+      restoreButton.click();
+      await waitFor(
+        () => app.getElementById('confirm-dialog').open
+          && app.getElementById('confirm-dialog-title').textContent.includes(
+            'Restore this book'
+          ),
+        'Trash restore confirmation',
+      );
+      app.getElementById('confirm-dialog-ok').click();
+      await waitFor(
+        () => stores.fsa.has('library/Imported Field Guide.txt')
+          && !stores.fsa.has(trashItemPath)
+          && app.querySelector(
+            '.row[data-filename="Imported Field Guide.txt"]'
+          ),
+        'Trash restores original bytes and portable identity',
       );
 
       setStatus(
-        'PASS · semantic reading, annotation memory, recovery, and portability work',
+        'PASS · semantic reading, annotation memory, portability, and Trash recovery',
         'pass',
       );
     } catch (error) {
