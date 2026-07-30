@@ -33,6 +33,7 @@
   const runButton = document.getElementById('harness-run');
   const status = document.getElementById('harness-status');
   const encoder = new TextEncoder();
+  const scaleMode = new URLSearchParams(location.search).get('scale') === '1';
 
   function concatBytes(chunks) {
     const output = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
@@ -235,6 +236,66 @@
       )],
     ]),
   };
+  if (scaleMode) {
+    const timestamp = '2026-07-30T12:00:00.000Z';
+    for (let number = 1; number <= 58; number++) {
+      const suffix = String(number).padStart(3, '0');
+      const filename = 'Scale Source ' + suffix + '.txt';
+      const workId = 'work_scale-' + suffix;
+      const editionId = 'edition_scale-' + suffix;
+      const assetId = 'asset_scale-' + suffix;
+      stores.fsa.set(
+        'library/' + filename,
+        encoder.encode(
+          'Scale Work ' + suffix + '\n\nA deterministic large-library fixture.'
+        ),
+      );
+      stores.fsa.set(
+        'catalog/works/' + workId + '.json',
+        JSON.stringify({
+          schemaVersion:1,
+          recordType:'books.work',
+          workId,
+          title:'Scale Work ' + suffix,
+          authors:[{ name:'Scale Author ' + (number % 7), source:'user' }],
+          metadataProvenance:{ title:'user', authors:'user' },
+          userMetadata:{
+            rating:number % 5 === 0 ? 5 : null,
+            tags:[number % 2 === 0 ? 'even' : 'odd'],
+            shelves:['Scale shelf'],
+          },
+          editions:[{
+            editionId,
+            language:'en',
+            identifiers:{},
+            assetIds:[assetId],
+            createdAt:timestamp,
+            updatedAt:timestamp,
+          }],
+          assets:[{
+            assetId,
+            editionId,
+            sourcePath:'library/' + filename,
+            sourceFilename:filename,
+            format:'txt',
+            byteLength:null,
+            fingerprint:null,
+            fingerprintStatus:'pending',
+            availability:'available',
+            importedAt:timestamp,
+            updatedAt:timestamp,
+          }],
+          legacy:{
+            bookIds:['Scale_Source_' + suffix],
+            sourceFilenames:[filename],
+            sidecarPath:null,
+          },
+          createdAt:timestamp,
+          updatedAt:timestamp,
+        }),
+      );
+    }
+  }
 
   const capabilities = () => ({
     type: 'naklios:capabilities',
@@ -1221,6 +1282,65 @@
     }
   }
 
+  async function runScaleRegression() {
+    runButton.disabled = true;
+    setStatus('Running · loading 60 canonical works…');
+    try {
+      frame.contentWindow.localStorage.setItem(
+        'books.semanticProcessingPaused.v1',
+        'true',
+      );
+      const reloaded = new Promise((resolve) =>
+        frame.addEventListener('load', resolve, { once:true }));
+      frame.contentWindow.location.reload();
+      await reloaded;
+      const app = frame.contentDocument;
+      await waitFor(
+        () => app.querySelectorAll('.row[data-filename]').length === 60
+          && app.getElementById('library-view-select')
+          && app.getElementById('library-filter'),
+        '60-work library render',
+      );
+      const view = app.getElementById('library-view-select');
+      view.value = 'tag:even';
+      view.dispatchEvent(new Event('change', { bubbles:true }));
+      await waitFor(
+        () => app.querySelectorAll('.row[data-filename]').length === 29
+          && app.querySelector(
+            '.row[data-filename="Scale Source 042.txt"]'
+          ),
+        'deterministic 60-work tag facet',
+      );
+      view.value = 'all';
+      view.dispatchEvent(new Event('change', { bubbles:true }));
+      const filter = app.getElementById('library-filter');
+      filter.value = 'Scale Work 042';
+      filter.dispatchEvent(new Event('input', { bubbles:true }));
+      await waitFor(
+        () => app.querySelectorAll('.row[data-filename]').length === 1
+          && app.querySelector(
+            '.row[data-filename="Scale Source 042.txt"]'
+          )?.textContent.includes('Scale Work 042'),
+        'filename-independent 60-work title search',
+      );
+      if (!app.getElementById('topbar-status').textContent.includes('1 of 60')) {
+        throw new Error('Large-library result count did not remain understandable');
+      }
+      setStatus(
+        'PASS · 60-work organization, deterministic facets, and title discovery',
+        'pass',
+      );
+    } catch (error) {
+      console.error('Books scale regression failed', error);
+      setStatus('FAIL · ' + String(error && error.message || error), 'fail');
+    } finally {
+      runButton.disabled = false;
+      frame.contentWindow.localStorage.removeItem(
+        'books.semanticProcessingPaused.v1',
+      );
+    }
+  }
+
   window.addEventListener('message', (event) => {
     if (event.source !== frame.contentWindow) return;
     const msg = event.data;
@@ -1362,7 +1482,13 @@
     });
   });
 
-  runButton.addEventListener('click', runEpubRegression);
+  runButton.textContent = scaleMode
+    ? 'Run 60-work regression'
+    : 'Run EPUB regression';
+  runButton.addEventListener(
+    'click',
+    scaleMode ? runScaleRegression : runEpubRegression,
+  );
   if (new URLSearchParams(location.search).get('autorun') === '1') {
     frame.addEventListener('load', () => setTimeout(runEpubRegression, 0), { once: true });
   }

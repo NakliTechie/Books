@@ -619,6 +619,11 @@ assert.match(
 );
 assert.match(
   harness,
+  /number <= 58[\s\S]*?60-work library render[\s\S]*?deterministic 60-work tag facet[\s\S]*?filename-independent 60-work title search[\s\S]*?1 of 60/,
+  'browser harness verifies the large-library organization exit gate',
+);
+assert.match(
+  harness,
   /local storage accounting by data class[\s\S]*?background semantic processing pause[\s\S]*?derived cleanup preserves originals and portable records[\s\S]*?resumable local rebuild/,
   'browser harness verifies safe derived-data lifecycle controls',
 );
