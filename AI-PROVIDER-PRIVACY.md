@@ -39,6 +39,12 @@ For the **reader companion**, the user explicitly chooses Explain, Summarize,
 Key points, or asks a question. Only the current selection/page/passage and the
 request are sent.
 
+For **semantic enrichment**, the user explicitly chooses Enrich in a work's
+details. Books samples indexed passages across the work and requests bounded
+concept, entity, and scene records. Every accepted item must name an existing
+passage ID; unsupported and malformed items are rejected. Rerunning replaces
+only model-assisted records, preserving deterministic records and user state.
+
 Source text is marked as untrusted quoted data. Prompts instruct the model not
 to follow instructions embedded in a book. Ask answers must cite the supplied
 passage identifiers (`[S1]`, `[S2]`, …); invented or missing citations make the
@@ -73,6 +79,7 @@ requests. Remote consent is revoked when the provider becomes local or is
 disabled. Provider errors do not block reading, local search, Native mode,
 annotations, backup, recovery, or Trash.
 
-Model-assisted concept/scene enrichment and generated illustrations require
-their own capability-specific consent and are not enabled by the
-`answerFromSources` approval.
+Model-assisted concept/scene enrichment uses the `extractConcepts`,
+`extractEntities`, and `extractScenes` capabilities. Remote consent records
+list those separately from `answerFromSources`. Generated illustrations remain
+behind their own future `generateIllustration` decision and consent gate.

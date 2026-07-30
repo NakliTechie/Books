@@ -25,7 +25,9 @@ library-wide annotation memory, library validation, catalog rebuild, and
 conflict-safe portable export/import. Book removal now uses recoverable Trash;
 permanent deletion is a separate confirmed action. Source-grounded Ask works
 through NakliOS AI or a visible OpenAI-compatible local/BYOK endpoint, with
-passage citations and durable model-run provenance.
+passage citations and durable model-run provenance. Users can explicitly group
+multiple source formats as one work and split them again without changing the
+originals or losing format-grounded annotations.
 
 ## v1.4 highlights
 

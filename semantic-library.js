@@ -360,6 +360,7 @@ function catalogPayload(manifests) {
     sourceFilenames: {},
   };
   const works = manifests
+    .filter((manifest) => manifest.recordState !== 'merged')
     .map((manifest) => {
       const sourceFilenames = manifest.assets
         .filter((asset) =>
@@ -388,7 +389,142 @@ function catalogPayload(manifests) {
       };
     })
     .sort((left, right) => left.workId.localeCompare(right.workId));
+  for (const manifest of manifests) {
+    if (manifest.recordState !== 'merged' || !manifest.mergedInto) continue;
+    for (const filename of manifest.legacy?.sourceFilenames || []) {
+      if (!aliases.sourceFilenames[filename]) {
+        aliases.sourceFilenames[filename] = manifest.mergedInto;
+      }
+    }
+    for (const bookId of manifest.legacy?.bookIds || []) {
+      if (!aliases.legacyBookIds[bookId]) {
+        aliases.legacyBookIds[bookId] = manifest.mergedInto;
+      }
+    }
+  }
   return { works, aliases };
+}
+
+function unionStrings(left, right) {
+  return Array.from(new Set(
+    [...(left || []), ...(right || [])].filter(
+      (value) => typeof value === 'string' && value,
+    ),
+  )).sort((a, b) => a.localeCompare(b));
+}
+
+export function mergeWorkManifests(
+  primaryManifest,
+  secondaryManifest,
+  now = () => new Date().toISOString(),
+) {
+  const primary = normalizeManifest(primaryManifest);
+  const secondary = normalizeManifest(secondaryManifest);
+  if (!primary || !secondary) throw new Error('Both work manifests must be valid.');
+  if (primary.workId === secondary.workId) {
+    throw new Error('A work cannot be grouped with itself.');
+  }
+  if (primary.recordState === 'merged' || secondary.recordState === 'merged') {
+    throw new Error('Split an existing grouped work before grouping it again.');
+  }
+  const primaryAssetIds = new Set(primary.assets.map((asset) => asset.assetId));
+  if (secondary.assets.some((asset) => primaryAssetIds.has(asset.assetId))) {
+    throw new Error('The works contain a duplicate asset identity.');
+  }
+  const primaryEditionIds = new Set(
+    primary.editions.map((edition) => edition.editionId),
+  );
+  if (secondary.editions.some(
+    (edition) => primaryEditionIds.has(edition.editionId),
+  )) {
+    throw new Error('The works contain a duplicate edition identity.');
+  }
+  const timestamp = isoNow(now);
+  const merged = cloneJson(primary);
+  merged.editions = merged.editions.concat(cloneJson(secondary.editions));
+  merged.assets = merged.assets.concat(cloneJson(secondary.assets));
+  merged.legacy = {
+    ...(merged.legacy || {}),
+    bookIds:unionStrings(merged.legacy?.bookIds, secondary.legacy?.bookIds),
+    sourceFilenames:unionStrings(
+      merged.legacy?.sourceFilenames,
+      secondary.legacy?.sourceFilenames,
+    ),
+    sidecarPath:merged.legacy?.sidecarPath || secondary.legacy?.sidecarPath || null,
+  };
+  merged.userMetadata = {
+    ...(merged.userMetadata || {}),
+    rating:merged.userMetadata?.rating ?? secondary.userMetadata?.rating ?? null,
+    tags:unionStrings(
+      merged.userMetadata?.tags,
+      secondary.userMetadata?.tags,
+    ),
+    shelves:unionStrings(
+      merged.userMetadata?.shelves,
+      secondary.userMetadata?.shelves,
+    ),
+  };
+  merged.grouping = {
+    ...(merged.grouping || {}),
+    mergedFrom:(merged.grouping?.mergedFrom || []).concat([{
+      workId:secondary.workId,
+      title:secondary.title,
+      mergedAt:timestamp,
+      reason:'user-confirmed-format-grouping',
+    }]),
+  };
+  merged.updatedAt = timestamp;
+
+  const tombstone = cloneJson(secondary);
+  tombstone.recordState = 'merged';
+  tombstone.mergedInto = primary.workId;
+  tombstone.mergedAt = timestamp;
+  tombstone.updatedAt = timestamp;
+  return { merged, tombstone };
+}
+
+export function splitWorkManifests(
+  groupedManifest,
+  tombstoneManifest,
+  now = () => new Date().toISOString(),
+) {
+  const grouped = normalizeManifest(groupedManifest);
+  const tombstone = normalizeManifest(tombstoneManifest);
+  if (
+    !grouped
+    || !tombstone
+    || tombstone.recordState !== 'merged'
+    || tombstone.mergedInto !== grouped.workId
+  ) {
+    throw new Error('These manifests do not describe a reversible grouped work.');
+  }
+  const timestamp = isoNow(now);
+  const splitAssetIds = new Set(tombstone.assets.map((asset) => asset.assetId));
+  const splitEditionIds = new Set(
+    tombstone.editions.map((edition) => edition.editionId),
+  );
+  const primary = cloneJson(grouped);
+  primary.assets = primary.assets.filter(
+    (asset) => !splitAssetIds.has(asset.assetId),
+  );
+  primary.editions = primary.editions.filter(
+    (edition) => !splitEditionIds.has(edition.editionId),
+  );
+  primary.grouping = {
+    ...(primary.grouping || {}),
+    mergedFrom:(primary.grouping?.mergedFrom || []).filter(
+      (entry) => entry.workId !== tombstone.workId,
+    ),
+  };
+  if (!primary.grouping.mergedFrom.length) delete primary.grouping;
+  primary.updatedAt = timestamp;
+
+  const restored = cloneJson(tombstone);
+  delete restored.recordState;
+  delete restored.mergedInto;
+  delete restored.mergedAt;
+  restored.updatedAt = timestamp;
+  return { primary, restored };
 }
 
 export function rebuildCatalog(
@@ -477,6 +613,7 @@ export function validateSemanticLibrary({
       });
     }
     workIds.add(manifest.workId);
+    if (manifest.recordState === 'merged') return;
     for (const asset of manifest.assets) {
       if (!asset?.assetId) {
         errors.push({
@@ -501,6 +638,22 @@ export function validateSemanticLibrary({
       claimedSources.set(asset.sourceFilename, claims);
     }
   });
+
+  for (const manifest of validManifests) {
+    if (manifest.recordState !== 'merged') continue;
+    if (
+      !manifest.mergedInto
+      || manifest.mergedInto === manifest.workId
+      || !workIds.has(manifest.mergedInto)
+    ) {
+      errors.push({
+        code:'invalid-work-merge-redirect',
+        workId:manifest.workId,
+        message:'Grouped work ' + manifest.workId +
+          ' does not point to a valid active work.',
+      });
+    }
+  }
 
   for (const [filename, claims] of claimedSources) {
     if (claims.length > 1) {
@@ -547,6 +700,7 @@ export function validateSemanticLibrary({
 
   const fingerprintGroups = new Map();
   for (const manifest of validManifests) {
+    if (manifest.recordState === 'merged') continue;
     for (const asset of manifest.assets) {
       if (
         !asset?.fingerprint
@@ -579,6 +733,7 @@ export function validateSemanticLibrary({
 
   const groupingCandidates = new Map();
   for (const manifest of validManifests) {
+    if (manifest.recordState === 'merged') continue;
     if (!manifest.assets.some((asset) =>
       asset.availability === 'available' || asset.availability === 'missing')) {
       continue;
@@ -628,8 +783,15 @@ export function validateSemanticLibrary({
     rebuiltCatalog: rebuilt.catalog,
     summary: {
       sources: sourceSet.size,
-      works: validManifests.length,
-      assets: validManifests.reduce((sum, manifest) => sum + manifest.assets.length, 0),
+      works: validManifests.filter(
+        (manifest) => manifest.recordState !== 'merged',
+      ).length,
+      assets: validManifests.reduce(
+        (sum, manifest) => sum + (
+          manifest.recordState === 'merged' ? 0 : manifest.assets.length
+        ),
+        0,
+      ),
       annotationRecords: annotations.length,
     },
   };
@@ -797,6 +959,7 @@ export function reconcileSemanticLibrary({
   const assetByFilename = new Map();
 
   for (const manifest of manifests) {
+    if (manifest.recordState === 'merged') continue;
     for (const asset of manifest.assets) {
       if (
         asset?.sourceFilename
@@ -850,6 +1013,7 @@ export function reconcileSemanticLibrary({
   }
 
   for (const manifest of manifests) {
+    if (manifest.recordState === 'merged') continue;
     for (const asset of manifest.assets) {
       if (
         asset.availability !== 'removed'
@@ -886,6 +1050,205 @@ export function semanticManifestPath(workId) {
 
 export function semanticAnnotationsPath(workId) {
   return SEMANTIC_ANNOTATIONS_PREFIX + workId + '.json';
+}
+
+export function mergePortableAnnotationRecords(
+  primaryRecord,
+  secondaryRecord,
+  primaryWorkId,
+  now = () => new Date().toISOString(),
+) {
+  const valid = (record) => (
+    record
+    && record.schemaVersion === SEMANTIC_SCHEMA_VERSION
+    && record.recordType === ANNOTATIONS_TYPE
+    && Array.isArray(record.annotations)
+  );
+  const base = valid(primaryRecord) ? cloneJson(primaryRecord) : {
+    schemaVersion:SEMANTIC_SCHEMA_VERSION,
+    recordType:ANNOTATIONS_TYPE,
+    workId:primaryWorkId,
+    revision:0,
+    annotations:[],
+    positions:[],
+    preferences:[],
+    legacy:{ bookIds:[] },
+  };
+  if (!valid(secondaryRecord)) {
+    return { record:base, changed:false };
+  }
+  const mergeBy = (left, right, identity) => {
+    const rows = new Map();
+    for (const item of left || []) {
+      const key = identity(item);
+      if (key) rows.set(key, cloneJson(item));
+    }
+    for (const item of right || []) {
+      const key = identity(item);
+      if (key && !rows.has(key)) rows.set(key, cloneJson(item));
+    }
+    return Array.from(rows.values()).sort((a, b) =>
+      String(identity(a)).localeCompare(String(identity(b))));
+  };
+  const next = cloneJson(base);
+  next.workId = primaryWorkId;
+  next.annotations = mergeBy(
+    base.annotations,
+    secondaryRecord.annotations,
+    (item) => item?.annotationId,
+  );
+  next.positions = mergeBy(
+    base.positions,
+    secondaryRecord.positions,
+    (item) => item?.positionId || item?.assetId,
+  );
+  next.preferences = mergeBy(
+    base.preferences,
+    secondaryRecord.preferences,
+    (item) => item?.assetId,
+  );
+  next.legacy = {
+    ...(base.legacy || {}),
+    bookIds:unionStrings(
+      base.legacy?.bookIds,
+      secondaryRecord.legacy?.bookIds,
+    ),
+    groupedAnnotationWorkIds:unionStrings(
+      base.legacy?.groupedAnnotationWorkIds,
+      [secondaryRecord.workId],
+    ),
+  };
+  const payloadBefore = {
+    annotations:base.annotations || [],
+    positions:base.positions || [],
+    preferences:base.preferences || [],
+    legacy:base.legacy || {},
+    workId:base.workId,
+  };
+  const payloadAfter = {
+    annotations:next.annotations,
+    positions:next.positions,
+    preferences:next.preferences,
+    legacy:next.legacy,
+    workId:next.workId,
+  };
+  if (jsonEqual(payloadBefore, payloadAfter)) {
+    return { record:base, changed:false };
+  }
+  next.revision = Math.max(
+    Number(base.revision) || 0,
+    Number(secondaryRecord.revision) || 0,
+  ) + 1;
+  next.updatedAt = isoNow(now);
+  return { record:next, changed:true };
+}
+
+export function splitPortableAnnotationRecords(
+  groupedRecord,
+  secondaryRecord,
+  {
+    primaryWorkId,
+    secondaryWorkId,
+    secondaryAssetIds = [],
+    secondarySourceFilenames = [],
+  },
+  now = () => new Date().toISOString(),
+) {
+  if (!groupedRecord || groupedRecord.recordType !== ANNOTATIONS_TYPE) {
+    return {
+      primaryRecord:groupedRecord,
+      secondaryRecord:secondaryRecord || null,
+      changed:false,
+    };
+  }
+  const assetIds = new Set(secondaryAssetIds);
+  const filenames = new Set(secondarySourceFilenames);
+  const belongsToSecondary = (item) => (
+    assetIds.has(item?.assetId)
+    || assetIds.has(item?.target?.assetId)
+    || filenames.has(item?.target?.sourceFilename)
+  );
+  const movedAnnotations = (groupedRecord.annotations || []).filter(
+    belongsToSecondary,
+  );
+  const movedPositions = (groupedRecord.positions || []).filter(
+    belongsToSecondary,
+  );
+  const movedPreferences = (groupedRecord.preferences || []).filter(
+    belongsToSecondary,
+  );
+  const timestamp = isoNow(now);
+  const primary = cloneJson(groupedRecord);
+  primary.workId = primaryWorkId;
+  primary.annotations = (primary.annotations || []).filter(
+    (item) => !belongsToSecondary(item),
+  );
+  primary.positions = (primary.positions || []).filter(
+    (item) => !belongsToSecondary(item),
+  );
+  primary.preferences = (primary.preferences || []).filter(
+    (item) => !belongsToSecondary(item),
+  );
+  primary.legacy = {
+    ...(primary.legacy || {}),
+    groupedAnnotationWorkIds:(primary.legacy?.groupedAnnotationWorkIds || [])
+      .filter((workId) => workId !== secondaryWorkId),
+  };
+  primary.revision = Math.max(0, Number(primary.revision) || 0) + 1;
+  primary.updatedAt = timestamp;
+
+  const secondary = (
+    secondaryRecord
+    && secondaryRecord.recordType === ANNOTATIONS_TYPE
+  ) ? cloneJson(secondaryRecord) : {
+    schemaVersion:SEMANTIC_SCHEMA_VERSION,
+    recordType:ANNOTATIONS_TYPE,
+    revision:0,
+    annotations:[],
+    positions:[],
+    preferences:[],
+    legacy:{ bookIds:[] },
+  };
+  secondary.workId = secondaryWorkId;
+  const overlay = (base, moved, identity) => {
+    const rows = new Map(
+      (base || []).map((item) => [identity(item), cloneJson(item)]),
+    );
+    for (const item of moved) rows.set(identity(item), cloneJson(item));
+    return Array.from(rows.values()).filter(
+      (item) => belongsToSecondary(item),
+    ).sort((a, b) =>
+      String(identity(a)).localeCompare(String(identity(b))));
+  };
+  secondary.annotations = overlay(
+    secondary.annotations,
+    movedAnnotations,
+    (item) => item?.annotationId,
+  );
+  secondary.positions = overlay(
+    secondary.positions,
+    movedPositions,
+    (item) => item?.positionId || item?.assetId,
+  );
+  secondary.preferences = overlay(
+    secondary.preferences,
+    movedPreferences,
+    (item) => item?.assetId,
+  );
+  secondary.revision = Math.max(0, Number(secondary.revision) || 0) + 1;
+  secondary.updatedAt = timestamp;
+  return {
+    primaryRecord:primary,
+    secondaryRecord:secondary,
+    changed:Boolean(
+      movedAnnotations.length
+      || movedPositions.length
+      || movedPreferences.length
+      || groupedRecord.legacy?.groupedAnnotationWorkIds?.includes(
+        secondaryWorkId,
+      )
+    ),
+  };
 }
 
 export function addPortableAnnotation(

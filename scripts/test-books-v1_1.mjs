@@ -196,6 +196,12 @@ assert.match(html, /id="library-ask-dialog"/,
   'the library has a source-grounded Ask surface');
 assert.match(html, /id="library-ask-btn"/,
   'work-centered library controls expose Ask without entering a reader');
+assert.match(html, /id="work-enrich-btn"/,
+  'book details expose explicit on-demand semantic enrichment');
+assert.match(html, /id="work-formats"/,
+  'work details expose every available source format');
+assert.match(html, /id="work-split-btn"/,
+  'user-confirmed format grouping has an explicit reverse action');
 assert.match(
   html,
   /AI_PROVIDER_CONFIG_KEY[\s\S]*?localStorage\.setItem\(AI_PROVIDER_CONFIG_KEY[\s\S]*?AI_PROVIDER_SESSION_KEY[\s\S]*?sessionStorage\.setItem/,
@@ -203,13 +209,33 @@ assert.match(
 );
 assert.match(
   html,
-  /config\.providerClass === 'remote'[\s\S]*?!aiRemoteConsent\.checked[\s\S]*?makeProviderConsent\(config, \['answerFromSources'\]\)/,
-  'remote BYOK use requires destination-specific consent',
+  /config\.providerClass === 'remote'[\s\S]*?!aiRemoteConsent\.checked[\s\S]*?makeProviderConsent\(config,[\s\S]*?'answerFromSources'[\s\S]*?'extractConcepts'[\s\S]*?'extractScenes'/,
+  'remote BYOK capabilities require destination-specific consent',
 );
 assert.match(
   html,
   /function retrieveAskSources\([\s\S]*?searchLexicalIndex[\s\S]*?semanticAnnotationsPath/,
   'Ask retrieves local passage and annotation evidence before inference',
+);
+assert.match(
+  html,
+  /runWorkSemanticEnrichment[\s\S]*?resolveAiProvider\('extractConcepts'\)[\s\S]*?buildSemanticEnrichmentMessages[\s\S]*?parseSemanticEnrichment[\s\S]*?mergeModelSemanticRecords[\s\S]*?all-records-have-valid-passage-evidence/,
+  'on-demand semantic enrichment is capability-gated, parsed, grounded, and recorded',
+);
+assert.match(
+  html,
+  /groupSuggestedWorks[\s\S]*?Group formats[\s\S]*?mergeWorkManifests[\s\S]*?mergePortableAnnotationRecords/,
+  'validation suggestions support confirmed, annotation-preserving work grouping',
+);
+assert.match(
+  html,
+  /splitGroupedWork[\s\S]*?splitWorkManifests[\s\S]*?splitPortableAnnotationRecords/,
+  'grouped formats can be split without changing original assets',
+);
+assert.match(
+  html,
+  /function workCenteredLibraryEntries[\s\S]*?groupedEntries[\s\S]*?formats/,
+  'the visible library collapses grouped formats into one work-centered row',
 );
 assert.match(
   html,
@@ -499,6 +525,26 @@ assert.match(
   harness,
   /work-details-dialog[\s\S]*?Sample Field Notes[\s\S]*?portable work metadata write/,
   'browser harness verifies user-owned work metadata editing',
+);
+assert.match(
+  harness,
+  /work-enrich-btn[\s\S]*?source-grounded model semantic records[\s\S]*?extractConcepts[\s\S]*?modelSemantics/,
+  'browser harness verifies evidence-bound host-mediated semantic enrichment',
+);
+assert.match(
+  harness,
+  /capturedSemanticChat[\s\S]*?UNTRUSTED_PASSAGES_JSON/,
+  'semantic enrichment harness checks the untrusted-source prompt boundary',
+);
+assert.match(
+  harness,
+  /user-confirmed format grouping suggestion[\s\S]*?Group these formats[\s\S]*?work-centered grouped catalog[\s\S]*?recordState !==? 'merged'|user-confirmed format grouping suggestion[\s\S]*?recordState !==? 'merged'/,
+  'browser harness verifies explicit work grouping and redirect records',
+);
+assert.match(
+  harness,
+  /work-split-btn[\s\S]*?Split these formats[\s\S]*?reversible work split[\s\S]*?format-grounded reading data/,
+  'browser harness verifies the grouped-work split round trip',
 );
 
 console.log('Books persistent storage and library contract: PASS');

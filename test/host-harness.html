@@ -209,6 +209,7 @@
 
   let activeBackend = 'fsa';
   let capturedAiChat = null;
+  let capturedSemanticChat = null;
   const stores = {
     fsa: new Map([
       ['library/Sample.md', new TextEncoder().encode(
@@ -615,6 +616,46 @@
       ) {
         throw new Error('Saved portable metadata did not refresh the work row');
       }
+      app.querySelector(
+        '.row[data-filename="Sample.md"] [data-action="details"]'
+      ).click();
+      await waitFor(
+        () => app.getElementById('work-details-dialog').open
+          && !app.getElementById('work-enrich-btn').disabled,
+        'semantic enrichment action',
+      );
+      app.getElementById('work-enrich-btn').click();
+      const enrichedSemantics = await waitFor(() => {
+        const record = jsonFromStore(
+          'semantic/' + sampleWorkId + '/records.json'
+        );
+        return record?.concepts?.some(
+          (concept) => concept.generatedBy?.mode === 'model-assisted'
+        ) ? record : null;
+      }, 'source-grounded model semantic records');
+      const modelConcept = enrichedSemantics.concepts.find(
+        (concept) => concept.generatedBy?.mode === 'model-assisted'
+      );
+      const enrichmentJob = jsonFromStore('jobs/' + sampleWorkId + '.json');
+      const enrichmentRun = [...stores.fsa.keys()]
+        .filter((path) => /^semantic\/ai-runs\/airun_.+\.json$/.test(path))
+        .map((path) => jsonFromStore(path))
+        .find((run) => run?.capability === 'extractConcepts');
+      if (
+        !modelConcept?.evidence?.[0]?.passageId
+        || enrichmentJob?.stages?.modelSemantics?.status !== 'complete'
+        || enrichmentRun?.status !== 'complete'
+        || !enrichmentRun.output?.sceneIds?.length
+        || !capturedSemanticChat?.messages?.[0]?.content.includes(
+          'untrusted quoted data'
+        )
+        || !capturedSemanticChat.messages[1].content.includes(
+          'UNTRUSTED_PASSAGES_JSON'
+        )
+      ) {
+        throw new Error('Model semantic enrichment lost evidence, provenance, or its injection boundary');
+      }
+      app.getElementById('work-details-dialog').close();
       app.getElementById('annotations-browser-btn').click();
       await waitFor(
         () => app.getElementById('annotations-browser-dialog').open
@@ -724,6 +765,133 @@
           ),
         'Trash restores original bytes and portable identity',
       );
+
+      const setGroupingMetadata = async (filename) => {
+        app.querySelector(
+          '.row[data-filename="' + filename + '"] [data-action="details"]'
+        ).click();
+        await waitFor(
+          () => app.getElementById('work-details-dialog').open,
+          filename + ' work details for grouping',
+        );
+        app.getElementById('work-title-input').value = 'Format Pair';
+        app.getElementById('work-authors-input').value = 'Pair Author';
+        app.getElementById('work-details-form').requestSubmit();
+        await waitFor(
+          () => !app.getElementById('work-details-dialog').open
+            && app.querySelector(
+              '.row[data-filename="' + filename + '"]'
+            )?.textContent.includes('Format Pair'),
+          filename + ' grouping metadata save',
+        );
+      };
+      await setGroupingMetadata('Harness.epub');
+      await setGroupingMetadata('Missing.epub');
+      const catalogBeforeGrouping = jsonFromStore('catalog/catalog.json');
+      const harnessWorkBeforeGrouping =
+        catalogBeforeGrouping.aliases.sourceFilenames['Harness.epub'];
+      const missingWorkBeforeGrouping =
+        catalogBeforeGrouping.aliases.sourceFilenames['Missing.epub'];
+      if (
+        !harnessWorkBeforeGrouping
+        || !missingWorkBeforeGrouping
+        || harnessWorkBeforeGrouping === missingWorkBeforeGrouping
+      ) {
+        throw new Error('Grouping fixture did not begin as two work identities');
+      }
+      app.getElementById('library-tools-btn').click();
+      const groupingAction = await waitFor(
+        () => app.querySelector('[data-grouping-suggestion]'),
+        'user-confirmed format grouping suggestion',
+      );
+      groupingAction.click();
+      await waitFor(
+        () => app.getElementById('confirm-dialog').open
+          && app.getElementById('confirm-dialog-title').textContent.includes(
+            'Group these formats'
+          ),
+        'format grouping confirmation',
+      );
+      app.getElementById('confirm-dialog-ok').click();
+      const groupedCatalog = await waitFor(() => {
+        const catalog = jsonFromStore('catalog/catalog.json');
+        const harnessWork = catalog?.aliases?.sourceFilenames?.['Harness.epub'];
+        const missingWork = catalog?.aliases?.sourceFilenames?.['Missing.epub'];
+        return harnessWork && harnessWork === missingWork ? catalog : null;
+      }, 'work-centered grouped catalog');
+      const groupedWorkId =
+        groupedCatalog.aliases.sourceFilenames['Harness.epub'];
+      const groupedManifest = jsonFromStore(
+        'catalog/works/' + groupedWorkId + '.json'
+      );
+      const groupedAnnotations = jsonFromStore(
+        'annotations/' + groupedWorkId + '.json'
+      );
+      const redirectManifest = [
+        harnessWorkBeforeGrouping,
+        missingWorkBeforeGrouping,
+      ].filter((workId) => workId !== groupedWorkId)
+        .map((workId) => jsonFromStore('catalog/works/' + workId + '.json'))
+        .find(Boolean);
+      const groupedRow = await waitFor(
+        () => Array.from(app.querySelectorAll('.row')).find(
+          (row) => row.textContent.includes('Format Pair')
+            && row.textContent.includes('2 formats')
+        ),
+        'single work-centered row for grouped formats',
+      );
+      if (
+        groupedManifest?.assets?.length !== 2
+        || redirectManifest?.recordState !== 'merged'
+        || redirectManifest?.mergedInto !== groupedWorkId
+        || !groupedAnnotations?.annotations?.some(
+          (annotation) => annotation.kind === 'note'
+            && annotation.body.includes('must survive')
+        )
+      ) {
+        throw new Error('Grouping did not preserve source identities and recovered annotations');
+      }
+
+      groupedRow.querySelector('[data-action="details"]').click();
+      await waitFor(
+        () => app.getElementById('work-details-dialog').open
+          && !app.getElementById('work-grouping').hidden
+          && app.getElementById('work-formats').children.length === 2,
+        'grouped work format details',
+      );
+      app.getElementById('work-split-btn').click();
+      await waitFor(
+        () => app.getElementById('confirm-dialog').open
+          && app.getElementById('confirm-dialog-title').textContent.includes(
+            'Split these formats'
+          ),
+        'format split confirmation',
+      );
+      app.getElementById('confirm-dialog-ok').click();
+      await waitFor(() => {
+        const catalog = jsonFromStore('catalog/catalog.json');
+        return (
+          catalog?.aliases?.sourceFilenames?.['Harness.epub']
+          && catalog?.aliases?.sourceFilenames?.['Missing.epub']
+          && catalog.aliases.sourceFilenames['Harness.epub']
+            !== catalog.aliases.sourceFilenames['Missing.epub']
+        ) ? catalog : null;
+      }, 'reversible work split');
+      const restoredMissingAnnotations = jsonFromStore(
+        'annotations/' + missingWorkBeforeGrouping + '.json'
+      );
+      if (
+        !restoredMissingAnnotations?.annotations?.some(
+          (annotation) => annotation.kind === 'bookmark'
+        )
+        || !restoredMissingAnnotations.annotations.some(
+          (annotation) => annotation.kind === 'note'
+            && annotation.body.includes('must survive')
+        )
+      ) {
+        throw new Error('Splitting did not restore format-grounded reading data');
+      }
+
       app.getElementById('library-ask-btn').click();
       await waitFor(
         () => app.getElementById('library-ask-dialog').open,
@@ -776,7 +944,7 @@
       );
 
       setStatus(
-        'PASS · semantic reading, cited Ask, portability, and Trash recovery',
+        'PASS · semantic reading, enrichment, grouping, cited Ask, portability, and Trash recovery',
         'pass',
       );
     } catch (error) {
@@ -811,19 +979,56 @@
       return;
     }
     if (msg.type === 'naklios:ai:chat') {
-      capturedAiChat = msg;
+      const semanticRequest = msg.messages?.[1]?.content?.includes(
+        'UNTRUSTED_PASSAGES_JSON'
+      );
+      if (semanticRequest) capturedSemanticChat = msg;
+      else capturedAiChat = msg;
       send({
         type:'naklios:ai:event',
         requestId:msg.requestId,
         event:'status',
         status:'generating',
       });
+      let token = 'The sample describes a quiet test book [S1].';
+      if (semanticRequest) {
+        const marker = 'UNTRUSTED_PASSAGES_JSON:\n';
+        const payload = JSON.parse(
+          msg.messages[1].content.slice(
+            msg.messages[1].content.indexOf(marker) + marker.length
+          )
+        );
+        const passageId = payload[0].passageId;
+        token = JSON.stringify({
+          concepts:[{
+            label:'Quiet source grounding',
+            kind:'reading-principle',
+            description:'The sample keeps a quiet test statement tied to its source.',
+            confidence:0.94,
+            evidencePassageIds:[passageId],
+          }],
+          entities:[{
+            label:'NakliOS Books',
+            kind:'software',
+            description:'The Books reader named by the indexed sample.',
+            confidence:0.82,
+            evidencePassageIds:[passageId],
+          }],
+          scenes:[{
+            label:'Quiet test scene',
+            kind:'section-moment',
+            description:'A quiet test book is introduced in the source passage.',
+            confidence:0.88,
+            evidencePassageIds:[passageId],
+          }],
+        });
+      }
       send({
         type:'naklios:ai:event',
         requestId:msg.requestId,
         event:'token',
         model:'harness-grounded',
-        token:'The sample describes a quiet test book [S1].',
+        token,
       });
       send({
         type:'naklios:ai:event',

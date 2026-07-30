@@ -618,6 +618,12 @@ body { display: flex; flex-direction: column; }
   background:var(--body); color:var(--muted); font-size:11px; line-height:1.45;
 }
 .library-health-list strong { display:block; color:var(--ink); margin-bottom:2px; }
+.library-health-list .grouping-action {
+  margin-top:7px; padding:6px 8px; border:1px solid var(--line);
+  border-radius:6px; background:var(--row); color:var(--ink); cursor:pointer;
+  font:10px/1.2 inherit;
+}
+.library-health-list .grouping-action:hover { border-color:var(--brand); }
 .library-tools-actions {
   display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin-top:14px;
 }
@@ -816,6 +822,32 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   border:1px solid var(--line); border-radius:999px; padding:5px 8px;
   background:var(--body); color:var(--ink); font-size:10px;
 }
+.work-formats { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 12px; }
+.work-formats button {
+  border:1px solid var(--line); border-radius:6px; padding:6px 8px;
+  background:var(--row); color:var(--ink); cursor:pointer; font-size:10px;
+}
+.work-formats button:hover { border-color:var(--brand); }
+.work-grouping {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin:10px 0; padding:9px 10px; border:1px solid var(--line);
+  border-radius:7px; background:var(--body);
+}
+.work-grouping span { color:var(--muted); font-size:10px; line-height:1.4; }
+.work-grouping button {
+  flex:none; border:1px solid var(--line); border-radius:6px; padding:6px 8px;
+  background:var(--row); color:var(--ink); cursor:pointer; font-size:10px;
+}
+.work-enrichment {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin-top:12px; padding-top:12px; border-top:1px solid var(--line);
+}
+.work-enrichment span { color:var(--muted); font-size:10px; line-height:1.4; }
+.work-enrichment button {
+  flex:none; background:var(--row); color:var(--ink); border:1px solid var(--line);
+  border-radius:7px; padding:7px 10px; cursor:pointer; font-size:11px;
+}
+.work-enrichment button:hover { border-color:var(--brand); }
 @media (max-width:600px) {
   .topbar { gap:8px; padding:10px 12px; }
   .topbar-actions { min-width:0; }
@@ -1064,8 +1096,22 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     </div>
     <div class="work-processing-state" id="work-processing-state">Checking local processing…</div>
     <div>
+      <strong style="font-size:12px">Available formats</strong>
+      <div class="work-formats" id="work-formats"></div>
+    </div>
+    <div class="work-grouping" id="work-grouping" hidden>
+      <span id="work-grouping-summary"></span>
+      <button type="button" id="work-split-btn">Split formats…</button>
+    </div>
+    <div>
       <strong style="font-size:12px">Key concepts</strong>
       <div class="work-concepts" id="work-concepts"></div>
+    </div>
+    <div class="work-enrichment">
+      <span id="work-enrichment-boundary">
+        Optional. Sends selected indexed passages only after you choose Enrich.
+      </span>
+      <button type="button" id="work-enrich-btn">Enrich concepts &amp; scenes</button>
     </div>
     <div class="books-dialog-actions">
       <button type="button" data-close-dialog="work-details-dialog">Cancel</button>
@@ -1144,7 +1190,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <input id="ai-remote-consent" type="checkbox">
       <span id="ai-remote-consent-label">
         I approve sending retrieved book passages to this exact remote destination
-        for source-grounded answers.
+        for source-grounded answers and on-demand semantic enrichment.
       </span>
     </label>
     <div class="ai-provider-note" id="ai-provider-status" role="status"
@@ -1713,6 +1759,8 @@ import {
   addPortableAnnotation,
   createPortableBundle,
   markAssetTrashed,
+  mergePortableAnnotationRecords,
+  mergeWorkManifests,
   reconcileLegacyAnnotations,
   reanchorPortableAnnotations,
   SEMANTIC_CATALOG_PATH,
@@ -1724,6 +1772,8 @@ import {
   semanticManifestPath,
   semanticAnnotationsPath,
   sha256Fingerprint,
+  splitPortableAnnotationRecords,
+  splitWorkManifests,
   tombstonePortableAnnotation,
   updateAssetFingerprint,
   updateWorkDetails,
@@ -1747,14 +1797,18 @@ import {
 } from './semantic-processing.js';
 import {
   buildGroundedMessages,
+  buildSemanticEnrichmentMessages,
   callOpenAICompatible,
   GROUNDED_PROMPT_VERSION,
   hashAiConfiguration,
   makeAiRunRecord,
   makeProviderConsent,
+  mergeModelSemanticRecords,
   normalizeProviderConfig,
+  parseSemanticEnrichment,
   providerCanRun,
   READER_PROMPT_VERSION,
+  SEMANTIC_ENRICHMENT_PROMPT_VERSION,
   validateGroundedAnswer,
 } from './semantic-ai.js';
 
@@ -1836,7 +1890,13 @@ const workTagsInput = document.getElementById('work-tags-input');
 const workShelvesInput = document.getElementById('work-shelves-input');
 const workRatingInput = document.getElementById('work-rating-input');
 const workProcessingState = document.getElementById('work-processing-state');
+const workFormats = document.getElementById('work-formats');
+const workGrouping = document.getElementById('work-grouping');
+const workGroupingSummary = document.getElementById('work-grouping-summary');
+const workSplitBtn = document.getElementById('work-split-btn');
 const workConcepts = document.getElementById('work-concepts');
+const workEnrichmentBoundary = document.getElementById('work-enrichment-boundary');
+const workEnrichBtn = document.getElementById('work-enrich-btn');
 const readerPrefsBtn = document.getElementById('reader-prefs-btn');
 const aiProviderDialog = document.getElementById('ai-provider-dialog');
 const aiProviderForm = document.getElementById('ai-provider-form');
@@ -2413,6 +2473,7 @@ async function ensureSemanticFoundation(sourceFilenames, sidecars) {
     );
   }
   for (const manifest of result.manifests) {
+    if (manifest.recordState === 'merged') continue;
     const filenames = new Set(
       manifest.assets.map((asset) => asset.sourceFilename).filter(Boolean),
     );
@@ -2527,6 +2588,22 @@ async function openWorkDetails(filename) {
   workRatingInput.value = manifest.userMetadata?.rating == null
     ? '' : String(manifest.userMetadata.rating);
   workProcessingState.textContent = 'Checking local processing…';
+  const availableAssets = manifest.assets.filter(
+    (asset) => asset.availability === 'available',
+  );
+  workFormats.innerHTML = availableAssets.map((asset) =>
+    '<button type="button" data-work-format="' +
+      escapeHtml(asset.sourceFilename) + '">' +
+      escapeHtml((asset.format || 'file').toLocaleUpperCase()) +
+      ' · ' + escapeHtml(asset.sourceFilename) +
+    '</button>'
+  ).join('');
+  const mergedFrom = manifest.grouping?.mergedFrom || [];
+  workGrouping.hidden = !mergedFrom.length;
+  workGroupingSummary.textContent = mergedFrom.length
+    ? (availableAssets.length + ' source formats are grouped as one work. ' +
+      'Splitting preserves each original and moves format-grounded reading data back.')
+    : '';
   workConcepts.innerHTML = '<span class="semantic-search-state">Concepts are generated locally.</span>';
   workDetailsDialog.showModal();
 
@@ -2547,10 +2624,308 @@ async function openWorkDetails(filename) {
         '</span>'
       ).join('')
     : '<span class="semantic-search-state">No concepts yet. Processing may still be running.</span>';
+  const modelCount = concepts.filter(
+    (concept) => concept.generatedBy?.mode === 'model-assisted',
+  ).length;
+  workEnrichmentBoundary.textContent = modelCount
+    ? modelCount + ' model-assisted concept' + (modelCount === 1 ? '' : 's') +
+      ' · rerunning replaces model records but preserves your labels and hidden state.'
+    : 'Optional. Sends selected indexed passages only after you choose Enrich.';
+  let enrichmentReady = false;
+  try {
+    resolveAiProvider('extractConcepts');
+    resolveAiProvider('extractEntities');
+    resolveAiProvider('extractScenes');
+    enrichmentReady = true;
+  } catch (_) {}
+  workEnrichBtn.disabled = !semantics;
+  workEnrichBtn.textContent = enrichmentReady
+    ? (modelCount ? 'Refresh enrichment' : 'Enrich concepts & scenes')
+    : 'Configure semantic provider';
 }
 
 workDetailsDialog.addEventListener('close', () => {
   workDetailsWorkId = null;
+});
+
+workFormats.addEventListener('click', (event) => {
+  const choice = event.target.closest('[data-work-format]');
+  if (!choice) return;
+  const filename = choice.dataset.workFormat;
+  workDetailsDialog.close();
+  void openBookFromLibrary(filename);
+});
+
+async function splitGroupedWork() {
+  const workId = workDetailsWorkId;
+  let primary = workId && semanticManifests.get(workId);
+  const mergedFrom = primary?.grouping?.mergedFrom || [];
+  const tombstones = mergedFrom.map((entry) =>
+    semanticManifests.get(entry.workId)).filter(Boolean);
+  if (!primary || !tombstones.length) return;
+  workDetailsDialog.close();
+  const confirmed = await askForConfirmation({
+    title:'Split these formats into separate works?',
+    message:'Every original file keeps its identity. Format-specific reading ' +
+      'positions, preferences, and annotations move back to their source work. ' +
+      'User metadata on the primary work is not discarded.',
+    confirmLabel:'Split formats',
+  });
+  if (!confirmed) return;
+  try {
+    let primaryAnnotations = await readJsonRecord(
+      semanticAnnotationsPath(primary.workId),
+    );
+    const restoredRows = [];
+    for (const tombstone of tombstones.slice().reverse()) {
+      const split = splitWorkManifests(primary, tombstone);
+      const secondaryAnnotations = await readJsonRecord(
+        semanticAnnotationsPath(tombstone.workId),
+      );
+      let restoredAnnotations = secondaryAnnotations;
+      if (primaryAnnotations) {
+        const annotationSplit = splitPortableAnnotationRecords(
+          primaryAnnotations,
+          secondaryAnnotations,
+          {
+            primaryWorkId:primary.workId,
+            secondaryWorkId:tombstone.workId,
+            secondaryAssetIds:tombstone.assets.map((asset) => asset.assetId),
+            secondarySourceFilenames:tombstone.assets.map(
+              (asset) => asset.sourceFilename,
+            ),
+          },
+        );
+        primaryAnnotations = annotationSplit.primaryRecord;
+        restoredAnnotations = annotationSplit.secondaryRecord;
+      }
+      primary = split.primary;
+      restoredRows.push({
+        manifest:split.restored,
+        annotations:restoredAnnotations,
+      });
+    }
+
+    // Restore secondary owners before contracting the primary. A crash can
+    // leave duplicate claims for validation to repair, never an unowned source.
+    for (const row of restoredRows) {
+      await naklios.fs.write(
+        semanticManifestPath(row.manifest.workId),
+        JSON.stringify(row.manifest, null, 2),
+      );
+      if (row.annotations) {
+        await naklios.fs.write(
+          semanticAnnotationsPath(row.manifest.workId),
+          JSON.stringify(row.annotations, null, 2),
+        );
+      }
+    }
+    await naklios.fs.write(
+      semanticManifestPath(primary.workId),
+      JSON.stringify(primary, null, 2),
+    );
+    if (primaryAnnotations) {
+      await naklios.fs.write(
+        semanticAnnotationsPath(primary.workId),
+        JSON.stringify(primaryAnnotations, null, 2),
+      );
+    }
+    semanticManifests.set(primary.workId, primary);
+    for (const row of restoredRows) {
+      semanticManifests.set(row.manifest.workId, row.manifest);
+    }
+    const rebuilt = rebuildCatalog(
+      Array.from(semanticManifests.values()),
+      semanticCatalog,
+    );
+    semanticCatalog = rebuilt.catalog;
+    if (rebuilt.changed) {
+      await naklios.fs.write(
+        SEMANTIC_CATALOG_PATH,
+        JSON.stringify(rebuilt.catalog, null, 2),
+      );
+    }
+    await listLibrary();
+    showToast('Split the formats without changing any original files.');
+  } catch (error) {
+    await listLibrary().catch(() => {});
+    showToast(
+      'Split paused safely: ' + String(error?.message || error) +
+        '. Validate the library to review duplicate or redirected records.',
+      { error:true, duration:7000 },
+    );
+  }
+}
+
+workSplitBtn.addEventListener('click', () => {
+  void splitGroupedWork();
+});
+
+async function runWorkSemanticEnrichment() {
+  const workId = workDetailsWorkId;
+  const manifest = workId && semanticManifests.get(workId);
+  if (!manifest) return;
+  let providerRoute;
+  try {
+    providerRoute = resolveAiProvider('extractConcepts');
+    resolveAiProvider('extractEntities');
+    resolveAiProvider('extractScenes');
+  } catch (_) {
+    if (workDetailsDialog.open) workDetailsDialog.close();
+    openAiProviderSettings();
+    return;
+  }
+  workEnrichBtn.disabled = true;
+  workEnrichmentBoundary.textContent = 'Preparing indexed source passages…';
+  const runId = newAiRunId();
+  let processingRun = null;
+  let enrichmentPrompt = null;
+  let completion = null;
+  try {
+    const [passageRecord, semantics, existingRun] = await Promise.all([
+      readJsonRecord(passagesPath(workId)),
+      readJsonRecord(semanticRecordsPath(workId)),
+      readJsonRecord(processingRunPath(workId)),
+    ]);
+    if (!passageRecord?.passages?.length || !semantics) {
+      throw new Error('Finish local passage processing before semantic enrichment.');
+    }
+    processingRun = existingRun || makeProcessingRun({
+      workId,
+      assetId:passageRecord.assetId,
+    });
+    processingRun = await writeProcessingRun(updateProcessingStage(
+      processingRun,
+      'modelSemantics',
+      'running',
+      { runId },
+    ));
+    enrichmentPrompt = buildSemanticEnrichmentMessages({
+      workTitle:manifest.title,
+      passages:passageRecord.passages,
+      deterministicSemantics:semantics,
+    });
+    workEnrichmentBoundary.textContent =
+      'Sending ' + enrichmentPrompt.sourceRefs.length + ' indexed passage' +
+      (enrichmentPrompt.sourceRefs.length === 1 ? '' : 's') + ' · ' +
+      describeAiBoundary();
+    completion = await runAiMessages(
+      providerRoute,
+      enrichmentPrompt.messages,
+      {
+        maxTokens:1800,
+        onStatus:(status, progress) => {
+          if (workDetailsWorkId === workId) {
+            workEnrichmentBoundary.textContent =
+              readerAiProgressLabel(status, progress);
+          }
+        },
+      },
+    );
+    const enrichment = parseSemanticEnrichment({
+      text:completion.text,
+      workId,
+      passages:passageRecord.passages,
+      provider:providerRoute.provider,
+      runId,
+    });
+    const merged = {
+      ...mergeModelSemanticRecords(semantics, enrichment),
+      updatedAt:new Date().toISOString(),
+    };
+    const promptHash = await hashAiConfiguration({
+      promptVersion:SEMANTIC_ENRICHMENT_PROMPT_VERSION,
+      system:enrichmentPrompt.messages[0].content,
+      passageIds:enrichmentPrompt.sourceRefs.map((source) => source.passageId),
+    });
+    const outputIds = {
+      conceptIds:enrichment.concepts.map((item) => item.conceptId),
+      entityIds:enrichment.entities.map((item) => item.entityId),
+      sceneIds:enrichment.scenes.map((item) => item.sceneId),
+    };
+    await persistAiRun(makeAiRunRecord({
+      runId,
+      capability:'extractConcepts',
+      provider:providerRoute.provider,
+      consentClass:providerRoute.consentClass,
+      promptVersion:SEMANTIC_ENRICHMENT_PROMPT_VERSION,
+      promptHash,
+      sourceRefs:enrichmentPrompt.sourceRefs,
+      output:{
+        ...outputIds,
+        capabilities:['extractConcepts', 'extractEntities', 'extractScenes'],
+      },
+      validation:{
+        grounded:true,
+        reason:'all-records-have-valid-passage-evidence',
+      },
+      status:'complete',
+    }));
+    await naklios.fs.write(
+      semanticRecordsPath(workId),
+      JSON.stringify(merged, null, 2),
+    );
+    processingRun = await writeProcessingRun(updateProcessingStage(
+      processingRun,
+      'modelSemantics',
+      'complete',
+      {
+        runId,
+        conceptCount:enrichment.concepts.length,
+        entityCount:enrichment.entities.length,
+        sceneCount:enrichment.scenes.length,
+        promptVersion:SEMANTIC_ENRICHMENT_PROMPT_VERSION,
+      },
+    ));
+    if (workDetailsDialog.open && workDetailsWorkId === workId) {
+      workDetailsDialog.close();
+      await openWorkDetails(
+        manifest.assets.find((asset) =>
+          asset.availability === 'available')?.sourceFilename,
+      );
+      showToast('Added source-grounded concepts and scenes.');
+    }
+  } catch (error) {
+    if (processingRun) {
+      processingRun = await writeProcessingRun(updateProcessingStage(
+        processingRun,
+        'modelSemantics',
+        'failed',
+        {
+          runId,
+          error:String(error?.message || error),
+          retryable:true,
+        },
+      )).catch(() => processingRun);
+    }
+    if (completion && enrichmentPrompt) {
+      const promptHash = await hashAiConfiguration({
+        promptVersion:SEMANTIC_ENRICHMENT_PROMPT_VERSION,
+        passageIds:enrichmentPrompt.sourceRefs.map((source) => source.passageId),
+      });
+      await persistAiRun(makeAiRunRecord({
+        runId,
+        capability:'extractConcepts',
+        provider:providerRoute.provider,
+        consentClass:providerRoute.consentClass,
+        promptVersion:SEMANTIC_ENRICHMENT_PROMPT_VERSION,
+        promptHash,
+        sourceRefs:enrichmentPrompt.sourceRefs,
+        output:null,
+        validation:{ grounded:false, reason:'invalid-provider-output' },
+        status:'invalid',
+        error:String(error?.message || error),
+      })).catch(() => {});
+    }
+    if (workDetailsWorkId === workId) {
+      workEnrichmentBoundary.textContent = error?.message || String(error);
+      workEnrichBtn.disabled = false;
+    }
+  }
+}
+
+workEnrichBtn.addEventListener('click', () => {
+  void runWorkSemanticEnrichment();
 });
 
 workDetailsForm.addEventListener('submit', async (event) => {
@@ -2974,6 +3349,7 @@ async function processSemanticWork(manifest, backendId) {
 async function runSemanticProcessingQueue(backendId) {
   for (const manifest of semanticManifests.values()) {
     if (!processingStillOwnsBackend(backendId)) return;
+    if (manifest.recordState === 'merged') continue;
     await processSemanticWork(manifest, backendId);
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
@@ -4146,16 +4522,49 @@ function renderLibraryEmpty() {
   if (btn) btn.addEventListener('click', openLibraryFilePicker);
 }
 
+function workCenteredLibraryEntries(entries = libraryCache) {
+  const groups = new Map();
+  for (const entry of entries) {
+    const key = entry.work?.workId || 'asset:' + entry.filename;
+    const rows = groups.get(key) || [];
+    rows.push(entry);
+    groups.set(key, rows);
+  }
+  return Array.from(groups.values(), (rows) => {
+    rows.sort((left, right) => {
+      const leftTime = Date.parse(left.sidecar?.lastOpened || 0) || 0;
+      const rightTime = Date.parse(right.sidecar?.lastOpened || 0) || 0;
+      return rightTime - leftTime || left.filename.localeCompare(right.filename);
+    });
+    return {
+      ...rows[0],
+      groupedEntries:rows,
+      formats:Array.from(new Set(rows.map((entry) => extOf(entry.filename))))
+        .filter(Boolean)
+        .sort(),
+    };
+  });
+}
+
 function visibleLibraryBooks() {
   const needle = libraryFilter.trim().toLowerCase();
-  const books = libraryCache.filter(({ filename, sidecar, work }) => {
+  const books = workCenteredLibraryEntries().filter(({
+    filename,
+    sidecar,
+    work,
+    groupedEntries,
+  }) => {
     if (!needle) return true;
     const haystack = [
-      filename,
+      ...(groupedEntries || []).map((entry) => entry.filename),
       work && work.title,
       work && work.authors && work.authors.map((author) => author.name).join(' '),
-      sidecar && sidecar.title,
-      sidecar && sidecar.author,
+      ...(groupedEntries || []).flatMap((entry) => [
+        entry.sidecar?.title,
+        entry.sidecar?.author,
+      ]),
+      sidecar?.title,
+      sidecar?.author,
     ].filter(Boolean).join(' ').toLowerCase();
     return haystack.includes(needle);
   });
@@ -4196,7 +4605,7 @@ function positionLabel(position) {
 function renderContinueReading() {
   const section = root.querySelector('#continue-section');
   if (!section) return;
-  const recent = libraryCache
+  const recent = workCenteredLibraryEntries()
     .filter((entry) => entry.sidecar && entry.sidecar.lastOpened)
     .slice()
     .sort((a, b) =>
@@ -4266,18 +4675,24 @@ function renderLibraryRows() {
   renderContinueReading();
   renderOrphanSidecars();
   const decorated = visibleLibraryBooks();
+  const workCount = workCenteredLibraryEntries().length;
   topbarStatus.textContent =
-    (libraryFilter ? decorated.length + ' of ' + libraryCache.length : libraryCache.length) +
-    ' book' + (libraryCache.length === 1 ? '' : 's') +
+    (libraryFilter ? decorated.length + ' of ' + workCount : workCount) +
+    ' work' + (workCount === 1 ? '' : 's') +
     ' · ' + backendLabel(activeBackendId());
   if (!decorated.length) {
-    list.innerHTML = libraryCache.length
+    list.innerHTML = workCount
       ? '<div class="card"><p>No books match this filter.</p></div>'
       : '';
     return;
   }
-  list.innerHTML = decorated.map(({ filename, sidecar, work }) => {
-    const ext = extOf(filename);
+  list.innerHTML = decorated.map(({
+    filename,
+    sidecar,
+    work,
+    formats,
+    groupedEntries,
+  }) => {
     const title = (work && work.title) || (sidecar && sidecar.title)
       || filename.replace(/\.[a-z0-9]+$/i, '');
     const author = (work && work.authors || []).map((entry) => entry.name).join(', ')
@@ -4292,11 +4707,14 @@ function renderLibraryRows() {
              '<div class="row-details">' +
                '<div class="row-meta">' +
                  (lastRead ? '<div class="last-read">' + escapeHtml(lastRead) + '</div>' : '') +
-                 '<div class="meta">' + escapeHtml(ext) + '</div>' +
+                 '<div class="meta">' + escapeHtml((formats || []).join(' · ')) +
+                   ((groupedEntries?.length || 0) > 1
+                     ? ' · ' + groupedEntries.length + ' formats' : '') +
+                 '</div>' +
                '</div>' +
                '<div class="row-actions">' +
                  '<button class="row-action" type="button" data-action="details" title="Edit portable work details">Details</button>' +
-                 '<button class="row-action" type="button" data-action="remove" title="Remove from this library">Remove</button>' +
+                 '<button class="row-action" type="button" data-action="remove" title="Remove this source format">Remove</button>' +
                '</div>' +
              '</div>' +
            '</div>';
@@ -4884,7 +5302,9 @@ function renderLibraryValidation(report, heading = null) {
         escapeHtml(issue.message) + '</li>',
     );
   }
-  for (const suggestion of report.groupingSuggestions || []) {
+  for (const [suggestionIndex, suggestion] of (
+    report.groupingSuggestions || []
+  ).entries()) {
     items.push(
       '<li><strong>Grouping suggestion · ' +
         escapeHtml(suggestion.confidence) + '</strong>' +
@@ -4892,7 +5312,10 @@ function renderLibraryValidation(report, heading = null) {
           work.title + ' (' + (work.formats.join(', ') || 'unknown format') + ')'
         ).join(' + ')) + '<br>' +
         escapeHtml(suggestion.reason) +
-        '. Books will not merge these without confirmation.</li>',
+        '. Books will not merge these without confirmation.' +
+        '<br><button class="grouping-action" type="button" ' +
+          'data-grouping-suggestion="' + suggestionIndex + '">' +
+          'Group as one work…</button></li>',
     );
   }
   libraryHealth.innerHTML =
@@ -4933,6 +5356,108 @@ async function validateActiveLibrary() {
     libraryValidateBtn.disabled = false;
   }
 }
+
+async function groupSuggestedWorks(suggestionIndex) {
+  const suggestion = latestLibraryValidation?.groupingSuggestions?.[
+    Number(suggestionIndex)
+  ];
+  const workIds = suggestion?.works?.map((work) => work.workId) || [];
+  if (workIds.length < 2) return;
+  const manifests = workIds.map((workId) => semanticManifests.get(workId));
+  if (manifests.some((manifest) => !manifest)) {
+    showToast('The grouping suggestion is stale. Validate the library again.', {
+      error:true,
+    });
+    return;
+  }
+  if (libraryToolsDialog.open) libraryToolsDialog.close();
+  const confirmed = await askForConfirmation({
+    title:'Group these formats as one work?',
+    message:suggestion.works.map((work) =>
+      work.title + ' (' + (work.formats.join(', ') || 'unknown format') + ')'
+    ).join(' + ') +
+      '. Original files and format-specific reading data remain separate. ' +
+      'The grouping can be split later.',
+    confirmLabel:'Group formats',
+  });
+  if (!confirmed) return;
+
+  try {
+    let primary = manifests[0];
+    let primaryAnnotations = await readJsonRecord(
+      semanticAnnotationsPath(primary.workId),
+    );
+    let hasAnnotations = Boolean(primaryAnnotations);
+    const tombstones = [];
+    for (const secondary of manifests.slice(1)) {
+      const grouped = mergeWorkManifests(primary, secondary);
+      const secondaryAnnotations = await readJsonRecord(
+        semanticAnnotationsPath(secondary.workId),
+      );
+      if (secondaryAnnotations) hasAnnotations = true;
+      primaryAnnotations = mergePortableAnnotationRecords(
+        primaryAnnotations,
+        secondaryAnnotations,
+        primary.workId,
+      ).record;
+      primary = grouped.merged;
+      tombstones.push(grouped.tombstone);
+    }
+
+    // Write the expanded primary first. An interruption can temporarily leave
+    // duplicate claims, but never leaves an original without a canonical owner.
+    await naklios.fs.write(
+      semanticManifestPath(primary.workId),
+      JSON.stringify(primary, null, 2),
+    );
+    if (hasAnnotations) {
+      await naklios.fs.write(
+        semanticAnnotationsPath(primary.workId),
+        JSON.stringify(primaryAnnotations, null, 2),
+      );
+    }
+    for (const tombstone of tombstones) {
+      await naklios.fs.write(
+        semanticManifestPath(tombstone.workId),
+        JSON.stringify(tombstone, null, 2),
+      );
+    }
+    semanticManifests.set(primary.workId, primary);
+    for (const tombstone of tombstones) {
+      semanticManifests.set(tombstone.workId, tombstone);
+    }
+    const rebuilt = rebuildCatalog(
+      Array.from(semanticManifests.values()),
+      semanticCatalog,
+    );
+    semanticCatalog = rebuilt.catalog;
+    if (rebuilt.changed) {
+      await naklios.fs.write(
+        SEMANTIC_CATALOG_PATH,
+        JSON.stringify(rebuilt.catalog, null, 2),
+      );
+    }
+    await listLibrary();
+    showToast(
+      'Grouped ' + workIds.length + ' formats under one portable work.',
+      { duration:5500 },
+    );
+  } catch (error) {
+    await listLibrary().catch(() => {});
+    showToast(
+      'Grouping paused safely: ' + String(error?.message || error) +
+        '. Validate the library to review the canonical records.',
+      { error:true, duration:7000 },
+    );
+  }
+}
+
+libraryHealth.addEventListener('click', (event) => {
+  const action = event.target.closest('[data-grouping-suggestion]');
+  if (action) {
+    void groupSuggestedWorks(action.dataset.groupingSuggestion);
+  }
+});
 
 async function openLibraryTools() {
   latestLibraryValidation = null;
@@ -5247,7 +5772,8 @@ function updateRemoteConsentSurface() {
     } catch (_) {}
     aiRemoteConsentLabel.textContent =
       'I approve sending retrieved book passages to ' + destination +
-      ' for source-grounded answers. This approval is destination-specific and revocable.';
+      ' for source-grounded answers and on-demand concept/scene enrichment. ' +
+      'This approval is destination-specific and revocable.';
   }
 }
 
@@ -5263,12 +5789,14 @@ function openAiProviderSettings() {
   aiProviderModel.value = config?.model || '';
   aiProviderKey.value = '';
   aiProviderEnabled.checked = config?.enabled === true;
-  aiRemoteConsent.checked = !!(
+    aiRemoteConsent.checked = !!(
     config?.providerClass === 'remote'
     && consent
     && !consent.revokedAt
     && consent.destination === config.destination
     && consent.capabilities?.includes('answerFromSources')
+    && consent.capabilities?.includes('extractConcepts')
+    && consent.capabilities?.includes('extractScenes')
   );
   aiProviderStatus.textContent = config?.enabled
     ? 'Configured for ' + config.model + ' at ' + config.destination + '.'
@@ -5315,7 +5843,12 @@ aiProviderForm.addEventListener('submit', (event) => {
     if (config.providerClass === 'remote' && config.enabled) {
       localStorage.setItem(
         AI_PROVIDER_CONSENT_KEY,
-        JSON.stringify(makeProviderConsent(config, ['answerFromSources'])),
+        JSON.stringify(makeProviderConsent(config, [
+          'answerFromSources',
+          'extractConcepts',
+          'extractEntities',
+          'extractScenes',
+        ])),
       );
     } else {
       const oldConsent = loadStandaloneAiConsent();
@@ -5853,18 +6386,26 @@ function renderReaderLibrary() {
       '<div class="reader-library-empty">This library is empty. Use Open file… to add a book.</div>';
     return;
   }
-  readerLibraryList.innerHTML = libraryCache.map(({ filename, sidecar, work }) => {
+  readerLibraryList.innerHTML = workCenteredLibraryEntries().map(({
+    filename,
+    sidecar,
+    work,
+    formats,
+    groupedEntries,
+  }) => {
     const title = (work && work.title) || (sidecar && sidecar.title)
       || filename.replace(/\.[a-z0-9]+$/i, '');
     const author = (work && work.authors || []).map((entry) => entry.name).join(', ')
       || (sidecar && sidecar.author) || '';
-    const current = filename === activeSourceFilename;
+    const current = (groupedEntries || []).some(
+      (entry) => entry.filename === activeSourceFilename,
+    );
     return '<button class="reader-library-item" type="button" data-filename="' +
         escapeHtml(filename) + '" aria-current="' + (current ? 'true' : 'false') + '"' +
         ' title="' + escapeHtml(title) + '">' +
       '<span class="reader-book-title">' + escapeHtml(title) + '</span>' +
       (author ? '<span class="reader-book-author">' + escapeHtml(author) + '</span>' : '') +
-      '<span class="reader-book-meta">' + escapeHtml(extOf(filename)) +
+      '<span class="reader-book-meta">' + escapeHtml((formats || []).join(' · ')) +
         (current ? ' · Reading' : '') + '</span>' +
     '</button>';
   }).join('');
@@ -6464,7 +7005,11 @@ async function updateReaderModeAvailability() {
   if (
     !record?.passages?.length
     || !semanticManifests.get(work.workId)?.assets?.some(
-      (asset) => asset.assetId === record.assetId && asset.availability === 'available'
+      (asset) => (
+        asset.assetId === record.assetId
+        && asset.sourceFilename === activeSourceFilename
+        && asset.availability === 'available'
+      )
     )
   ) {
     readerModeBtn.hidden = true;

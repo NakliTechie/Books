@@ -9,6 +9,8 @@ import {
   SEMANTIC_WORKS_PREFIX,
   legacyBookIdFor,
   markAssetTrashed,
+  mergePortableAnnotationRecords,
+  mergeWorkManifests,
   reconcileLegacyAnnotations,
   reanchorPortableAnnotations,
   reconcileSemanticLibrary,
@@ -18,6 +20,8 @@ import {
   semanticAnnotationsPath,
   semanticManifestPath,
   sha256Fingerprint,
+  splitPortableAnnotationRecords,
+  splitWorkManifests,
   tombstonePortableAnnotation,
   updateAssetFingerprint,
   updatePortableAnnotation,
@@ -381,9 +385,12 @@ editionCandidate.workId = 'work_candidate';
 editionCandidate.title = 'PRIDE—and PREJUDICE';
 editionCandidate.authors = [{ name: 'Jane Austen', source: 'user' }];
 editionCandidate.assets[0].assetId = 'asset_candidate';
+editionCandidate.assets[0].editionId = 'edition_candidate';
 editionCandidate.assets[0].sourceFilename = 'Pride and Prejudice.pdf';
 editionCandidate.assets[0].format = 'pdf';
 editionCandidate.assets[0].fingerprint = 'sha256:different';
+editionCandidate.editions[0].editionId = 'edition_candidate';
+editionCandidate.editions[0].assetIds = ['asset_candidate'];
 const groupingValidation = validateSemanticLibrary({
   sourceFilenames: ['Pride & Prejudice.epub', 'Pride and Prejudice.pdf'],
   manifests: [fingerprinted.manifest, editionCandidate],
@@ -394,6 +401,119 @@ assert.deepEqual(
   groupingValidation.groupingSuggestions[0].works.flatMap((work) => work.formats).sort(),
   ['epub', 'pdf'],
   'matching normalized title and authors suggest user-confirmed format grouping',
+);
+
+const grouped = mergeWorkManifests(
+  fingerprinted.manifest,
+  editionCandidate,
+  now,
+);
+assert.equal(grouped.merged.assets.length, 2);
+assert.equal(grouped.merged.editions.length, 2);
+assert.equal(grouped.tombstone.recordState, 'merged');
+assert.equal(grouped.tombstone.mergedInto, fingerprinted.manifest.workId);
+assert.equal(
+  grouped.merged.grouping.mergedFrom[0].workId,
+  editionCandidate.workId,
+);
+const groupedCatalog = rebuildCatalog(
+  [grouped.merged, grouped.tombstone],
+  null,
+  now,
+).catalog;
+assert.equal(groupedCatalog.works.length, 1);
+assert.equal(
+  workForFilename(groupedCatalog, 'Pride and Prejudice.pdf').workId,
+  fingerprinted.manifest.workId,
+  'every grouped format resolves to one logical work',
+);
+const groupedValidationResult = validateSemanticLibrary({
+  sourceFilenames:['Pride & Prejudice.epub', 'Pride and Prejudice.pdf'],
+  manifests:[grouped.merged, grouped.tombstone],
+  catalog:groupedCatalog,
+});
+assert.equal(groupedValidationResult.valid, true);
+assert.equal(groupedValidationResult.summary.works, 1);
+assert.equal(groupedValidationResult.summary.assets, 2);
+assert.equal(groupedValidationResult.groupingSuggestions.length, 0);
+const secondaryAnnotationRecord = {
+    ...annotationFirst.record,
+    workId:editionCandidate.workId,
+    annotations:[{
+      annotationId:'annotation_secondary',
+      kind:'highlight',
+      label:'PDF note',
+      target:{ assetId:'asset_candidate' },
+    }],
+    positions:[{
+      positionId:'position_asset_candidate',
+      assetId:'asset_candidate',
+      target:{ page:7 },
+    }],
+    preferences:[],
+    legacy:{ bookIds:['Pride_Prejudice_PDF'] },
+  };
+const groupedAnnotations = mergePortableAnnotationRecords(
+  annotationFirst.record,
+  secondaryAnnotationRecord,
+  fingerprinted.manifest.workId,
+  now,
+);
+assert.equal(groupedAnnotations.changed, true);
+assert.equal(
+  groupedAnnotations.record.annotations.some(
+    (annotation) => annotation.annotationId === 'annotation_secondary',
+  ),
+  true,
+  'grouping keeps portable annotations from every format',
+);
+assert.equal(groupedAnnotations.record.positions.length, 2);
+assert.ok(
+  groupedAnnotations.record.legacy.groupedAnnotationWorkIds.includes(
+    editionCandidate.workId,
+  ),
+);
+const splitAnnotations = splitPortableAnnotationRecords(
+  groupedAnnotations.record,
+  secondaryAnnotationRecord,
+  {
+    primaryWorkId:fingerprinted.manifest.workId,
+    secondaryWorkId:editionCandidate.workId,
+    secondaryAssetIds:['asset_candidate'],
+    secondarySourceFilenames:['Pride and Prejudice.pdf'],
+  },
+  now,
+);
+assert.equal(
+  splitAnnotations.primaryRecord.annotations.some(
+    (annotation) => annotation.annotationId === 'annotation_secondary',
+  ),
+  false,
+);
+assert.equal(
+  splitAnnotations.secondaryRecord.annotations.some(
+    (annotation) => annotation.annotationId === 'annotation_secondary',
+  ),
+  true,
+  'splitting moves format-grounded annotations back to their original work',
+);
+assert.equal(splitAnnotations.primaryRecord.positions.length, 1);
+assert.equal(splitAnnotations.secondaryRecord.positions.length, 1);
+
+const split = splitWorkManifests(grouped.merged, grouped.tombstone, now);
+assert.deepEqual(
+  split.primary.assets.map((asset) => asset.assetId),
+  fingerprinted.manifest.assets.map((asset) => asset.assetId),
+);
+assert.deepEqual(
+  split.restored.assets.map((asset) => asset.assetId),
+  editionCandidate.assets.map((asset) => asset.assetId),
+);
+assert.equal(split.restored.recordState, undefined);
+assert.equal(
+  rebuildCatalog([split.primary, split.restored], null, now).catalog.works.length,
+  2,
+  'a confirmed grouping can be reversed without changing source identities',
 );
 
 const portableBundle = createPortableBundle({
