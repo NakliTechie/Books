@@ -5230,7 +5230,15 @@ class FoliateEngine {
   async jumpTo(position) {
     if (!this.view || !position) return;
     if (position.cfi) {
-      try { await this.view.goTo(position.cfi); return; } catch (_) {}
+      try {
+        const resolved = this.view.resolveCFI(position.cfi);
+        const section = this.view.book?.sections?.[resolved?.index];
+        if (!section?.createDocument) throw new Error('CFI section is unavailable');
+        const document = await section.createDocument();
+        if (typeof resolved.anchor === 'function') resolved.anchor(document);
+        const moved = await this.view.goTo(position.cfi);
+        if (moved) return;
+      } catch (_) {}
     }
     if (typeof position.fraction === 'number') {
       try { await this.view.goToFraction(position.fraction); } catch (_) {}

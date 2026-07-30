@@ -218,6 +218,11 @@ assert.match(
 );
 assert.match(
   html,
+  /resolveCFI\(position\.cfi\)[\s\S]*?resolved\.anchor\(document\)[\s\S]*?goToFraction\(position\.fraction\)/,
+  'stale EPUB CFIs are preflighted before falling back to a durable fraction',
+);
+assert.match(
+  html,
   /class PdfEngine[\s\S]*?pdf-text-layer[\s\S]*?kind:'pdf-text'[\s\S]*?pdf-highlight-overlay/,
   'PDF highlights retain page text ranges and normalized rectangles',
 );
