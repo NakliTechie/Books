@@ -9,6 +9,9 @@ node_modules/
 dist/
 .wrangler/
 
+# Local planning and session handoff notes
+plan/
+
 # Local test fixtures (real books used for smoke testing, never committed)
 _test/
 
