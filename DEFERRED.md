@@ -23,35 +23,38 @@ Without the trigger, the deferral is just an open question.
 
 ### Local concept metadata + AI-illustrated native reader
 
-**Status:** Pending future feature. Do not implement as part of the current
-standalone-reader work.
+**Status:** Split delivery. Local concept metadata and the Books-native reader
+shipped in the semantic-library foundation. AI-generated illustrations remain
+pending by explicit product decision and must not be implemented until the
+Phase 6 gate is opened.
 
 This is intentionally split into two stages:
 
-1. **Concept extraction on import.** Every newly added book is parsed for its
+1. **Shipped — concept extraction on import.** Every newly added book is parsed for its
    key concepts. The resulting structured metadata is stored locally on the
    user's machine alongside that book's other Books metadata. The eventual
    schema should support both expository concepts and narrative elements such
    as characters, settings, events, and key scenes.
-2. **Illustrated native reader.** Add a Books-native reading mode that reflows
-   the source text instead of merely presenting the authored EPUB or PDF
-   layout. It uses the extracted metadata to insert AI-generated illustrations
-   at meaningful points. For story books, the initial interpretation is to
-   illustrate selected key scenes rather than every concept.
+2. **Shipped — native reader foundation.** Books reflows extracted passages,
+   exposes curated concepts, preserves faithful-source navigation, and visibly
+   falls back for unsupported structures.
+3. **Pending — illustrated native reader.** Insert separately generated,
+   source-grounded illustrations at meaningful points. For story books, the
+   initial interpretation remains selected key scenes rather than every
+   concept.
 
 **Decisions deliberately left open:** illustration style and consistency,
 model/provider, on-device versus hosted generation, user controls and
-regeneration, image caching/storage, placement cadence, metadata versioning,
-and how this mode coexists with the faithful EPUB/PDF reader.
+regeneration, image caching/storage, placement cadence, and safety/copyright
+policy. Faithful/Native coexistence and semantic metadata versioning are now
+established.
 
-**Why deferred:** It requires a durable extraction schema, format-independent
-text segmentation, a new native layout engine, and a separately designed image
-generation workflow. Those choices should not be smuggled into the current
-reader implementation.
+**Why the remaining stage is deferred:** Image generation needs its own product
+and safety policy even though the extraction schema and native layout
+foundation now exist.
 
-**Trigger to revisit:** After standalone and NakliOS reading are stable, and
-when there is a concrete design pass for the concept schema, native reader
-experience, and illustration-generation policy.
+**Trigger to revisit:** An explicit design pass approves the illustration
+generation policy in Phase 6.
 
 ### Cover thumbnails — shipped in v1.2
 
@@ -66,23 +69,27 @@ have no authored cover. The current CSS fallback is deliberately sufficient.
 
 Delivered: font size, line height, text width, and system/paper/sepia/night profiles for reflowable books and plain text. Global defaults are local UI preferences; hosted books can carry a per-book override. PDF layout remains unchanged.
 
-**Still deferred:** font-family selection, justification, and deeper format-specific layout controls.
+**Shipped in the semantic-library reader:** font-family selection and
+justification.
+
+**Still deferred:** deeper format-specific layout controls beyond the current
+Faithful/Native fallback contract.
 
 ### Inline highlights with notes
 
-Select text in the reader → highlight + optional note text. Highlights persist with stable position info (CFI for ePub, page+rect for PDF) and re-render on reopen.
+**Status:** Shipped in the semantic-library foundation.
 
-**Why deferred:** Substantial UX scope — text selection coordination in epub.js iframe, PDF text-layer interaction, overlay rendering on reflow, sidebar of all highlights for a book. Would roughly double the build effort.
-
-**Trigger to revisit:** After v1 ships and is in regular use; or when "I can't highlight" is the top friction point.
+Selections produce portable highlights with optional notes, engine fallbacks,
+restoration, per-work navigation, a library-wide annotation browser, and
+human-readable export.
 
 ### Search across library
 
-Full-text search across all books in the library (or all *notes*, depending on scope).
+**Status:** Shipped in the semantic-library foundation.
 
-**Why deferred:** Indexing requires extracting and storing text, which is significant work for a feature most series-style users would shrug at. Notes-only search is a smaller surface but still v1.5.
-
-**Trigger to revisit:** Once library hits ~50+ books (volume makes search valuable) or once notes count makes "where did I write that?" a real question.
+Books builds a local, rebuildable lexical index over passages and supports
+source-grounded full-library search. A 60-work regression harness covers
+facets and title discovery without embeddings.
 
 ### Cross-engine search (within the open book) — shipped in v1.2
 
@@ -90,8 +97,8 @@ Delivered: one Find surface searches Foliate books, PDF page text, and the
 Text engine, cycles through matches, shows excerpts, and jumps through the
 engine adapter. Foliate retains its native CFI highlights.
 
-**Still deferred:** PDF canvas text-layer highlight overlays. v1.2 jumps to
-the matching page and displays the excerpt without changing authored layout.
+**Shipped in the semantic-library foundation:** PDF text-layer selection and
+highlight overlays.
 
 ### CBZ + CBR (comic-book archives) support
 
@@ -127,13 +134,17 @@ Read old Kindle AZW files (pre-KF8 format).
 
 **Trigger to revisit:** Improbable. Documented for completeness.
 
-### Multiple libraries / shelves
+### Multiple storage libraries / shelves
 
-Multiple `library/` subdirs (e.g. `library/personal/`, `library/work/`) with shelf-switching UI.
+**Split delivery:** User-created shelves and smart views shipped as portable
+metadata. Browser, Folder, and Crate intentionally remain isolated storage
+libraries.
 
-**Why deferred:** One flat library is enough for v1. The folder-based mental model already accommodates this if users want it via Finder (drop books in subfolders) — we just won't render the hierarchy in v1.
+**Still deferred:** A UI for multiple physical `library/` roots or moving works
+between backends.
 
-**Trigger to revisit:** When users start creating subfolders themselves; or when the library exceeds the size where one flat view is comfortable.
+**Trigger to revisit:** Private continuity or explicit cross-backend movement
+is approved.
 
 ---
 
@@ -151,11 +162,14 @@ reader code identical across Browser, Folder, and Crate backends.
 
 ### Cross-device sync conflict resolution
 
-Two devices write to the same `notes/<book-id>.json` with different positions → reconciliation logic (last-write-wins? merge bookmarks? show both?).
+**Status:** Record/version/tombstone and conflict behavior are documented in
+`SYNC-CONTRACT.md`; no transport is enabled.
 
-**Why deferred:** File-system semantics handle this trivially for any one user with one open reader at a time. If the user reads on two devices simultaneously and both write, last writer wins via the underlying sync engine.
+**Why transport is deferred:** Books does not silently select or activate a
+central synchronization service.
 
-**Trigger to revisit:** When Books is wired onto private-mesh (the sovereign data fabric at `naklios-universe/private-mesh-universe/`), and Vault sync needs explicit conflict handling.
+**Trigger to revisit:** An explicit product decision selects private-mesh or
+another sovereign transport.
 
 ---
 
@@ -163,8 +177,6 @@ Two devices write to the same `notes/<book-id>.json` with different positions �
 
 ### Library index format migration
 
-If we ship v1 with scan-on-load and later add a maintained index, we'll need a one-time scan to seed the index.
-
-**Why deferred:** Only matters if we move past walkthrough Q3's option A.
-
-**Trigger to revisit:** When Q3 is reopened (see Q3's tripwire).
+**Status:** Shipped. Books maintains a rebuildable catalog and versioned local
+semantic records, migrates legacy aliases/sidecars idempotently, and can
+validate or rebuild without changing original bytes.

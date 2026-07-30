@@ -15,4 +15,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node scripts/test-books-v1_1.mjs
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Verify deploy artifact module graph
+        run: |
+          test -f dist/index.html
+          test -f dist/semantic-library.js
+          test -f dist/semantic-processing.js
+          test -f dist/semantic-ai.js
+          test -f dist/_headers
+      - run: npx wrangler deploy --dry-run

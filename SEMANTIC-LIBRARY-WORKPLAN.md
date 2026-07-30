@@ -2,7 +2,10 @@
 
 > **Lifecycle:** `active` — implementation sequence for v2+.
 >
-> **Implementation status:** Phase 0 decisions accepted; Phase 1 in progress.
+> **Implementation status (2026-07-30):** Phases 0–5 and the approved
+> portability/recovery slice of Phase 7 are complete. Phase 6 illustrations
+> remain on explicit product hold. Phase 8 formats and Phase 9 separate bets
+> remain parked.
 > This plan gathers the pending items
 > from [DEFERRED.md](DEFERRED.md), the candidates in
 > [CALIBRE-RESEARCH.md](CALIBRE-RESEARCH.md), and the requirements in
@@ -116,7 +119,7 @@ product, and which Calibre-inspired capabilities are distraction?
 
 ## Phase 1 — Work identity, catalog, migration, and basic safety
 
-**Status:** In progress.
+**Status:** Complete.
 
 **Question:** Can Books represent a durable library without making a catalog
 database the single point of failure?
@@ -167,7 +170,7 @@ database the single point of failure?
 
 ## Phase 2 — Local parsing, passages, indexing, and concepts
 
-**Status:** Pending Phase 1.
+**Status:** Complete.
 
 **Question:** Can every supported format produce source-grounded, local
 structured understanding without delaying reading?
@@ -222,7 +225,7 @@ structured understanding without delaying reading?
 
 ## Phase 3 — Semantic library, metadata, organization, and discovery
 
-**Status:** Pending Phase 2.
+**Status:** Complete.
 
 **Question:** Can users navigate a large library by works, meaning, and reading
 state without turning Books into a desktop database form?
@@ -231,9 +234,9 @@ state without turning Books into a desktop database form?
 
 **Implementation status (2026-07-30):** Work-centered rows, grouped formats,
 portable work details, deterministic reading-state/rating/shelf/tag/annotation
-views, portable saved queries, full-library lexical search, cited Ask, and
-reversible grouping are shipped. Semantic-record curation and larger-library
-scale validation remain in this phase.
+views, portable saved queries, full-library lexical search, cited Ask,
+reversible grouping, stable concept curation, and 60-work scale validation are
+shipped.
 
 1. Replace file-centered rows with work-centered library cards and details.
 2. Show editions and available source formats without duplicating a work.
@@ -282,7 +285,7 @@ copies storage backends.
 
 ## Phase 4 — Universal highlights and annotation memory
 
-**Status:** Pending Phase 2; can overlap late Phase 3 after anchors stabilize.
+**Status:** Complete.
 
 **Question:** Can one annotation model survive every reader engine and
 extraction version?
@@ -322,7 +325,8 @@ extraction version?
 
 ## Phase 5 — Books-native reflow reader
 
-**Status:** Pending stable passages and anchors from Phase 2.
+**Status:** Complete foundation. Advanced structures use a visible
+faithful-mode fallback by design rather than disappearing from Native mode.
 
 **Question:** Can Books present a consistent, accessible native reading
 experience while preserving a faithful route to the authored source?
@@ -376,7 +380,8 @@ experience while preserving a faithful route to the authored source?
 
 ## Phase 6 — Source-grounded illustrations and generated media
 
-**Status:** Pending Phase 5 and explicit generation-policy decisions.
+**Status:** Pending by explicit product decision. Phase 5 is complete, but the
+generation-policy gate below has not been opened.
 
 **Question:** Can generated media increase comprehension or delight without
 misrepresenting the source, violating privacy, or destabilizing the reader?
@@ -435,7 +440,8 @@ Before implementation, decide:
 
 ## Phase 7 — Portability, recovery, storage control, and private continuity
 
-**Status:** Pending core schemas; safety slices may move earlier.
+**Status:** Complete contract and local recovery implementation. No sync
+transport is enabled.
 
 **Implementation status (2026-07-30):** Portable bundle import/export,
 validation, catalog rebuild, recoverable Trash, per-class storage accounting,
@@ -626,19 +632,19 @@ Each accepted large bet receives a separate spec, threat model, and work plan.
 
 | Existing item | Source | Plan location | Current disposition |
 |---|---|---|---|
-| Concept extraction on import | `DEFERRED.md` | Phase 2 | Pending |
-| AI-illustrated native reader | `DEFERRED.md` | Phases 5–6 | Pending |
+| Concept extraction on import | `DEFERRED.md` | Phase 2 | Shipped |
+| AI-illustrated native reader | `DEFERRED.md` | Phases 5–6 | Native foundation shipped; generation pending decision |
 | Generated title-card covers | `DEFERRED.md` | Phase 6 artifact pipeline | Pending decision |
-| Font family, justification, deeper reader controls | `DEFERRED.md` | Phase 5 | Pending |
-| Inline highlights with notes | `DEFERRED.md` | Phase 4 | Pending |
-| Search across library | `DEFERRED.md` | Phases 2–3 | Pending |
-| PDF text-layer highlight overlays | `DEFERRED.md` | Phase 4 | Pending |
+| Font family, justification, deeper reader controls | `DEFERRED.md` | Phase 5 | Font/justification shipped; deeper controls parked |
+| Inline highlights with notes | `DEFERRED.md` | Phase 4 | Shipped |
+| Search across library | `DEFERRED.md` | Phases 2–3 | Shipped |
+| PDF text-layer highlight overlays | `DEFERRED.md` | Phase 4 | Shipped |
 | CBZ + CBR support | `DEFERRED.md` | Phase 8 | Parked |
 | DjVu support | `DEFERRED.md` | Phase 8 | Parked |
 | Legacy AZW support | `DEFERRED.md` | Phase 8 | Rejected for core |
-| Multiple libraries / shelves | `DEFERRED.md` | Phase 3 shelves; Phase 7 backend movement | Adapt |
-| Cross-device conflict resolution | `DEFERRED.md` | Phase 7 | Pending |
-| Library index format migration | `DEFERRED.md` | Phase 1 | Pending |
+| Multiple libraries / shelves | `DEFERRED.md` | Phase 3 shelves; Phase 7 backend movement | Shelves shipped; backend movement parked |
+| Cross-device conflict resolution | `DEFERRED.md` | Phase 7 | Contract shipped; transport pending decision |
+| Library index format migration | `DEFERRED.md` | Phase 1 | Shipped |
 
 ## Mapping of Calibre comparison candidates
 
@@ -660,22 +666,21 @@ Each accepted large bet receives a separate spec, threat model, and work plan.
 | CLI and automation | Phase 9 | Adapt later |
 | AI discussion and recommendations | Phases 2–3 | Adapt with citations and consent |
 
-## First-session agenda
+## Next decision agenda
 
-The next planning session should not begin with implementation. Use this order:
+The approved foundation is built and release-tested. Future work must begin by
+opening one of the remaining gates rather than silently expanding scope:
 
-1. Read the thesis, goals, non-goals, and locked direction in the spec.
-2. Complete the Calibre Adopt / Adapt / Reject matrix.
-3. Choose the first user-visible release outcome.
-4. Resolve identity, portable records, indexing, and passage anchors.
-5. Approve the Phase 1 migration contract and regression corpus.
-6. Move only the approved first slice from `pending` to `planned`.
+1. Decide whether to design source-grounded illustration generation (Phase 6).
+2. Decide whether embeddings add enough value beyond lexical retrieval to
+   justify their storage and privacy model.
+3. Decide whether any metadata provider meets the licensing, attribution,
+   caching, and consent bar.
+4. Decide whether to select a sovereign sync transport for the documented
+   record/conflict contract.
+5. Re-rank the parked Phase 8 formats and Phase 9 Calibre-shaped separate bets.
 
-The private semantic library direction is accepted by the extension spec. The
-remaining question is narrower:
+The standing product test remains:
 
-> Which library-management capabilities are necessary to make private
-> semantic understanding useful, and which remain Calibre-shaped distraction?
-
-The first release should prove the direction with a narrow, recoverable
-foundation rather than a Calibre-sized feature burst.
+> Does this capability strengthen a private semantic library, or merely
+> reproduce a Calibre-shaped surface?

@@ -1,8 +1,12 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "books",
-  "compatibility_date": "2026-07-29",
+  "compatibility_date": "2026-07-30",
   "compatibility_flags": ["nodejs_compat"],
+  "send_metrics": false,
+  "dependencies_instrumentation": {
+    "enabled": false
+  },
   "workers_dev": true,
   "preview_urls": false,
   "assets": {
@@ -11,6 +15,7 @@
     "not_found_handling": "404-page"
   },
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "head_sampling_rate": 0.1
   }
 }

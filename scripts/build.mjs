@@ -11,6 +11,7 @@ await Promise.all([
   cp(resolve(projectRoot, 'index.html'), resolve(outputDir, 'index.html')),
   cp(resolve(projectRoot, 'semantic-library.js'), resolve(outputDir, 'semantic-library.js')),
   cp(resolve(projectRoot, 'semantic-processing.js'), resolve(outputDir, 'semantic-processing.js')),
+  cp(resolve(projectRoot, 'semantic-ai.js'), resolve(outputDir, 'semantic-ai.js')),
   cp(resolve(projectRoot, '_headers'), resolve(outputDir, '_headers')),
   cp(resolve(projectRoot, 'vendor'), resolve(outputDir, 'vendor'), { recursive: true }),
 ]);

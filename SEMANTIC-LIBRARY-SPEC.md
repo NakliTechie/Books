@@ -2,8 +2,8 @@
 
 > **Lifecycle:** `active` — v2+ product and architecture direction.
 >
-> **Implementation status:** Foundation in progress. Accepted architectural
-> choices are recorded in
+> **Implementation status (2026-07-30):** The approved semantic-library
+> foundation is complete. Accepted architectural choices are recorded in
 > [SEMANTIC-LIBRARY-DECISIONS.md](SEMANTIC-LIBRARY-DECISIONS.md). This document
 > extends the shipped v1.4 reader contract in [SPEC.md](SPEC.md). Sequencing
 > and gates live in
@@ -245,7 +245,7 @@ errors, and outputs.
 Filename-derived `bookId` remains a legacy alias during migration, not the
 future canonical identity.
 
-Proposed identity rules:
+Implemented identity rules:
 
 - `workId` — locally generated stable UUID.
 - `editionId` — locally generated stable UUID within a work.
@@ -261,8 +261,9 @@ ambiguous merges require user confirmation.
 
 ## Portable record model
 
-The exact physical layout remains a Phase 0 decision. The logical model must
-support records equivalent to:
+The schema-v1 physical layout is locked in
+[SEMANTIC-LIBRARY-DECISIONS.md](SEMANTIC-LIBRARY-DECISIONS.md). Its portable
+records support structures equivalent to:
 
 ```json
 {
@@ -319,8 +320,8 @@ Semantic records carry source provenance:
 
 ## Storage model
 
-The virtual filesystem remains the portability boundary. The final paths are
-not locked, but the storage design must distinguish:
+The virtual filesystem remains the portability boundary. The schema-v1
+storage design distinguishes:
 
 - **Source assets** — immutable and user-exportable.
 - **Portable manifests** — works, editions, user metadata, and annotations.
@@ -329,7 +330,7 @@ not locked, but the storage design must distinguish:
 - **Derived media** — covers, illustrations, audio, OCR, and translations.
 - **Job state** — resumable processing metadata and failure reports.
 
-A possible shape for evaluation is:
+The current logical shape is:
 
 ```text
 library/                       source assets; current path remains readable
@@ -609,23 +610,35 @@ future reversal:
 - No book content is silently transmitted to a provider.
 - Browser, Folder, and Crate continue to share contracts but remain isolated.
 
-## Open decisions
+## Decision ledger
 
-The work plan must not cross the relevant gate until these are resolved:
+The foundation resolved the decisions required for the approved implementation:
 
-1. Canonical physical layout for catalog and portable per-work records.
-2. Exact work-grouping and duplicate-confirmation UX.
-3. Passage size, selector strategy, and extraction-version migration.
-4. Local full-text index implementation for Browser, Folder, and Crate.
-5. Whether embeddings are stored per backend and how they are encrypted.
-6. Standalone AI provider and consent model, if any.
-7. Metadata-provider policy, licensing, caching, and attribution.
-8. Native-reader handling for tables, equations, footnotes, authored images,
-   page references, and scanned PDFs.
-9. Illustration style, consistency, provider, cadence, storage, and controls.
-10. Export bundle format and compatibility guarantees.
-11. Sync transport and conflict semantics.
-12. Which Calibre-inspired capabilities are Adopted, Adapted, or Rejected.
+1. **Resolved:** versioned portable manifests plus a rebuildable catalog.
+2. **Resolved:** suggested grouping with explicit merge/split controls and
+   reversible review.
+3. **Resolved:** versioned, format-neutral passages with quote/source anchors
+   and resumable invalidation.
+4. **Resolved:** a rebuildable local lexical index shared by Browser, Folder,
+   and Crate contracts.
+5. **Pending separate decision:** embeddings are not required by search or Ask
+   and are not stored.
+6. **Resolved:** visible local endpoints and destination-specific remote BYOK
+   consent in standalone mode; host mediation in NakliOS.
+7. **Pending separate decision:** no metadata provider is enabled.
+8. **Resolved for the foundation:** Native renders supported passage structure,
+   links every passage to Faithful mode, and visibly falls back for unsupported
+   or layout-sensitive content. OCR is not implied for scanned PDFs.
+9. **Pending explicit product decision:** illustration style, consistency,
+   provider, cadence, storage, safety, and controls. No illustration generation
+   is implemented.
+10. **Resolved:** schema-versioned portable JSON bundles preserve originals,
+    manifests, views, user metadata, annotations, and checksums; rebuildable
+    indexes are declared omissions.
+11. **Resolved at the record-contract layer:** versions, tombstones, and
+    conflict semantics are documented. No sync transport is enabled.
+12. **Resolved for the current scope:** the Calibre Adopt/Adapt/Reject
+    dispositions are recorded in the work plan; separate bets remain parked.
 
 ## Acceptance criteria for the semantic foundation
 

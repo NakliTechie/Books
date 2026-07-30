@@ -1,61 +1,173 @@
-# books — Security review (Stage 6)
+# Books — semantic-library security review
 
-> **Reviewed:** 2026-05-18 against `booksv1` commits `a02eddc..37f648f`.
-> **Verdict:** nothing to fix. Notes below for context.
+> **Reviewed:** 2026-07-30 against the semantic-library implementation and
+> Cloudflare deployment artifacts in this repository.
+>
+> **Release verdict:** no known release-blocking application vulnerability.
+> The remaining risks below are explicit operational or dependency risks, not
+> hidden content-transfer paths.
 
-## Scope
+## Scope and trust boundaries
 
-The branch covers a from-scratch single-file app + two vendored dependencies (foliate-js@1.0.1, pdfjs-dist@5.7.284) + dev-process docs. The current public surface is `https://books.naklitechie.com/`, used both standalone and embedded as a cross-origin iframe in NakliOS.
+Books runs in two modes:
 
-## Findings
+- Standalone at `https://books.naklitechie.com`, with an origin-scoped
+  IndexedDB virtual filesystem.
+- Embedded in NakliOS, where the parent supplies filesystem and optional AI
+  capabilities.
 
-### XSS
-Every HTML interpolation in [index.html](index.html) routes through `escapeHtml()`. Surfaces audited:
-- Library rows (filename, sidecar `title`, sidecar `author`)
-- Bookmark list (label, position description)
-- Reader title + status
-- Error messages (filename, error.message, ext)
+Cloudflare serves static application assets only. There is no Books Worker
+handler, application database, telemetry collector, or server-side book
+processing path. Originals, portable records, annotations, passages, indexes,
+and semantic records stay in the active Browser, Folder, or Crate backend
+unless the user explicitly exports a bundle or enables an AI destination.
 
-`innerHTML` is set only to static template strings + escaped interpolations. `textContent` is used for `noteArea.value`, `readerTitle.textContent`. No `document.write`, no `eval`, no `new Function`.
+The review covers application rendering, source parsers, portable import and
+export, the NakliOS message boundary, local/BYOK AI, generated records, browser
+storage, Cloudflare headers, and the release artifact.
 
-### Untrusted HTML rendering (TextEngine)
-HTML / HTM files dropped or sideloaded into the library render through a srcdoc iframe with `sandbox=""` — the most restrictive sandbox tier. No scripts, no same-origin, no popups, no top navigation, no form submission. Even an actively-malicious HTML file can't reach the host page or the SDK.
+## Findings and controls
 
-### Network
-Books code makes no `fetch` / `XMLHttpRequest` / WebSocket calls. Verified:
-- foliate-js: `fetchFile` exists but is only invoked when `view.open()` receives a string URL. Books always passes a `File` object.
-- pdfjs-dist: all asset URLs (cMapUrl, standardFontDataUrl, workerSrc) point at local `vendor/pdfjs-dist@5.7.284/` paths.
+### Source rendering and XSS
 
-No runtime CDN dependency.
+- Library metadata and dynamic status surfaces use escaped HTML or DOM
+  `textContent`.
+- User-supplied HTML/HTM is rendered in an iframe with an empty `sandbox`
+  attribute: no scripts, same-origin access, popups, forms, or top navigation.
+- Search results from an HTML source are projected into parent-owned text
+  nodes; the sandbox is not weakened to highlight a match.
+- The production Content Security Policy disables plugins and base-URL
+  rewriting with `object-src 'none'` and `base-uri 'none'`. Inline script and
+  style remain allowed because the application is currently a single-file
+  shell. This is an acknowledged hardening opportunity, not an unknown
+  exception.
 
-### postMessage trust
-The vendored `naklios.js` SDK posts with `targetOrigin: '*'` and the receive handler does not check `event.origin`. This is intrinsic to the cross-origin SDK pattern shared by every NakliOS app — not a Books-introduced regression. Real-world impact: a malicious parent could speak the protocol, but the user's FSA folder handle lives in the parent (NakliOS host), so the attacker would need to already have user grant. Not a meaningful escalation.
+### Parser and original-file boundary
 
-If the SDK ever adds origin-checking, Books inherits the improvement.
+- File extensions are validated by the engine adapter before a source is
+  opened.
+- EPUB-family parsing uses the pinned vendored Foliate build; PDF parsing uses
+  the pinned vendored pdf.js build and local worker/font assets.
+- Extracted passages and indexes are derived data. Parser failure, incomplete
+  extraction, or derived-data deletion does not mutate the source or block the
+  faithful reader.
+- Asset fingerprints are checked during validation, recovery, export, and
+  import. Recoverable originals must still match their stored checksum.
+- Image-only PDFs are not represented as successfully indexed text. OCR
+  remains a separately gated future capability.
 
-### Sidecar data
-Per-book sidecar JSON contains user-derived fields (title, author, note, bookmarks). All stored in the user's NakliOS folder. No telemetry, no analytics, no external transmission. Note: the free-text `note` could contain personal reflections — same locality guarantee as the rest of the user's data.
+### NakliOS message boundary
 
-### prompt() for bookmark labels
-Uses native browser `prompt()`. Returns a string; stored as `bookmark.label`; rendered via `escapeHtml`. Safe.
+When embedded, the receive handler rejects messages whose `source` is not the
+current `window.parent`. This pins the capability channel to the actual host
+window while preserving cross-origin embedding. Filesystem and host-AI
+requests use request IDs, explicit response types, cancellation, and timeouts.
 
-### File-extension gating
-`<input accept="...">` is a UI hint, not a guard. The actual gate is `engineKeyFor(filename)` which rejects anything not in `SUPPORTED_EXTS`. Mismatched extensions surface a `showReaderError` rather than reaching an engine.
+Standalone mode does not acquire host filesystem or AI authority through this
+channel. Non-sensitive theme messages from other windows have no access to
+library bytes.
 
-### Vendored dependencies
-- **foliate-js@1.0.1** — MIT, John Factotum. Recent (Apr 2025). No known CVEs. Vendored verbatim from the npm tarball.
-- **pdfjs-dist@5.7.284** — Apache-2.0, Mozilla. Recent. Pdf.js has historic CVEs but is actively maintained; vendored subset is `build/pdf.min.mjs`, `build/pdf.worker.min.mjs`, `cmaps/`, `standard_fonts/`. Provenance recorded in [vendor/README.md](vendor/README.md).
+### Local and BYOK AI
 
-Versions are pinned in path. Upgrades are explicit `mv vendor/<lib>@<old> vendor/<lib>@<new>` operations, not silent.
+AI is optional. Reading, lexical search, annotations, concepts produced by
+deterministic extraction, and recovery work without a model.
 
-### Secrets / credentials
-None in the repo. No API keys. No tokens. No `.env` files.
+- Standalone configuration always shows the endpoint, model, and whether the
+  destination is local or remote.
+- A remote provider must use HTTPS and requires consent tied to the exact
+  destination origin and named capabilities.
+- A local provider may use HTTP for loopback/LAN operation; its visible
+  endpoint is the consent boundary.
+- Credentials are rejected in provider URLs. API keys are held in
+  `sessionStorage`, cleared when the destination changes, and excluded from
+  portable records and run provenance.
+- NakliOS AI is host-mediated and uses the host's configured destination and
+  consent.
+- Only retrieved or selected passages are sent for a request. Prompts label
+  those passages as untrusted quoted data and instruct the model not to follow
+  source-embedded instructions.
+- Model semantic records are length-bounded, type-normalized, capped, and
+  accepted only when their evidence IDs resolve to supplied passages.
+- Ask answers are shown as verified only when their citations resolve to the
+  retrieved source set. Provider output without valid citations is visibly
+  unverified.
+- Run provenance stores a public provider descriptor, prompt/configuration
+  hashes, consent class, model identity, and validation result—never the API
+  key.
 
-## Not in scope (already covered upstream)
-- NakliOS launcher-side trust model (postMessage handling, `embedUrl` sandbox attribute).
-- foliate-js / pdf.js internals — both upstream maintained.
+These controls reduce prompt-injection and accidental disclosure risk; they do
+not make a remote model deterministic or trustworthy. The user remains
+responsible for the configured destination.
 
-## Follow-ups
-None blocking. Possible nice-to-haves for a later phase (no security urgency):
-- ESC key to close the reader view.
-- Origin check on SDK receive (would be a NakliOS-wide change, not Books).
+### Portable export, import, and recovery
+
+- Portable bundles are schema-versioned and validated before mutation.
+- Source filenames reject paths, traversal, unsafe identities, and duplicates.
+- Imported originals are decoded and checksum-verified before the commit
+  stage. Conflicts are reported instead of silently overwriting different
+  bytes.
+- Import is designed to be idempotent and resumable. Rebuildable catalog,
+  passage, index, semantic, processing, and cover data is deliberately omitted
+  from the portable core.
+- Trash is reversible and source restoration verifies the original checksum.
+- Clearing derived data preserves originals, manifests, annotations, Trash,
+  provider settings, and portable views.
+
+### Cloudflare release surface
+
+- The Worker project is assets-only and declares `dist/` as its deployment
+  artifact.
+- The build copies the application shell, all semantic modules, security
+  headers, and pinned reader dependencies. CI verifies the module graph and
+  runs a Wrangler dry deployment.
+- Metrics and dependency instrumentation are disabled. Sampled Worker
+  observability can contain ordinary static-request metadata such as URL,
+  status, timing, and user agent; no book content, search query, annotation, or
+  AI prompt is sent through the Worker.
+- `X-Content-Type-Options`, Referrer Policy, a restrictive Permissions Policy,
+  CSP, immutable vendor caching, and `workers.dev` no-indexing are configured.
+- `frame-ancestors` and `X-Frame-Options` are intentionally absent because
+  Books must remain embeddable by NakliOS. The in-app capability boundary is
+  enforced by message-source pinning.
+
+## Secrets review
+
+No API keys, Cloudflare tokens, GitHub tokens, `.env` files, or application
+credentials are required in the repository. Wrangler authentication and
+Cloudflare/GitHub linkage are environment- or control-plane-owned.
+
+## Residual risks and maintenance
+
+1. **Vendored parsers:** Foliate and pdf.js process complex, untrusted formats.
+   Keep their versions pinned, monitor upstream security notices, and retest
+   before upgrades.
+2. **Large or adversarial files:** browser memory and CPU are finite. Parsing
+   is resumable and failure-safe, but stricter per-format resource budgets and
+   decompression-bomb limits should accompany any new archive format.
+3. **Browser storage:** IndexedDB confidentiality inherits the browser profile
+   and operating-system account. Books does not add at-rest encryption.
+4. **Configured AI destinations:** a local or remote provider can retain what
+   the user sends. The UI makes that destination visible and requires explicit
+   remote consent, but cannot enforce the provider's retention policy.
+5. **Prompt injection/model behavior:** untrusted-data framing, evidence
+   validation, and visible verification are defenses, not a proof of model
+   compliance.
+6. **Inline CSP:** moving the inline application script and styles into hashed
+   or nonce-controlled assets would permit removing `'unsafe-inline'`.
+7. **Embeddability:** any site may frame the public standalone shell. It does
+   not gain the user's NakliOS capabilities, but a future authentication
+   surface should add an explicit framing policy or host handshake.
+
+## Verification evidence
+
+Release verification includes:
+
+- Unit/contract coverage for storage, migration, processing, search,
+  semantics, AI consent, grounding, portability, recovery, and deployment.
+- A hosted end-to-end harness covering semantic reading, smart views,
+  enrichment, grouping, cited Ask, concept curation, portability, recovery,
+  and rebuild.
+- A 60-work scale harness covering deterministic facets and title discovery.
+- A clean production build plus `wrangler deploy --dry-run`.
+- Live custom-domain checks for the HTML shell and every imported module after
+  the Git-driven deployment completes.
