@@ -600,6 +600,33 @@ body { display: flex; flex-direction: column; }
 .annotation-browser-row strong { font-size:11px; }
 .annotation-browser-row span { color:var(--muted); font-size:10px; }
 .annotation-browser-row p { margin:0; color:var(--ink); font:11px/1.45 inherit; }
+.library-health {
+  display:grid; gap:9px; max-height:48vh; overflow:auto; margin-top:12px;
+}
+.library-health-summary {
+  padding:10px 11px; border:1px solid var(--line); border-radius:8px;
+  background:var(--row); color:var(--ink); font-size:12px; line-height:1.5;
+}
+.library-health-summary[data-state="healthy"] { border-color:#4f8f67; }
+.library-health-summary[data-state="attention"] { border-color:#b7863f; }
+.library-health-summary[data-state="error"] { border-color:var(--brand); }
+.library-health-list {
+  display:grid; gap:6px; margin:0; padding:0; list-style:none;
+}
+.library-health-list li {
+  padding:8px 10px; border:1px solid var(--line); border-radius:7px;
+  background:var(--body); color:var(--muted); font-size:11px; line-height:1.45;
+}
+.library-health-list strong { display:block; color:var(--ink); margin-bottom:2px; }
+.library-tools-actions {
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin-top:14px;
+}
+.library-tools-actions button {
+  min-width:0; padding:9px 8px; border:1px solid var(--line); border-radius:7px;
+  background:var(--row); color:var(--ink); cursor:pointer; font:11px/1.25 inherit;
+}
+.library-tools-actions button:hover { border-color:var(--brand); }
+.library-tools-actions button:disabled { opacity:.5; cursor:not-allowed; }
 .add-btn {
   background: var(--brand); color: var(--panel);
   border: none; border-radius: 6px;
@@ -758,6 +785,8 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
        accept=".epub,.pdf,.mobi,.azw3,.fb2,.txt,.md,.html,.htm" hidden>
 <input type="file" id="orphan-recovery-input"
        accept=".epub,.pdf,.mobi,.azw3,.fb2,.txt,.md,.html,.htm" hidden>
+<input type="file" id="portable-library-import-input"
+       accept=".books-library.json,application/json" hidden>
 
 <!-- Full-window drop overlay — appears on drag-enter outside the reader -->
 <div class="drop-overlay" id="drop-overlay" hidden>
@@ -914,6 +943,29 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div class="books-dialog-actions">
       <button type="button" id="annotations-export-btn">Export Markdown</button>
       <button type="button" data-close-dialog="annotations-browser-dialog">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="books-dialog work-details-dialog" id="library-tools-dialog"
+        aria-labelledby="library-tools-title">
+  <div class="books-dialog-body">
+    <h3 id="library-tools-title">Library safety &amp; portability</h3>
+    <p>
+      Validate the current storage library, rebuild its disposable catalog,
+      or move originals and portable records in a documented Books bundle.
+    </p>
+    <div class="library-health" id="library-health" aria-live="polite">
+      <div class="library-health-summary">Checking canonical records…</div>
+    </div>
+    <div class="library-tools-actions">
+      <button type="button" id="library-validate-btn">Validate</button>
+      <button type="button" id="library-rebuild-btn" disabled>Rebuild catalog</button>
+      <button type="button" id="library-export-btn">Export library</button>
+      <button type="button" id="library-import-btn">Import bundle</button>
+    </div>
+    <div class="books-dialog-actions">
+      <button type="button" data-close-dialog="library-tools-dialog">Close</button>
     </div>
   </div>
 </dialog>
@@ -1514,6 +1566,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 
 import {
   addPortableAnnotation,
+  createPortableBundle,
   reconcileLegacyAnnotations,
   reanchorPortableAnnotations,
   SEMANTIC_CATALOG_PATH,
@@ -1527,6 +1580,8 @@ import {
   updateAssetFingerprint,
   updateWorkDetails,
   updateWorkMetadata,
+  validatePortableBundle,
+  validateSemanticLibrary,
   workForFilename,
 } from './semantic-library.js';
 import {
@@ -1581,6 +1636,13 @@ const annotationsBrowserDialog = document.getElementById('annotations-browser-di
 const annotationsBrowserSearch = document.getElementById('annotations-browser-search');
 const annotationsBrowserList = document.getElementById('annotations-browser-list');
 const annotationsExportBtn = document.getElementById('annotations-export-btn');
+const libraryToolsDialog = document.getElementById('library-tools-dialog');
+const libraryHealth = document.getElementById('library-health');
+const libraryValidateBtn = document.getElementById('library-validate-btn');
+const libraryRebuildBtn = document.getElementById('library-rebuild-btn');
+const libraryExportBtn = document.getElementById('library-export-btn');
+const libraryImportBtn = document.getElementById('library-import-btn');
+const portableLibraryImportInput = document.getElementById('portable-library-import-input');
 const noteArea = document.getElementById('note-area');
 const tocSection = document.getElementById('toc-section');
 const tocList = document.getElementById('toc-list');
@@ -1654,6 +1716,7 @@ let semanticSearchTimer = null;
 let semanticSearchRun = 0;
 let semanticSearchResults = new Map();
 let workDetailsWorkId = null;
+let latestLibraryValidation = null;
 let orphanSidecars = [];
 let orphanRecoveryTarget = null;
 let libraryFilter = '';
@@ -1710,6 +1773,24 @@ function toArrayBuffer(raw) {
   }
   if (typeof raw === 'string') return new TextEncoder().encode(raw).buffer;
   throw new Error('Unexpected response shape from naklios.fs.readBinary');
+}
+
+function arrayBufferToBase64(value) {
+  const bytes = new Uint8Array(toArrayBuffer(value));
+  const chunks = [];
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 0x8000)));
+  }
+  return btoa(chunks.join(''));
+}
+
+function base64ToBytes(value) {
+  const binary = atob(String(value || ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 function makeSearchExcerpt(text, start, length) {
@@ -4230,6 +4311,389 @@ annotationsBrowserList.addEventListener('click', (event) => {
 });
 annotationsExportBtn.addEventListener('click', exportLibraryAnnotations);
 
+async function readAllPortableAnnotations() {
+  const records = await Promise.all(
+    Array.from(semanticManifests.keys()).map(
+      (workId) => readJsonRecord(semanticAnnotationsPath(workId)),
+    ),
+  );
+  return records.filter(Boolean);
+}
+
+async function readAllLegacySidecars() {
+  let entries = [];
+  try {
+    entries = stripListPrefix(await naklios.fs.list('notes/'), 'notes');
+  } catch (_) {
+    return [];
+  }
+  const records = await Promise.all(
+    entries
+      .filter((filename) => /^[^/\\]+\.json$/.test(filename))
+      .map((filename) => readJsonRecord('notes/' + filename)),
+  );
+  return records.filter((record) => record?.bookId && record?.sourceFilename);
+}
+
+function renderLibraryValidation(report, heading = null) {
+  latestLibraryValidation = report;
+  const issueCount = report.errors.length + report.warnings.length;
+  const state = report.errors.length
+    ? 'error' : report.warnings.length ? 'attention' : 'healthy';
+  const summary = heading || (
+    report.errors.length
+      ? 'Validation found ' + report.errors.length + ' blocking issue' +
+        (report.errors.length === 1 ? '' : 's') + '.'
+      : report.warnings.length
+        ? 'Library is readable, with ' + report.warnings.length + ' item' +
+          (report.warnings.length === 1 ? '' : 's') + ' to review.'
+        : 'Portable records and the rebuildable catalog are healthy.'
+  );
+  const details = [
+    report.summary.works + ' works',
+    report.summary.assets + ' assets',
+    report.summary.annotationRecords + ' annotation records',
+  ].join(' · ');
+  const items = [];
+  for (const issue of report.errors) {
+    items.push(
+      '<li><strong>Needs repair · ' + escapeHtml(issue.code) + '</strong>' +
+        escapeHtml(issue.message) + '</li>',
+    );
+  }
+  for (const issue of report.warnings) {
+    items.push(
+      '<li><strong>Review · ' + escapeHtml(issue.code) + '</strong>' +
+        escapeHtml(issue.message) + '</li>',
+    );
+  }
+  for (const suggestion of report.groupingSuggestions || []) {
+    items.push(
+      '<li><strong>Grouping suggestion · ' +
+        escapeHtml(suggestion.confidence) + '</strong>' +
+        escapeHtml(suggestion.works.map((work) =>
+          work.title + ' (' + (work.formats.join(', ') || 'unknown format') + ')'
+        ).join(' + ')) + '<br>' +
+        escapeHtml(suggestion.reason) +
+        '. Books will not merge these without confirmation.</li>',
+    );
+  }
+  libraryHealth.innerHTML =
+    '<div class="library-health-summary" data-state="' + state + '">' +
+      '<strong>' + escapeHtml(summary) + '</strong><br>' +
+      '<span>' + escapeHtml(details) + (issueCount ? ' · ' + issueCount + ' issue' +
+        (issueCount === 1 ? '' : 's') : '') + '</span>' +
+    '</div>' +
+    (items.length
+      ? '<ul class="library-health-list">' + items.join('') + '</ul>'
+      : '');
+  libraryRebuildBtn.disabled = !report.valid || !report.catalogNeedsRebuild;
+}
+
+async function validateActiveLibrary() {
+  libraryValidateBtn.disabled = true;
+  libraryHealth.innerHTML =
+    '<div class="library-health-summary">Checking originals and portable records…</div>';
+  try {
+    const annotations = await readAllPortableAnnotations();
+    const report = validateSemanticLibrary({
+      sourceFilenames: libraryCache.map((entry) => entry.filename),
+      manifests: Array.from(semanticManifests.values()),
+      catalog: semanticCatalog,
+      annotations,
+    });
+    renderLibraryValidation(report);
+    return report;
+  } catch (error) {
+    libraryHealth.innerHTML =
+      '<div class="library-health-summary" data-state="error">' +
+        '<strong>Validation could not finish.</strong><br>' +
+        escapeHtml(String(error?.message || error)) +
+      '</div>';
+    libraryRebuildBtn.disabled = true;
+    throw error;
+  } finally {
+    libraryValidateBtn.disabled = false;
+  }
+}
+
+async function openLibraryTools() {
+  latestLibraryValidation = null;
+  libraryRebuildBtn.disabled = true;
+  libraryToolsDialog.showModal();
+  try {
+    await validateActiveLibrary();
+  } catch (error) {
+    console.warn('Books: library validation failed', error);
+  }
+}
+
+async function rebuildActiveCatalog() {
+  const report = latestLibraryValidation || await validateActiveLibrary();
+  if (!report.valid) {
+    showToast('Fix blocking manifest errors before rebuilding the catalog.', {
+      error:true,
+      duration:5000,
+    });
+    return;
+  }
+  libraryRebuildBtn.disabled = true;
+  try {
+    await naklios.fs.write(
+      SEMANTIC_CATALOG_PATH,
+      JSON.stringify(report.rebuiltCatalog, null, 2),
+    );
+    semanticCatalog = report.rebuiltCatalog;
+    for (const entry of libraryCache) {
+      entry.work = workForFilename(semanticCatalog, entry.filename);
+    }
+    renderLibraryRows();
+    renderReaderLibrary();
+    await validateActiveLibrary();
+    showToast('Rebuilt the disposable catalog from portable work manifests.');
+  } catch (error) {
+    showToast("Couldn't rebuild catalog: " + String(error?.message || error), {
+      error:true,
+      duration:5500,
+    });
+  }
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function exportPortableLibrary() {
+  libraryExportBtn.disabled = true;
+  libraryHealth.innerHTML =
+    '<div class="library-health-summary">Preparing original files and portable records…</div>';
+  try {
+    await flushPendingWrites();
+    const [annotations, legacySidecars] = await Promise.all([
+      readAllPortableAnnotations(),
+      readAllLegacySidecars(),
+    ]);
+    const assets = [];
+    for (let index = 0; index < libraryCache.length; index++) {
+      const filename = libraryCache[index].filename;
+      libraryHealth.innerHTML =
+        '<div class="library-health-summary">Encoding original ' +
+          (index + 1) + ' of ' + libraryCache.length + ' · ' +
+          escapeHtml(filename) + '</div>';
+      const raw = await naklios.fs.readBinary('library/' + filename);
+      const buffer = toArrayBuffer(raw);
+      assets.push({
+        filename,
+        byteLength: buffer.byteLength,
+        fingerprint: await sha256Fingerprint(buffer),
+        dataBase64: arrayBufferToBase64(buffer),
+      });
+    }
+    const bundle = createPortableBundle({
+      manifests: Array.from(semanticManifests.values()),
+      annotations,
+      legacySidecars,
+      assets,
+      libraryLabel: backendLabel(activeBackendId()),
+    });
+    const validation = validatePortableBundle(bundle);
+    if (!validation.valid) {
+      throw new Error(validation.errors.map((issue) => issue.message).join(' '));
+    }
+    downloadBlob(
+      new Blob([JSON.stringify(bundle, null, 2)], {
+        type:'application/json;charset=utf-8',
+      }),
+      'books-library-' + new Date().toISOString().slice(0, 10) +
+        '.books-library.json',
+    );
+    renderLibraryValidation(
+      await validateActiveLibrary(),
+      'Exported originals and portable records. Rebuildable indexes were omitted.',
+    );
+  } catch (error) {
+    libraryHealth.innerHTML =
+      '<div class="library-health-summary" data-state="error">' +
+        '<strong>Export failed.</strong><br>' +
+        escapeHtml(String(error?.message || error)) +
+      '</div>';
+    showToast("Couldn't export library: " + String(error?.message || error), {
+      error:true,
+      duration:6000,
+    });
+  } finally {
+    libraryExportBtn.disabled = false;
+  }
+}
+
+function jsonRecordsEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function existingJsonConflict(path, incoming) {
+  if (!(await naklios.fs.exists(path))) return false;
+  try {
+    const parsed = JSON.parse(await naklios.fs.read(path));
+    return !jsonRecordsEqual(parsed, incoming);
+  } catch (_) {
+    return true;
+  }
+}
+
+async function importPortableLibraryFile(file) {
+  let bundle;
+  try {
+    bundle = JSON.parse(await file.text());
+  } catch (error) {
+    showToast('That file is not valid JSON.', { error:true, duration:5000 });
+    return;
+  }
+  const validation = validatePortableBundle(bundle);
+  if (!validation.valid) {
+    libraryHealth.innerHTML =
+      '<div class="library-health-summary" data-state="error">' +
+        '<strong>Bundle rejected before any writes.</strong><br>' +
+        escapeHtml(validation.errors.map((issue) => issue.message).join(' ')) +
+      '</div>';
+    if (!libraryToolsDialog.open) libraryToolsDialog.showModal();
+    return;
+  }
+
+  libraryHealth.innerHTML =
+    '<div class="library-health-summary">Checking the bundle for safe, idempotent import…</div>';
+  if (!libraryToolsDialog.open) libraryToolsDialog.showModal();
+  const conflicts = [];
+  const decodedAssets = [];
+  for (const asset of bundle.assets) {
+    try {
+      const bytes = base64ToBytes(asset.dataBase64);
+      const fingerprint = await sha256Fingerprint(bytes);
+      if (
+        (asset.byteLength != null && Number(asset.byteLength) !== bytes.byteLength)
+        || (asset.fingerprint && asset.fingerprint !== fingerprint)
+      ) {
+        conflicts.push(asset.filename + ' does not match its exported checksum.');
+        continue;
+      }
+      if (await naklios.fs.exists('library/' + asset.filename)) {
+        const existing = toArrayBuffer(
+          await naklios.fs.readBinary('library/' + asset.filename),
+        );
+        if (await sha256Fingerprint(existing) !== fingerprint) {
+          conflicts.push(asset.filename + ' already exists with different bytes.');
+        }
+      }
+      decodedAssets.push({ asset, bytes });
+    } catch (error) {
+      conflicts.push(asset.filename + ' could not be decoded.');
+    }
+  }
+  for (const manifest of bundle.records.works) {
+    if (await existingJsonConflict(semanticManifestPath(manifest.workId), manifest)) {
+      conflicts.push('Work ' + manifest.workId + ' already exists with different data.');
+    }
+  }
+  for (const record of bundle.records.annotations || []) {
+    if (await existingJsonConflict(semanticAnnotationsPath(record.workId), record)) {
+      conflicts.push('Annotations for ' + record.workId + ' already differ.');
+    }
+  }
+  for (const sidecar of bundle.records.legacySidecars || []) {
+    if (await existingJsonConflict('notes/' + sidecar.bookId + '.json', sidecar)) {
+      conflicts.push('Reading data ' + sidecar.bookId + ' already differs.');
+    }
+  }
+  if (conflicts.length) {
+    libraryHealth.innerHTML =
+      '<div class="library-health-summary" data-state="error">' +
+        '<strong>Import stopped before any writes.</strong><br>' +
+        escapeHtml(conflicts.join(' ')) +
+      '</div>';
+    return;
+  }
+
+  libraryToolsDialog.close();
+  const confirmed = await askForConfirmation({
+    title: 'Import this portable library?',
+    message: validation.summary.works + ' works and ' + validation.summary.assets +
+      ' original files will be added to this ' + backendLabel(activeBackendId()) +
+      '. Existing identical records are left in place; different records are never overwritten.',
+    confirmLabel: 'Import',
+  });
+  if (!confirmed) return;
+
+  try {
+    let written = 0;
+    for (const { asset, bytes } of decodedAssets) {
+      const path = 'library/' + asset.filename;
+      if (!(await naklios.fs.exists(path))) {
+        await naklios.fs.write(path, bytes);
+        written++;
+      }
+    }
+    for (const manifest of bundle.records.works) {
+      const path = semanticManifestPath(manifest.workId);
+      if (!(await naklios.fs.exists(path))) {
+        await naklios.fs.write(path, JSON.stringify(manifest, null, 2));
+        written++;
+      }
+    }
+    for (const record of bundle.records.annotations || []) {
+      const path = semanticAnnotationsPath(record.workId);
+      if (!(await naklios.fs.exists(path))) {
+        await naklios.fs.write(path, JSON.stringify(record, null, 2));
+        written++;
+      }
+    }
+    for (const sidecar of bundle.records.legacySidecars || []) {
+      const path = 'notes/' + sidecar.bookId + '.json';
+      if (!(await naklios.fs.exists(path))) {
+        await naklios.fs.write(path, JSON.stringify(sidecar, null, 2));
+        written++;
+      }
+    }
+    await listLibrary();
+    showToast(
+      written
+        ? 'Imported the portable library. Local indexes will rebuild in the background.'
+        : 'This portable library was already imported; no records changed.',
+      { duration:5500 },
+    );
+  } catch (error) {
+    showToast(
+      'Import paused safely: ' + String(error?.message || error) +
+        '. Retry the same bundle to resume.',
+      { error:true, duration:7000 },
+    );
+    await listLibrary();
+  }
+}
+
+libraryValidateBtn.addEventListener('click', () => {
+  void validateActiveLibrary();
+});
+libraryRebuildBtn.addEventListener('click', () => {
+  void rebuildActiveCatalog();
+});
+libraryExportBtn.addEventListener('click', () => {
+  void exportPortableLibrary();
+});
+libraryImportBtn.addEventListener('click', () => {
+  portableLibraryImportInput.click();
+});
+portableLibraryImportInput.addEventListener('change', (event) => {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = '';
+  if (file) void importPortableLibraryFile(file);
+});
+
 function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   libraryCache = decorated.slice();
   renderReaderLibrary();
@@ -4245,6 +4709,7 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
         '</select>' +
       '</div>' +
       '<div class="library-header-actions">' +
+        '<button class="library-header-action" id="library-tools-btn" type="button">Library tools</button>' +
         '<button class="library-header-action" id="annotations-browser-btn" type="button">Annotations</button>' +
         '<button class="add-btn compact" id="add-book-btn" type="button">＋ Add book…</button>' +
       '</div>' +
@@ -4261,6 +4726,10 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   renderLibraryRows();
   const addBtn = document.getElementById('add-book-btn');
   if (addBtn) addBtn.addEventListener('click', openLibraryFilePicker);
+  const libraryToolsBtn = document.getElementById('library-tools-btn');
+  if (libraryToolsBtn) libraryToolsBtn.addEventListener('click', () => {
+    void openLibraryTools();
+  });
   const annotationsBtn = document.getElementById('annotations-browser-btn');
   if (annotationsBtn) annotationsBtn.addEventListener('click', () => {
     void openAnnotationsBrowser();
@@ -4880,7 +5349,15 @@ async function openBookFromFile(file, persistInfo) {
     // Sidebar toggle is useful whenever there's content in the sidebar —
     // either persistence (bookmarks + note) or a TOC.
     if (persisted || (toc && toc.length)) sidebarToggle.hidden = false;
-    await updateReaderModeAvailability();
+    const nativeAvailable = await updateReaderModeAvailability();
+    if (
+      persisted
+      && nativeAvailable
+      && activeSidecar?.preferredMode === 'native'
+    ) {
+      await loadActiveAnnotations();
+      await switchToNativeMode();
+    }
   } catch (err) {
     if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
     readerSearchBtn.hidden = true;

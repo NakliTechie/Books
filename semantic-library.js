@@ -2,10 +2,12 @@ export const SEMANTIC_SCHEMA_VERSION = 1;
 export const SEMANTIC_CATALOG_PATH = 'catalog/catalog.json';
 export const SEMANTIC_WORKS_PREFIX = 'catalog/works/';
 export const SEMANTIC_ANNOTATIONS_PREFIX = 'annotations/';
+export const PORTABLE_BUNDLE_VERSION = 1;
 
 const RECORD_TYPE = 'books.work';
 const CATALOG_TYPE = 'books.catalog';
 const ANNOTATIONS_TYPE = 'books.annotations';
+const PORTABLE_BUNDLE_TYPE = 'books.portable-library';
 
 function isoNow(now) {
   return typeof now === 'function' ? now() : new Date().toISOString();
@@ -326,6 +328,347 @@ export function rebuildCatalog(
       updatedAt: isoNow(now),
     },
     changed: true,
+  };
+}
+
+function normalizedGroupingText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/[\p{P}\p{S}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function groupingKeyFor(manifest) {
+  const title = normalizedGroupingText(manifest?.title);
+  const authors = (manifest?.authors || [])
+    .map((author) => normalizedGroupingText(author?.name))
+    .filter(Boolean)
+    .sort();
+  return {
+    title,
+    authors,
+    key: title + '\n' + authors.join('|'),
+  };
+}
+
+export function validateSemanticLibrary({
+  sourceFilenames = [],
+  manifests = [],
+  catalog = null,
+  annotations = [],
+} = {}) {
+  const errors = [];
+  const warnings = [];
+  const validManifests = [];
+  const workIds = new Set();
+  const assetIds = new Set();
+  const claimedSources = new Map();
+  const sourceSet = new Set(
+    sourceFilenames.filter((filename) => typeof filename === 'string' && filename),
+  );
+
+  manifests.forEach((candidate, index) => {
+    const manifest = normalizeManifest(candidate);
+    if (!manifest) {
+      errors.push({
+        code: 'invalid-work-manifest',
+        message: 'Work manifest ' + (index + 1) + ' is invalid or uses an unsupported schema.',
+      });
+      return;
+    }
+    validManifests.push(manifest);
+    if (workIds.has(manifest.workId)) {
+      errors.push({
+        code: 'duplicate-work-id',
+        workId: manifest.workId,
+        message: 'Work id ' + manifest.workId + ' appears more than once.',
+      });
+    }
+    workIds.add(manifest.workId);
+    for (const asset of manifest.assets) {
+      if (!asset?.assetId) {
+        errors.push({
+          code: 'missing-asset-id',
+          workId: manifest.workId,
+          message: 'A source asset in ' + manifest.title + ' has no identity.',
+        });
+      } else if (assetIds.has(asset.assetId)) {
+        errors.push({
+          code: 'duplicate-asset-id',
+          assetId: asset.assetId,
+          message: 'Asset id ' + asset.assetId + ' appears more than once.',
+        });
+      }
+      if (asset?.assetId) assetIds.add(asset.assetId);
+      if (!asset?.sourceFilename) continue;
+      const claims = claimedSources.get(asset.sourceFilename) || [];
+      claims.push(manifest.workId);
+      claimedSources.set(asset.sourceFilename, claims);
+    }
+  });
+
+  for (const [filename, claims] of claimedSources) {
+    if (claims.length > 1) {
+      errors.push({
+        code: 'source-claimed-by-multiple-works',
+        filename,
+        workIds: claims,
+        message: filename + ' is claimed by multiple works.',
+      });
+    }
+    if (!sourceSet.has(filename)) {
+      warnings.push({
+        code: 'missing-source',
+        filename,
+        workId: claims[0],
+        message: filename + ' is represented in portable metadata but its original is missing.',
+      });
+    }
+  }
+  for (const filename of sourceSet) {
+    if (!claimedSources.has(filename)) {
+      warnings.push({
+        code: 'untracked-source',
+        filename,
+        message: filename + ' has no portable work manifest yet.',
+      });
+    }
+  }
+
+  for (const record of annotations) {
+    if (!record || record.recordType !== ANNOTATIONS_TYPE || !record.workId) {
+      errors.push({
+        code: 'invalid-annotations-record',
+        message: 'A portable annotations record is invalid.',
+      });
+    } else if (!workIds.has(record.workId)) {
+      warnings.push({
+        code: 'orphan-annotations',
+        workId: record.workId,
+        message: 'Annotations for ' + record.workId + ' have no matching work manifest.',
+      });
+    }
+  }
+
+  const fingerprintGroups = new Map();
+  for (const manifest of validManifests) {
+    for (const asset of manifest.assets) {
+      if (!asset?.fingerprint || asset.fingerprintStatus !== 'complete') continue;
+      const rows = fingerprintGroups.get(asset.fingerprint) || [];
+      rows.push({
+        workId: manifest.workId,
+        title: manifest.title,
+        assetId: asset.assetId,
+        filename: asset.sourceFilename,
+      });
+      fingerprintGroups.set(asset.fingerprint, rows);
+    }
+  }
+  const exactDuplicates = Array.from(fingerprintGroups, ([fingerprint, assets]) => ({
+    fingerprint,
+    assets,
+  })).filter((group) => group.assets.length > 1);
+  for (const duplicate of exactDuplicates) {
+    warnings.push({
+      code: 'exact-duplicate-assets',
+      fingerprint: duplicate.fingerprint,
+      message: duplicate.assets.map((asset) => asset.filename).join(', ') +
+        ' contain identical source bytes.',
+    });
+  }
+
+  const groupingCandidates = new Map();
+  for (const manifest of validManifests) {
+    const grouping = groupingKeyFor(manifest);
+    if (!grouping.title) continue;
+    const rows = groupingCandidates.get(grouping.key) || [];
+    rows.push({
+      workId: manifest.workId,
+      title: manifest.title,
+      authors: (manifest.authors || []).map((author) => author.name),
+      formats: Array.from(new Set(
+        manifest.assets.map((asset) => asset.format).filter(Boolean),
+      )).sort(),
+    });
+    groupingCandidates.set(grouping.key, rows);
+  }
+  const groupingSuggestions = Array.from(groupingCandidates.values())
+    .filter((works) => works.length > 1)
+    .map((works) => ({
+      confidence: works.every((work) => work.authors.length) ? 'likely' : 'possible',
+      reason: works.every((work) => work.authors.length)
+        ? 'matching normalized title and authors'
+        : 'matching normalized title; author evidence is incomplete',
+      works,
+    }));
+
+  const rebuilt = rebuildCatalog(
+    validManifests,
+    catalog,
+    () => catalog?.updatedAt || new Date(0).toISOString(),
+  );
+  if (rebuilt.changed) {
+    warnings.push({
+      code: 'catalog-needs-rebuild',
+      message: 'The rebuildable catalog does not match the canonical work manifests.',
+    });
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+    exactDuplicates,
+    groupingSuggestions,
+    catalogNeedsRebuild: rebuilt.changed,
+    rebuiltCatalog: rebuilt.catalog,
+    summary: {
+      sources: sourceSet.size,
+      works: validManifests.length,
+      assets: validManifests.reduce((sum, manifest) => sum + manifest.assets.length, 0),
+      annotationRecords: annotations.length,
+    },
+  };
+}
+
+function safeBundleFilename(value) {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= 500
+    && !value.includes('/')
+    && !value.includes('\\')
+    && value !== '.'
+    && value !== '..';
+}
+
+export function createPortableBundle({
+  manifests = [],
+  annotations = [],
+  legacySidecars = [],
+  assets = [],
+  libraryLabel = null,
+  now = () => new Date().toISOString(),
+} = {}) {
+  return {
+    bundleVersion: PORTABLE_BUNDLE_VERSION,
+    recordType: PORTABLE_BUNDLE_TYPE,
+    semanticSchemaVersion: SEMANTIC_SCHEMA_VERSION,
+    exportedAt: isoNow(now),
+    libraryLabel: libraryLabel ? String(libraryLabel) : null,
+    assets: cloneJson(assets),
+    records: {
+      works: cloneJson(manifests),
+      annotations: cloneJson(annotations),
+      legacySidecars: cloneJson(legacySidecars),
+    },
+    omittedRebuildableData: [
+      'catalog/catalog.json',
+      'passages/',
+      'indexes/',
+      'semantics/',
+      'processing/',
+      'covers/',
+    ],
+  };
+}
+
+export function validatePortableBundle(bundle) {
+  const errors = [];
+  const warnings = [];
+  if (!bundle || bundle.recordType !== PORTABLE_BUNDLE_TYPE) {
+    errors.push({
+      code: 'invalid-bundle-type',
+      message: 'This is not a Books portable-library bundle.',
+    });
+  }
+  if (bundle?.bundleVersion !== PORTABLE_BUNDLE_VERSION) {
+    errors.push({
+      code: 'unsupported-bundle-version',
+      message: 'Bundle version ' + String(bundle?.bundleVersion) + ' is not supported.',
+    });
+  }
+  if (bundle?.semanticSchemaVersion > SEMANTIC_SCHEMA_VERSION) {
+    errors.push({
+      code: 'future-semantic-schema',
+      message: 'This bundle uses a newer semantic-library schema.',
+    });
+  }
+
+  const works = Array.isArray(bundle?.records?.works) ? bundle.records.works : [];
+  const annotations = Array.isArray(bundle?.records?.annotations)
+    ? bundle.records.annotations : [];
+  const legacySidecars = Array.isArray(bundle?.records?.legacySidecars)
+    ? bundle.records.legacySidecars : [];
+  const assets = Array.isArray(bundle?.assets) ? bundle.assets : [];
+  if (!Array.isArray(bundle?.records?.works)) {
+    errors.push({ code: 'missing-work-records', message: 'The bundle has no work-record list.' });
+  }
+  if (!Array.isArray(bundle?.assets)) {
+    errors.push({ code: 'missing-assets', message: 'The bundle has no source-asset list.' });
+  }
+
+  const filenames = new Set();
+  for (const asset of assets) {
+    if (!safeBundleFilename(asset?.filename)) {
+      errors.push({
+        code: 'unsafe-asset-filename',
+        message: 'A bundled source has an unsafe filename.',
+      });
+      continue;
+    }
+    if (filenames.has(asset.filename)) {
+      errors.push({
+        code: 'duplicate-bundle-filename',
+        filename: asset.filename,
+        message: asset.filename + ' appears more than once in the bundle.',
+      });
+    }
+    filenames.add(asset.filename);
+    if (typeof asset.dataBase64 !== 'string' || !asset.dataBase64) {
+      errors.push({
+        code: 'missing-asset-data',
+        filename: asset.filename,
+        message: asset.filename + ' has no encoded original bytes.',
+      });
+    }
+  }
+  for (const sidecar of legacySidecars) {
+    if (
+      !sidecar
+      || !safeBundleFilename(sidecar.sourceFilename)
+      || typeof sidecar.bookId !== 'string'
+      || !/^[a-zA-Z0-9_-]{1,240}$/.test(sidecar.bookId)
+    ) {
+      errors.push({
+        code: 'unsafe-legacy-sidecar',
+        message: 'A legacy reading-data record has an unsafe identity.',
+      });
+    }
+  }
+
+  const libraryValidation = validateSemanticLibrary({
+    sourceFilenames: Array.from(filenames),
+    manifests: works,
+    annotations,
+  });
+  errors.push(...libraryValidation.errors);
+  warnings.push(
+    ...libraryValidation.warnings.filter(
+      (warning) => warning.code !== 'catalog-needs-rebuild',
+    ),
+  );
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+    summary: {
+      works: works.length,
+      assets: assets.length,
+      annotationRecords: annotations.length,
+      legacySidecars: legacySidecars.length,
+    },
   };
 }
 

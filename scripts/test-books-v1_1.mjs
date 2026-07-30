@@ -136,6 +136,33 @@ assert.match(html, /function openAnnotationsBrowser\(/,
   'library-wide annotation browsing reads per-work portable records');
 assert.match(html, /function exportLibraryAnnotations\(/,
   'annotations export to a documented human-readable Markdown form');
+assert.match(html, /id="library-tools-dialog"/,
+  'the library exposes validation, rebuild, export, and import controls');
+assert.match(
+  html,
+  /function validateActiveLibrary\([\s\S]*?validateSemanticLibrary\([\s\S]*?catalog:\s*semanticCatalog/,
+  'library validation compares canonical records with the rebuildable catalog',
+);
+assert.match(
+  html,
+  /function rebuildActiveCatalog\([\s\S]*?SEMANTIC_CATALOG_PATH[\s\S]*?report\.rebuiltCatalog/,
+  'catalog repair writes only the catalog rebuilt from canonical manifests',
+);
+assert.match(
+  html,
+  /function exportPortableLibrary\([\s\S]*?readBinary\('library\/' \+ filename\)[\s\S]*?createPortableBundle/,
+  'portable export includes original source bytes and canonical records',
+);
+assert.match(
+  html,
+  /function importPortableLibraryFile\([\s\S]*?validatePortableBundle\([\s\S]*?Import stopped before any writes/,
+  'portable import validates and preflights conflicts before changing storage',
+);
+assert.match(
+  html,
+  /await askForConfirmation\([\s\S]*?for \(const \{ asset, bytes \} of decodedAssets\)/,
+  'portable import requires confirmation before its idempotent write phase',
+);
 assert.match(
   html,
   /reanchorPortableAnnotations[\s\S]*?activeAnnotationRecord = reanchored\.record/,
@@ -297,6 +324,11 @@ assert.match(
   /function switchToFaithfulMode\(sourcePassage[\s\S]*?faithfulPositionForPassage/,
   'native source links translate back to faithful engine anchors',
 );
+assert.match(
+  html,
+  /nativeAvailable[\s\S]*?activeSidecar\?\.preferredMode === 'native'[\s\S]*?switchToNativeMode/,
+  'a persisted Native mode preference is restored after reopening a book',
+);
 assert.match(html, /doc\?\.getSelection\?\.\(\)\?\.toString/, 'EPUB context prefers the visible selection');
 assert.match(html, /scope:`page \$\{this\.currentPage \|\| 1\}`/, 'PDF context names and extracts the current page');
 assert.match(html, /window\.getSelection\?\.\(\)/, 'text context prefers the visible selection');
@@ -386,6 +418,11 @@ assert.match(
   harness,
   /annotations-browser-btn[\s\S]*?library-wide annotation browser[\s\S]*?quiet test/,
   'browser harness verifies local library-wide annotation search',
+);
+assert.match(
+  harness,
+  /library-tools-btn[\s\S]*?library validation report[\s\S]*?portable library export[\s\S]*?portable import confirmation after preflight[\s\S]*?conflict-safe portable library import/,
+  'browser harness verifies validation plus original-file export and safe import',
 );
 assert.match(
   harness,

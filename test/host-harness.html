@@ -137,6 +137,76 @@
     ]);
   }
 
+  function portableImportBundle() {
+    const source = encoder.encode(
+      'Imported Field Guide\n\nPortable originals and records remain user-owned.'
+    );
+    let binary = '';
+    for (const byte of source) binary += String.fromCharCode(byte);
+    const timestamp = '2026-07-30T12:00:00.000Z';
+    return {
+      bundleVersion: 1,
+      recordType: 'books.portable-library',
+      semanticSchemaVersion: 1,
+      exportedAt: timestamp,
+      libraryLabel: 'Harness export',
+      assets: [{
+        filename: 'Imported Field Guide.txt',
+        byteLength: source.byteLength,
+        dataBase64: btoa(binary),
+      }],
+      records: {
+        works: [{
+          schemaVersion: 1,
+          recordType: 'books.work',
+          workId: 'work_harness-import',
+          title: 'Imported Field Guide',
+          authors: [{ name: 'Portable Reader', source: 'user' }],
+          metadataProvenance: { title: 'user', authors: 'user' },
+          userMetadata: { rating: null, tags: ['portable'], shelves: [] },
+          editions: [{
+            editionId: 'edition_harness-import',
+            language: 'en',
+            identifiers: {},
+            assetIds: ['asset_harness-import'],
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          }],
+          assets: [{
+            assetId: 'asset_harness-import',
+            editionId: 'edition_harness-import',
+            sourcePath: 'library/Imported Field Guide.txt',
+            sourceFilename: 'Imported Field Guide.txt',
+            format: 'txt',
+            byteLength: source.byteLength,
+            fingerprint: null,
+            fingerprintStatus: 'pending',
+            availability: 'available',
+            importedAt: timestamp,
+            updatedAt: timestamp,
+          }],
+          legacy: {
+            bookIds: ['Imported_Field_Guide'],
+            sourceFilenames: ['Imported Field Guide.txt'],
+            sidecarPath: null,
+          },
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }],
+        annotations: [],
+        legacySidecars: [],
+      },
+      omittedRebuildableData: [
+        'catalog/catalog.json',
+        'passages/',
+        'indexes/',
+        'semantics/',
+        'processing/',
+        'covers/',
+      ],
+    };
+  }
+
   let activeBackend = 'fsa';
   const stores = {
     fsa: new Map([
@@ -554,8 +624,52 @@
       }
       app.getElementById('annotations-browser-dialog').close();
 
+      app.getElementById('library-tools-btn').click();
+      await waitFor(
+        () => app.getElementById('library-tools-dialog').open
+          && app.getElementById('library-health').textContent.includes(
+            'Library is readable'
+          )
+          && app.getElementById('library-health').textContent.includes(
+            'exact-duplicate-assets'
+          ),
+        'library validation report',
+      );
+      app.getElementById('library-export-btn').click();
+      await waitFor(
+        () => app.getElementById('library-health').textContent.includes(
+          'Exported originals and portable records'
+        ),
+        'portable library export',
+      );
+      const importTransfer = new DataTransfer();
+      importTransfer.items.add(new File(
+        [JSON.stringify(portableImportBundle())],
+        'harness.books-library.json',
+        { type:'application/json' },
+      ));
+      const importInput = app.getElementById('portable-library-import-input');
+      importInput.files = importTransfer.files;
+      importInput.dispatchEvent(new Event('change', { bubbles:true }));
+      await waitFor(
+        () => app.getElementById('confirm-dialog').open
+          && app.getElementById('confirm-dialog-title').textContent.includes(
+            'Import this portable library'
+          ),
+        'portable import confirmation after preflight',
+      );
+      app.getElementById('confirm-dialog-ok').click();
+      await waitFor(
+        () => stores.fsa.has('library/Imported Field Guide.txt')
+          && stores.fsa.has('catalog/works/work_harness-import.json')
+          && app.querySelector(
+            '.row[data-filename="Imported Field Guide.txt"]'
+          ),
+        'conflict-safe portable library import',
+      );
+
       setStatus(
-        'PASS · EPUB, migration, native highlights, annotation memory, and recovery work',
+        'PASS · semantic reading, annotation memory, recovery, and portability work',
         'pass',
       );
     } catch (error) {

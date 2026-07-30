@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {
   addPortableAnnotation,
+  createPortableBundle,
+  PORTABLE_BUNDLE_VERSION,
   SEMANTIC_CATALOG_PATH,
   SEMANTIC_ANNOTATIONS_PREFIX,
   SEMANTIC_SCHEMA_VERSION,
@@ -18,6 +20,8 @@ import {
   updatePortableAnnotation,
   updateWorkDetails,
   updateWorkMetadata,
+  validatePortableBundle,
+  validateSemanticLibrary,
   workForFilename,
 } from '../semantic-library.js';
 
@@ -36,6 +40,7 @@ assert.equal(SEMANTIC_SCHEMA_VERSION, 1);
 assert.equal(SEMANTIC_CATALOG_PATH, 'catalog/catalog.json');
 assert.equal(SEMANTIC_WORKS_PREFIX, 'catalog/works/');
 assert.equal(SEMANTIC_ANNOTATIONS_PREFIX, 'annotations/');
+assert.equal(PORTABLE_BUNDLE_VERSION, 1);
 assert.equal(legacyBookIdFor('Pride & Prejudice.epub'), 'Pride_Prejudice');
 
 const sidecar = {
@@ -299,6 +304,88 @@ assert.equal(noteChanged.record.revision, 2);
 assert.equal(
   noteChanged.record.annotations.find((item) => item.kind === 'note').body,
   'Revised note',
+);
+
+const sameBytesManifest = structuredClone(first.manifests[1]);
+sameBytesManifest.assets[0].fingerprint = fingerprint;
+sameBytesManifest.assets[0].fingerprintStatus = 'complete';
+sameBytesManifest.assets[0].byteLength = sourceBytes.byteLength;
+const catalogValidation = validateSemanticLibrary({
+  sourceFilenames: ['Pride & Prejudice.epub', 'Notes.txt', 'Loose.pdf'],
+  manifests: [fingerprinted.manifest, sameBytesManifest],
+  catalog: first.catalog,
+  annotations: [annotationFirst.record],
+});
+assert.equal(catalogValidation.valid, true);
+assert.equal(catalogValidation.catalogNeedsRebuild, true);
+assert.deepEqual(
+  catalogValidation.exactDuplicates[0].assets.map((asset) => asset.filename).sort(),
+  ['Notes.txt', 'Pride & Prejudice.epub'],
+  'matching SHA-256 fingerprints are reported as exact duplicates',
+);
+assert.ok(
+  catalogValidation.warnings.some((warning) => warning.code === 'untracked-source'),
+  'original files without portable manifests are reported',
+);
+
+const editionCandidate = structuredClone(fingerprinted.manifest);
+editionCandidate.workId = 'work_candidate';
+editionCandidate.title = 'PRIDE—and PREJUDICE';
+editionCandidate.authors = [{ name: 'Jane Austen', source: 'user' }];
+editionCandidate.assets[0].assetId = 'asset_candidate';
+editionCandidate.assets[0].sourceFilename = 'Pride and Prejudice.pdf';
+editionCandidate.assets[0].format = 'pdf';
+editionCandidate.assets[0].fingerprint = 'sha256:different';
+const groupingValidation = validateSemanticLibrary({
+  sourceFilenames: ['Pride & Prejudice.epub', 'Pride and Prejudice.pdf'],
+  manifests: [fingerprinted.manifest, editionCandidate],
+});
+assert.equal(groupingValidation.groupingSuggestions.length, 1);
+assert.equal(groupingValidation.groupingSuggestions[0].confidence, 'likely');
+assert.deepEqual(
+  groupingValidation.groupingSuggestions[0].works.flatMap((work) => work.formats).sort(),
+  ['epub', 'pdf'],
+  'matching normalized title and authors suggest user-confirmed format grouping',
+);
+
+const portableBundle = createPortableBundle({
+  manifests: [fingerprinted.manifest],
+  annotations: [annotationFirst.record],
+  legacySidecars: [sidecar],
+  assets: [{
+    filename: 'Pride & Prejudice.epub',
+    byteLength: sourceBytes.byteLength,
+    fingerprint,
+    dataBase64: Buffer.from(sourceBytes).toString('base64'),
+  }],
+  libraryLabel: 'Test Folder',
+  now,
+});
+assert.equal(portableBundle.recordType, 'books.portable-library');
+assert.deepEqual(portableBundle.records.works, [fingerprinted.manifest]);
+assert.ok(
+  portableBundle.omittedRebuildableData.includes('indexes/'),
+  'portable bundles explicitly document omitted rebuildable indexes',
+);
+assert.deepEqual(validatePortableBundle(portableBundle), {
+  valid: true,
+  errors: [],
+  warnings: [],
+  summary: {
+    works: 1,
+    assets: 1,
+    annotationRecords: 1,
+    legacySidecars: 1,
+  },
+});
+const unsafeBundle = structuredClone(portableBundle);
+unsafeBundle.assets[0].filename = '../escape.epub';
+assert.equal(validatePortableBundle(unsafeBundle).valid, false);
+assert.ok(
+  validatePortableBundle(unsafeBundle).errors.some(
+    (error) => error.code === 'unsafe-asset-filename',
+  ),
+  'bundle import rejects paths that could escape the Books library namespace',
 );
 
 console.log('Books semantic-library foundation contract: PASS');

@@ -19,6 +19,11 @@ choices in
 execution sequence and complete pending-item map in
 [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md).
 
+The foundation now includes work/edition/asset identity, resumable local
+passage indexing and concepts, Books-native reading, portable highlights,
+library-wide annotation memory, library validation, catalog rebuild, and
+conflict-safe portable export/import.
+
 ## v1.4 highlights
 
 - Full standalone library with persistent books, positions, bookmarks, notes,
@@ -73,6 +78,7 @@ naklios-universe/
     ├── SPEC.md                   ← shipped v1.4 architectural decisions
     ├── SEMANTIC-LIBRARY-SPEC.md  ← proposed v2+ product and architecture
     ├── SEMANTIC-LIBRARY-WORKPLAN.md ← pending phases and decision gates
+    ├── PORTABLE-LIBRARY-FORMAT.md ← documented backup/import bundle
     ├── CALIBRE-RESEARCH.md       ← comparison input, not a parity mandate
     ├── walkthroughs.md           ← open scope-defining questions
     ├── DEFERRED.md               ← v2+ items with revisit triggers
@@ -107,6 +113,8 @@ naklios-universe/
 - [x] v1.2 — cached covers and cross-engine in-book search
 - [x] v1.3 — selection/page-scoped NakliOS AI reading companion
 - [x] v1.4 — persistent standalone library + Cloudflare Workers deployment
+- [x] Semantic foundation — work identity, local passages/search/concepts,
+      Native reader, portable highlights, validation, and backup/import
 - [x] Contract test at `scripts/test-books-v1_1.mjs`
 - [x] Safe two-backend browser fixture at `test/host-harness.html`
 
@@ -123,6 +131,8 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
   semantic library extension
 - [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md) — phased,
   gated plan containing all pending work
+- [PORTABLE-LIBRARY-FORMAT.md](PORTABLE-LIBRARY-FORMAT.md) — versioned,
+  conflict-safe original-file and portable-record bundle
 
 ## Context
 
