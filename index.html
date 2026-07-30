@@ -640,7 +640,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div class="status" id="reader-status"></div>
     <button class="storage-btn" id="reader-storage-btn" type="button" hidden>Storage</button>
     <button class="reader-ai-btn" id="reader-ai-btn" type="button" hidden
-            title="Explain or summarize the current passage with NakliOS Local AI">✦ AI</button>
+            title="Explain or summarize the current passage with NakliOS AI">✦ AI</button>
     <button class="reader-prefs-btn" id="reader-prefs-btn" type="button" title="Reading appearance">Aa</button>
     <button class="reader-search-btn" id="reader-search-btn" type="button" hidden
             aria-expanded="false" aria-controls="reader-searchbar" title="Find in book (⌘F)">Find</button>
@@ -755,7 +755,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 <dialog class="books-dialog books-ai-dialog" id="reader-ai-dialog"
         aria-labelledby="reader-ai-title">
   <div class="books-dialog-body">
-    <h3 id="reader-ai-title">Local AI reading companion</h3>
+    <h3 id="reader-ai-title">NakliOS AI reading companion</h3>
     <p id="reader-ai-context">Preparing the current passage…</p>
     <div class="books-ai-actions">
       <button type="button" data-reader-ai-action="explain">Explain simply</button>
@@ -768,7 +768,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
              placeholder="What does the author mean here?">
     </div>
     <textarea class="books-ai-output" id="reader-ai-output" readonly
-              aria-label="Local AI response"></textarea>
+              aria-label="AI response"></textarea>
     <div class="books-ai-status" id="reader-ai-status" role="status" aria-live="polite"></div>
     <div class="books-dialog-actions">
       <button type="button" id="reader-ai-stop" hidden>Stop</button>
@@ -802,6 +802,9 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     fsBackend: standaloneFsAvailable ? 'browser' : null,
     ai: false,
     aiModel: null,
+    aiModelLabel: null,
+    aiProvider: null,
+    aiLocal: true,
     aiState: 'idle',
   };
   var pendingRpc = new Map();
@@ -978,7 +981,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   }
   function makeAiStream(options) {
     if (!inNakliOS) throw new Error('Not hosted — naklios.ai unavailable standalone');
-    if (!capabilities.ai) throw new Error('NakliOS Local AI is unavailable or not permitted');
+    if (!capabilities.ai) throw new Error('NakliOS AI is unavailable or not permitted');
     options = options || {};
     var requestId = 'a' + (++rpcCounter) + '_' + Date.now();
     var queued = [], waiters = [], complete = false, failure = null;
@@ -1055,6 +1058,9 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       capabilities.fsBackend = typeof msg.fsBackend === 'string' ? msg.fsBackend : null;
       if (typeof msg.ai === 'boolean') capabilities.ai = msg.ai;
       capabilities.aiModel = typeof msg.aiModel === 'string' ? msg.aiModel : null;
+      capabilities.aiModelLabel = typeof msg.aiModelLabel === 'string' ? msg.aiModelLabel : null;
+      capabilities.aiProvider = typeof msg.aiProvider === 'string' ? msg.aiProvider : null;
+      capabilities.aiLocal = msg.aiLocal !== false;
       capabilities.aiState = typeof msg.aiState === 'string' ? msg.aiState : 'idle';
       capListeners.forEach(function (cb) { try { cb(capabilities); } catch (_) {} });
     } else if (msg.type === 'naklios:ai:event' && msg.requestId) {
@@ -1078,7 +1084,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
         aiRequest.finish();
       } else if (msg.event === 'error') {
         aiRequests.delete(msg.requestId);
-        aiRequest.fail(new Error(msg.error || 'NakliOS Local AI failed'));
+        aiRequest.fail(new Error(msg.error || 'NakliOS AI failed'));
       }
     } else if (msg.type === 'naklios:fs:reply' && msg.requestId) {
       var p = pendingRpc.get(msg.requestId);
@@ -3158,12 +3164,17 @@ function updateReaderAiButton() {
 }
 
 function readerAiProgressLabel(status, progress) {
-  if (status === 'queued') return 'Waiting for the shared Local AI…';
-  if (status === 'generating') return 'Answering on this device…';
-  if (progress?.total && Number.isFinite(progress.loaded)) {
-    return 'Loading Local AI · ' + Math.round(progress.loaded / progress.total * 100) + '%';
+  if (status === 'queued') return 'Waiting for shared NakliOS AI…';
+  if (status === 'generating') {
+    if (!naklios.capabilities.aiLocal) return 'Waiting for the configured provider…';
+    return naklios.capabilities.aiProvider === 'endpoint'
+      ? 'Waiting for the configured local service…'
+      : 'Answering on this device…';
   }
-  return 'Loading Local AI for first use…';
+  if (progress?.total && Number.isFinite(progress.loaded)) {
+    return 'Loading NakliOS AI · ' + Math.round(progress.loaded / progress.total * 100) + '%';
+  }
+  return 'Loading NakliOS AI for first use…';
 }
 
 async function openReaderAi() {
@@ -3174,6 +3185,8 @@ async function openReaderAi() {
   readerAiQuestion.value = '';
   readerAiCopy.disabled = true;
   readerAiStop.hidden = true;
+  readerAiDialog.querySelector('#reader-ai-title').textContent =
+    'NakliOS AI · ' + (naklios.capabilities.aiModelLabel || 'reading companion');
   readerAiStatus.textContent = 'Reading the current passage…';
   readerAiContext.textContent = 'Preparing the current passage…';
   if (!readerAiDialog.open) readerAiDialog.showModal();
@@ -3182,9 +3195,15 @@ async function openReaderAi() {
     if (!readerAiDialog.open) return;
     if (!context?.text?.trim()) throw new Error('No readable text was found on the current page.');
     readerAiPassage = context;
+    const boundary = !naklios.capabilities.aiLocal
+      ? 'The passage is sent to your configured provider under NakliOS consent.'
+      : naklios.capabilities.aiProvider === 'endpoint'
+        ? 'The passage is sent only to your configured local service.'
+        : 'The passage stays in this browser.';
     readerAiContext.textContent =
       'Using the ' + (context.scope || 'current passage') +
-      ' (' + context.text.length.toLocaleString() + ' characters). Nothing is uploaded or added to your notes.';
+      ' (' + context.text.length.toLocaleString() + ' characters). ' + boundary +
+      ' It is not added to your notes.';
     readerAiStatus.textContent = 'Choose an action or ask a question.';
   } catch (error) {
     readerAiStatus.textContent = error?.message || String(error);
