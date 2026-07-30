@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Books — NakliOS</title>
-<meta name="description" content="Browser-native reader for ePub, PDF, MOBI, AZW3, FB2 and plain text. Part of NakliOS.">
+<title>Books — Private browser-native reader</title>
+<meta name="description" content="A private browser-native library and reader for ePub, PDF, MOBI, AZW3, FB2 and plain text.">
 <style>
 /* Mumbai art deco — Marine Drive cream + teal-black + burnt sienna.
    Host theme via naklios.theme.onChange can override at runtime. */
@@ -781,13 +781,15 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 
 <!--
   naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode).
-  Vendored inline per the single-file ethos. Standalone-safe (no-ops when not hosted).
+  Vendored inline per the single-file ethos. Standalone uses an IndexedDB-backed
+  virtual filesystem; hosted mode delegates storage to NakliOS.
   Canonical source: https://naklios.dev/sdk/naklios.js. License: MIT.
 -->
 <script>
 (function () {
   var inNakliOS = false;
   try { inNakliOS = !!(window.parent && window.parent !== window); } catch (_) {}
+  var standaloneFsAvailable = !inNakliOS && typeof indexedDB !== 'undefined';
   var currentTheme = null;
   var themeListeners = new Set();
   var capListeners = new Set();
@@ -795,9 +797,9 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   var capabilities = {
     hosted: inNakliOS,
     version: 1,
-    fs: false,
-    fsBackends: [],
-    fsBackend: null,
+    fs: standaloneFsAvailable,
+    fsBackends: standaloneFsAvailable ? ['browser'] : [],
+    fsBackend: standaloneFsAvailable ? 'browser' : null,
     ai: false,
     aiModel: null,
     aiState: 'idle',
@@ -805,6 +807,153 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   var pendingRpc = new Map();
   var rpcCounter = 0;
   var aiRequests = new Map();
+  var standaloneDbPromise = null;
+  var STANDALONE_DB_NAME = 'naklios-books-library-v1';
+  var STANDALONE_DB_STORE = 'files';
+
+  function normaliseStandalonePath(path, allowEmpty) {
+    var value = String(path || '').replace(/\\/g, '/');
+    if (
+      value.startsWith('/') ||
+      value.includes('\0') ||
+      value.split('/').some(function (part) { return part === '.' || part === '..'; })
+    ) {
+      throw new Error('Invalid Books storage path');
+    }
+    value = value.replace(/\/+/g, '/');
+    if (!allowEmpty && !value) throw new Error('Books storage path is required');
+    return value;
+  }
+
+  function openStandaloneDb() {
+    if (!standaloneFsAvailable) {
+      return Promise.reject(new Error('Persistent browser storage is unavailable'));
+    }
+    if (standaloneDbPromise) return standaloneDbPromise;
+    standaloneDbPromise = new Promise(function (resolve, reject) {
+      var request = indexedDB.open(STANDALONE_DB_NAME, 1);
+      request.onupgradeneeded = function () {
+        var db = request.result;
+        if (!db.objectStoreNames.contains(STANDALONE_DB_STORE)) {
+          db.createObjectStore(STANDALONE_DB_STORE);
+        }
+      };
+      request.onsuccess = function () {
+        var db = request.result;
+        db.onversionchange = function () { db.close(); };
+        resolve(db);
+      };
+      request.onerror = function () {
+        standaloneDbPromise = null;
+        reject(request.error || new Error('Could not open persistent browser storage'));
+      };
+      request.onblocked = function () {
+        standaloneDbPromise = null;
+        reject(new Error('Books storage upgrade is blocked by another open tab'));
+      };
+    });
+    return standaloneDbPromise;
+  }
+
+  function standaloneRequest(mode, operation) {
+    return openStandaloneDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var settled = false;
+        var result;
+        var tx = db.transaction(STANDALONE_DB_STORE, mode);
+        var request;
+        function fail(error) {
+          if (settled) return;
+          settled = true;
+          reject(error || new Error('Browser storage operation failed'));
+        }
+        try {
+          request = operation(tx.objectStore(STANDALONE_DB_STORE));
+        } catch (error) {
+          try { tx.abort(); } catch (_) {}
+          fail(error);
+          return;
+        }
+        request.onsuccess = function () { result = request.result; };
+        request.onerror = function () { fail(request.error); };
+        tx.oncomplete = function () {
+          if (settled) return;
+          settled = true;
+          resolve(result);
+        };
+        tx.onerror = function () { fail(tx.error); };
+        tx.onabort = function () { fail(tx.error); };
+      });
+    });
+  }
+
+  function standaloneRecord(data) {
+    if (typeof data === 'string') return { kind:'text', data:data };
+    if (data instanceof ArrayBuffer) {
+      return { kind:'binary', data:data.slice(0) };
+    }
+    if (data && data.buffer instanceof ArrayBuffer) {
+      return {
+        kind:'binary',
+        data:data.buffer.slice(data.byteOffset || 0, (data.byteOffset || 0) + data.byteLength),
+      };
+    }
+    throw new Error('Books storage accepts text or binary data');
+  }
+
+  async function standaloneRead(path) {
+    var key = normaliseStandalonePath(path, false);
+    var record = await standaloneRequest('readonly', function (store) { return store.get(key); });
+    if (!record) throw new Error('Books storage file not found: ' + key);
+    if (record.kind === 'text') return String(record.data || '');
+    return new TextDecoder().decode(record.data);
+  }
+
+  async function standaloneReadBinary(path) {
+    var key = normaliseStandalonePath(path, false);
+    var record = await standaloneRequest('readonly', function (store) { return store.get(key); });
+    if (!record) throw new Error('Books storage file not found: ' + key);
+    if (record.kind === 'text') return new TextEncoder().encode(String(record.data || '')).buffer;
+    return record.data instanceof ArrayBuffer ? record.data.slice(0) : record.data;
+  }
+
+  function standaloneWrite(path, data) {
+    var key = normaliseStandalonePath(path, false);
+    var record = standaloneRecord(data);
+    return standaloneRequest('readwrite', function (store) { return store.put(record, key); })
+      .then(function () { return true; });
+  }
+
+  async function standaloneAppend(path, line) {
+    var key = normaliseStandalonePath(path, false);
+    var existing = '';
+    try { existing = await standaloneRead(key); } catch (_) {}
+    return standaloneWrite(key, existing + String(line || ''));
+  }
+
+  async function standaloneList(prefix) {
+    var safePrefix = normaliseStandalonePath(prefix || '', true);
+    var keys = await standaloneRequest('readonly', function (store) { return store.getAllKeys(); });
+    return (Array.isArray(keys) ? keys : [])
+      .filter(function (key) { return typeof key === 'string' && key.startsWith(safePrefix); })
+      .sort();
+  }
+
+  function standaloneDelete(path) {
+    var key = normaliseStandalonePath(path, false);
+    return standaloneRequest('readwrite', function (store) { return store.delete(key); })
+      .then(function () { return true; });
+  }
+
+  function standaloneExists(path) {
+    var key = normaliseStandalonePath(path, false);
+    return standaloneRequest('readonly', function (store) { return store.count(key); })
+      .then(function (count) { return count > 0; });
+  }
+
+  function standaloneUseBackend(backend) {
+    return Promise.resolve(backend === 'browser');
+  }
 
   function send(type, data) {
     if (!inNakliOS) return;
@@ -969,14 +1118,32 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     },
     requestCapabilities: function () { send('naklios:capabilities-request'); },
     fs: {
-      read:       function (path)       { return rpc('naklios:fs:read', { path: path }); },
-      readBinary: function (path)       { return rpc('naklios:fs:readBinary', { path: path }); },
-      write:      function (path, data) { return rpc('naklios:fs:write', { path: path, data: data }); },
-      append:     function (path, line) { return rpc('naklios:fs:append', { path: path, line: line }); },
-      list:       function (prefix)     { return rpc('naklios:fs:list', { prefix: prefix || '' }); },
-      delete:     function (path)       { return rpc('naklios:fs:delete', { path: path }); },
-      exists:     function (path)       { return rpc('naklios:fs:exists', { path: path }); },
-      useBackend: function (backend)    { return rpc('naklios:fs:selectBackend', { backend: backend }); },
+      read: function (path) {
+        return inNakliOS ? rpc('naklios:fs:read', { path:path }) : standaloneRead(path);
+      },
+      readBinary: function (path) {
+        return inNakliOS ? rpc('naklios:fs:readBinary', { path:path }) : standaloneReadBinary(path);
+      },
+      write: function (path, data) {
+        return inNakliOS ? rpc('naklios:fs:write', { path:path, data:data }) : standaloneWrite(path, data);
+      },
+      append: function (path, line) {
+        return inNakliOS ? rpc('naklios:fs:append', { path:path, line:line }) : standaloneAppend(path, line);
+      },
+      list: function (prefix) {
+        return inNakliOS ? rpc('naklios:fs:list', { prefix:prefix || '' }) : standaloneList(prefix);
+      },
+      delete: function (path) {
+        return inNakliOS ? rpc('naklios:fs:delete', { path:path }) : standaloneDelete(path);
+      },
+      exists: function (path) {
+        return inNakliOS ? rpc('naklios:fs:exists', { path:path }) : standaloneExists(path);
+      },
+      useBackend: function (backend) {
+        return inNakliOS
+          ? rpc('naklios:fs:selectBackend', { backend:backend })
+          : standaloneUseBackend(backend);
+      },
     },
     ai: {
       chat:{ completions:{ create:createAiCompletion } },
@@ -1331,22 +1498,23 @@ function connectedBackends() {
   const list = Array.isArray(naklios.capabilities.fsBackends)
     ? naklios.capabilities.fsBackends
         .map((entry) => typeof entry === 'string' ? entry : entry && entry.id)
-        .filter((id) => id === 'fsa' || id === 'crate')
+        .filter((id) => id === 'browser' || id === 'fsa' || id === 'crate')
     : [];
   if (!list.length && naklios.capabilities.fs) {
-    list.push(naklios.capabilities.fsBackend === 'crate' ? 'crate' : 'fsa');
+    const fallback = naklios.capabilities.fsBackend;
+    list.push(fallback === 'browser' || fallback === 'crate' ? fallback : 'fsa');
   }
   return list;
 }
 
 function activeBackendId() {
   const id = naklios.capabilities.fsBackend;
-  if (id === 'fsa' || id === 'crate') return id;
+  if (id === 'browser' || id === 'fsa' || id === 'crate') return id;
   return connectedBackends()[0] || null;
 }
 
 function backendLabel(id) {
-  return id === 'crate' ? 'Crate' : id === 'fsa' ? 'Folder' : 'Storage';
+  return id === 'browser' ? 'Browser' : id === 'crate' ? 'Crate' : id === 'fsa' ? 'Folder' : 'Storage';
 }
 
 // A5 — bookId from filename: extension stripped, non-alnum → underscore, trim leading/trailing underscores.
@@ -2027,20 +2195,13 @@ const ENGINES = { foliate: FoliateEngine, pdf: PdfEngine, text: TextEngine };
 // Views
 // ============================================================
 
-function renderStandalonePreview() {
-  topbarStatus.textContent = 'Preview mode';
+function renderStandaloneStorageUnavailable() {
+  topbarStatus.textContent = 'Storage unavailable';
   root.innerHTML =
     '<div class="center"><div class="card">' +
-      '<div class="tag">Preview mode</div>' +
       '<h2>📖 Books</h2>' +
-      "<p>Books works fully inside NakliOS — your library, position, and notes persist to the selected Folder or Crate. Standalone, you can read one file at a time.</p>" +
-      '<label class="dropzone" id="dropzone">' +
-        '<input type="file" id="fileinput" accept=".epub,.pdf,.mobi,.azw3,.fb2,.txt,.md,.html,.htm">' +
-        '<div>Drop a book here, or click to choose</div>' +
-        '<div class="formats">ePub · PDF · MOBI · AZW3 · FB2 · TXT · MD · HTML</div>' +
-      '</label>' +
+      '<p>This browser has disabled the persistent storage Books needs. Enable site data for this site, then reload.</p>' +
     '</div></div>';
-  wireDropZone();
 }
 
 function renderHostedNoStorage() {
@@ -2062,12 +2223,15 @@ function renderLibraryEmpty() {
   const sideload = backend === 'fsa'
     ? " You can also place files in <code>apps/books/library/</code> inside the mounted Folder; they'll appear when this window is focused."
     : '';
+  const storageNote = backend === 'browser'
+    ? ' Books, positions, bookmarks, notes, and covers stay in this browser on this device.'
+    : '';
   root.innerHTML =
     '<div class="center"><div class="card">' +
       '<h2>📖 Your library is empty</h2>' +
       '<p>Add books from your computer to start reading. Supported: <code>.epub</code>, <code>.pdf</code>, <code>.mobi</code>, <code>.azw3</code>, <code>.fb2</code>, <code>.txt</code>, <code>.md</code>, <code>.html</code>.</p>' +
       '<button class="add-btn-secondary" id="add-book-btn-empty" type="button">＋ Add book…</button>' +
-      '<p style="font-size:11px; margin-top:18px;">Or drag files onto this window.' + sideload + '</p>' +
+      '<p style="font-size:11px; margin-top:18px;">Or drag files onto this window.' + sideload + storageNote + '</p>' +
     '</div></div>';
   const btn = document.getElementById('add-book-btn-empty');
   if (btn) btn.addEventListener('click', openLibraryFilePicker);
@@ -2281,12 +2445,11 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
 
 // ============================================================
 // Adding books — unified path
-// Three entry points: standalone-dropzone, full-window drop, library "+ Add" button.
+// Two entry points: full-window drop and the library "+ Add" button.
 // Behavior:
-//   - Standalone:        first supported file → openBookFromFile (preview-only, A4)
-//   - Hosted, no storage: ignored — there's no library to write to
-//   - Hosted + storage: write all supported files to apps/books/library/<name>,
-//                        re-list, and auto-open the just-added file when there's only one
+//   - No storage: preview the first supported file as a last resort.
+//   - Persistent storage: write all supported files to library/<name>, re-list,
+//     and auto-open the just-added file when there's only one.
 // ============================================================
 
 const libraryFileInput = document.getElementById('library-fileinput');
@@ -2312,11 +2475,28 @@ function openLibraryFilePicker() {
   libraryFileInput.click();
 }
 
+let standalonePersistenceRequested = false;
+async function requestStandalonePersistence() {
+  if (
+    standalonePersistenceRequested ||
+    naklios.capabilities.hosted ||
+    !navigator.storage?.persist
+  ) return;
+  standalonePersistenceRequested = true;
+  try {
+    const alreadyPersistent = await navigator.storage.persisted?.();
+    if (!alreadyPersistent) await navigator.storage.persist();
+  } catch (_) {
+    // Persistence is a best-effort eviction hint. IndexedDB remains usable
+    // when the browser declines it.
+  }
+}
+
 function renderReaderLibrary() {
   if (!readerLibraryList) return;
-  if (!naklios.capabilities.hosted || !naklios.capabilities.fs) {
+  if (!naklios.capabilities.fs) {
     readerLibraryList.innerHTML =
-      '<div class="reader-library-empty">Preview mode. Use Open file… to choose another book.</div>';
+      '<div class="reader-library-empty">Persistent storage is unavailable.</div>';
     return;
   }
   if (!libraryCache.length) {
@@ -2351,14 +2531,16 @@ async function handlePickedFiles(fileList) {
   if (!fileList || fileList.length === 0) return;
   const all = Array.from(fileList);
 
-  if (!naklios.capabilities.hosted || !naklios.capabilities.fs) {
-    // Standalone (or hosted without a folder) — preview the first supported file.
+  if (!naklios.capabilities.fs) {
+    // Last-resort preview if a browser blocks persistent storage.
     const first = all.find((f) => engineKeyFor(f.name));
     if (first) await openBookFromFile(first, null);
     return;
   }
 
-  // Hosted with fs — add to library.
+  await requestStandalonePersistence();
+
+  // Add to the active persistent library.
   const supported = all.filter((f) => engineKeyFor(f.name));
   if (supported.length === 0) return;
 
@@ -2538,27 +2720,6 @@ orphanRecoveryInput.addEventListener('change', (event) => {
   if (file && target) void recoverOrphanWithFile(file, target);
 });
 
-// Standalone preview card has its own inline dropzone (initialised when that view renders).
-// Wired by the standalone view itself for visual affordance; the actual drop event also
-// falls through to the document-level handler below (which preview-only-handles).
-function wireDropZone() {
-  const dz = document.getElementById('dropzone');
-  const fi = document.getElementById('fileinput');
-  if (!dz || !fi) return;
-  fi.addEventListener('change', () => {
-    if (fi.files && fi.files[0]) openBookFromFile(fi.files[0], null);
-  });
-  dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('drag-over'); });
-  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
-  dz.addEventListener('drop', (e) => {
-    e.preventDefault();
-    e.stopPropagation();    // don't double-fire with the document-level handler
-    dz.classList.remove('drag-over');
-    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) openBookFromFile(f, null);
-  });
-}
-
 // ============================================================
 // Document-level drag-drop — works in any view except the reader.
 // Shows a full-window overlay during drag, processes drop via handlePickedFiles.
@@ -2572,7 +2733,7 @@ function isFileDrag(e) {
   return Array.from(types).includes('Files');
 }
 function setDropMsgForCurrentMode() {
-  if (!naklios.capabilities.hosted || !naklios.capabilities.fs) {
+  if (!naklios.capabilities.fs) {
     dropMsg.textContent = 'Drop to read (preview only)';
   } else {
     dropMsg.textContent = 'Drop to add to your library';
@@ -2716,7 +2877,7 @@ async function cacheActiveCover() {
   }
 }
 
-// persistInfo: { bookId, sourceFilename } when hosted; null when standalone (A4).
+// persistInfo: { bookId, sourceFilename } for any persistent backend.
 async function openBookFromFile(file, persistInfo) {
   // Enter reader view first so errors are visible — unsupported-format
   // and load failures both surface in the same place as successful loads.
@@ -3149,13 +3310,18 @@ document.querySelectorAll('[data-close-dialog]').forEach((button) => {
 
 function updateStorageButton() {
   if (!naklios.capabilities.hosted) {
-    storageBtn.hidden = true;
-    readerStorageBtn.hidden = true;
+    [storageBtn, readerStorageBtn].forEach((button) => {
+      button.hidden = !naklios.capabilities.fs;
+      button.disabled = true;
+      button.textContent = 'Browser';
+      button.title = 'This library is stored in this browser on this device.';
+    });
     return;
   }
   const active = activeBackendId();
   [storageBtn, readerStorageBtn].forEach((button) => {
     button.hidden = false;
+    button.disabled = false;
     button.textContent = active ? backendLabel(active) + ' ▾' : 'Choose storage…';
     button.title = active
       ? 'Books is using this ' + backendLabel(active) + '. Choose a different connected backend.'
@@ -3170,7 +3336,13 @@ function showStorageDialog() {
     ? choices.map((id) =>
         '<button class="books-dialog-choice" type="button" data-backend="' + id + '">' +
           '<strong>' + backendLabel(id) + (id === active ? ' · Current' : '') + '</strong>' +
-          '<small>' + (id === 'crate' ? 'Encrypted, multi-device storage' : 'Mounted local folder') + '</small>' +
+          '<small>' + (
+            id === 'browser'
+              ? 'Stored in this browser on this device'
+              : id === 'crate'
+                ? 'Encrypted, multi-device storage'
+                : 'Mounted local folder'
+          ) + '</small>' +
         '</button>'
       ).join('')
     : '<button class="books-dialog-choice" type="button" data-open-settings>' +
@@ -3560,28 +3732,30 @@ function boot() {
   naklios.title('Books');
 
   if (!naklios.capabilities.hosted) {
-    renderStandalonePreview();
-    return;
-  }
-
-  let decided = false;
-  let lastStorageSignature = '';
-  function syncCapabilities(caps, force = false) {
     updateStorageButton();
     updateReaderAiButton();
-    const signature = String(!!caps.fs) + ':' + (caps.fsBackend || '') + ':' + connectedBackends().join(',');
-    if (!force && !decided && !caps.fs) return;
-    if (!force && decided && signature === lastStorageSignature) return;
-    if (decided && signature !== lastStorageSignature) clearCoverObjectUrls();
-    decided = true;
-    lastStorageSignature = signature;
-    void drainCoverCleanup();
-    if (!caps.fs) renderHostedNoStorage();
-    else if (!reader.classList.contains('is-open')) void listLibrary();
+    if (naklios.capabilities.fs) void listLibrary();
+    else renderStandaloneStorageUnavailable();
+  } else {
+    let decided = false;
+    let lastStorageSignature = '';
+    function syncCapabilities(caps, force = false) {
+      updateStorageButton();
+      updateReaderAiButton();
+      const signature = String(!!caps.fs) + ':' + (caps.fsBackend || '') + ':' + connectedBackends().join(',');
+      if (!force && !decided && !caps.fs) return;
+      if (!force && decided && signature === lastStorageSignature) return;
+      if (decided && signature !== lastStorageSignature) clearCoverObjectUrls();
+      decided = true;
+      lastStorageSignature = signature;
+      void drainCoverCleanup();
+      if (!caps.fs) renderHostedNoStorage();
+      else if (!reader.classList.contains('is-open')) void listLibrary();
+    }
+    naklios.onCapabilitiesChange((caps) => syncCapabilities(caps));
+    naklios.requestCapabilities();
+    setTimeout(() => syncCapabilities(naklios.capabilities, true), 1500);
   }
-  naklios.onCapabilitiesChange((caps) => syncCapabilities(caps));
-  naklios.requestCapabilities();
-  setTimeout(() => syncCapabilities(naklios.capabilities, true), 1500);
 
   naklios.theme.onChange((theme) => {
     applyHostTheme(theme);

@@ -1,10 +1,13 @@
 # books — Walkthroughs
 
 > **Lifecycle:** `locked` — all questions closed 2026-05-18. Locked decisions are summarised below; each is folded into [SPEC.md](SPEC.md) as an A-numbered architectural decision (A4–A11).
+>
+> **v1.4 revision (2026-07-30):** the original preview-only standalone decision
+> was superseded. Standalone Books now has a persistent browser-local library.
 
 ## Locked questions (index)
 
-1. **Standalone behavior** — ✅ LOCKED 2026-05-18. Preview-only outside NakliOS — drag-drop one file, in-memory render, no persistence.
+1. **Standalone behavior** — ✅ REVISED 2026-07-30. Full persistent browser-local library outside NakliOS.
 2. **Book identity** — ✅ LOCKED 2026-05-18. Slugified filename. Collisions get numeric suffixes.
 3. **Library index** — ✅ LOCKED 2026-05-18. Scan-on-load via `naklios.fs.list('library/')`. No maintained index in v1.
 4. **Reading-position schema** — ✅ LOCKED 2026-05-18. Engine-discriminated: foliate-engine formats use `{fraction, cfi?, sectionIndex}`; PDF uses `{page, scrollY}`.
@@ -17,7 +20,7 @@
 
 ## Question 1 — Standalone behavior
 
-> **Status:** ✅ LOCKED 2026-05-18. Preview-only outside NakliOS; full library + persistence only when hosted.
+> **Status:** ✅ SUPERSEDED 2026-07-30. The original v1 decision below is retained as historical context; v1.4 provides the full library through IndexedDB outside NakliOS.
 
 ### Locked decisions
 

@@ -5,7 +5,7 @@
 
 ## Scope
 
-The branch covers a from-scratch single-file app + two vendored dependencies (foliate-js@1.0.1, pdfjs-dist@5.7.284) + dev-process docs. Public surface is `https://naklitechie.github.io/Books/`, used both standalone and embedded as a cross-origin iframe in NakliOS.
+The branch covers a from-scratch single-file app + two vendored dependencies (foliate-js@1.0.1, pdfjs-dist@5.7.284) + dev-process docs. The current public surface is `https://books.naklitechie.com/`, used both standalone and embedded as a cross-origin iframe in NakliOS.
 
 ## Findings
 

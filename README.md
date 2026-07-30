@@ -1,10 +1,21 @@
 # books
 
-> **Lifecycle:** `living` — v1.3 NakliOS Local AI reading companion.
+> **Lifecycle:** `living` — v1.4 persistent standalone library.
 
-Books is a single-file, browser-native reader for ePub, PDF, MOBI, AZW3, FB2, TXT, Markdown, and HTML, slotted into NakliOS as the `books` app. Books and their sidecars live under `apps/books/` in the Folder or encrypted Crate selected for Books. Each backend remains a separate library; switching never copies or deletes data.
+Books is a single-file, browser-native reader for ePub, PDF, MOBI, AZW3, FB2, TXT, Markdown, and HTML. It works as a standalone application at `https://books.naklitechie.com/` and as the `books` app inside NakliOS.
 
-Standalone mode remains a one-book, in-memory preview. NakliOS always keeps Books hosted—even in Basic mode—so the app can use the scoped storage bridge.
+Standalone books and sidecars persist in origin-scoped IndexedDB on the current device. Inside NakliOS, they live under `apps/books/` in the selected Folder or encrypted Crate. Browser, Folder, and Crate remain separate libraries; switching never copies or deletes data.
+
+## v1.4 highlights
+
+- Full standalone library with persistent books, positions, bookmarks, notes,
+  covers, preferences, filtering, search, removal, and orphan recovery.
+- Browser storage uses the same virtual `library/`, `notes/`, and `covers/`
+  paths as NakliOS storage, keeping one application path across environments.
+- Static Cloudflare Worker deployment at `books.naklitechie.com`, with GitHub
+  Workers Builds deploying every update pushed to `main`.
+- NakliOS AI remains available only inside NakliOS because it uses the host's
+  inference broker and per-destination consent.
 
 ## v1.1 highlights
 
@@ -30,7 +41,7 @@ Standalone mode remains a one-book, in-memory preview. NakliOS always keeps Book
 
 ## v1.3 highlights
 
-- A hosted-only Local AI reading companion can explain, summarize, extract key
+- A hosted-only NakliOS AI reading companion can explain, summarize, extract key
   points, or answer a question about the current selection, PDF page, or text
   passage.
 - Books uses the shared `naklios.ai` model service: it does not download or
@@ -57,7 +68,7 @@ naklios-universe/
 **Decisions locked:**
 - [x] Slug + ID = `books`; folder = `naklios-universe/Books/`; branch = `main`
 - [x] A0–A3: mount point, single-file ethos, data-path convention, SDK contract
-- [x] A4 (Q1) — Standalone = preview-only
+- [x] A4 (revised) — Standalone = persistent browser-local library
 - [x] A5 (Q2) — Book identity = slugified filename
 - [x] A6 (Q3) — Library = scan-on-load
 - [x] A7 (Q4) — Position schema = engine-discriminated
@@ -73,12 +84,13 @@ naklios-universe/
 - [x] Phase 2 — Engine adapter + 3 readers (foliate-js + pdf.js + TextEngine, vendored)
 - [x] Phase 3 — Persistence + reopen-flow (sidecar JSON, debounced writes)
 - [x] Phase 4 — Bookmarks + per-book note (sidebar UI)
-- [x] Launcher hand-off — NakliOS points at `naklitechie.github.io/Books/`
+- [x] Launcher hand-off — NakliOS points at `books.naklitechie.com`
 - [x] Stage 6 — Security sweep
 - [x] Stage 7 — Frontend walkthrough documented
 - [x] v1.1 — Folder/Crate switching, library management, and reader preferences
 - [x] v1.2 — cached covers and cross-engine in-book search
-- [x] v1.3 — selection/page-scoped NakliOS Local AI reading companion
+- [x] v1.3 — selection/page-scoped NakliOS AI reading companion
+- [x] v1.4 — persistent standalone library + Cloudflare Workers deployment
 - [x] Contract test at `scripts/test-books-v1_1.mjs`
 - [x] Safe two-backend browser fixture at `test/host-harness.html`
 
@@ -97,6 +109,19 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
   `naklios.fs.{read,readBinary,write,list}` for persistence and
   `naklios.ai.chat.completions.create` for optional hosted inference
 - Storage-switch precedent: Tijori (`../Tijori/`)
+
+## Development and deployment
+
+```sh
+npm install
+npm test
+npm run dev
+```
+
+`wrangler.jsonc` deploys the checked-in app and vendored readers as Worker
+static assets. Cloudflare Workers Builds watches the GitHub `main` branch; a
+push is the production release path. `npm run deploy` remains available for a
+manual recovery deployment.
 
 ## Branch
 

@@ -1,0 +1,16 @@
+{
+  "name": "naklios-books",
+  "version": "1.4.0",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "wrangler dev",
+    "test": "node scripts/test-books-v1_1.mjs",
+    "check:deploy": "npm run build && wrangler deploy --dry-run",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "wrangler": "4.115.0"
+  }
+}

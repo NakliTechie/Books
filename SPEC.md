@@ -1,35 +1,36 @@
 # books — Spec
 
-> **Lifecycle:** `locked` — all walkthrough questions closed 2026-05-18. Implementation can start.
+> **Lifecycle:** `living` — v1 decisions locked 2026-05-18; standalone architecture revised for v1.4 on 2026-07-30.
 
 ## Goal
 
-A single-file, browser-native reader for ePub, PDF, MOBI, AZW3, FB2, TXT, Markdown, and HTML — slotted into NakliOS as the `books` app. The user's books live in the Folder or encrypted Crate selected for Books at `apps/books/library/*`; reading position + bookmarks + per-book notes persist as sidecar JSON at `apps/books/notes/<bookId>.json`.
+A single-file, browser-native reader for ePub, PDF, MOBI, AZW3, FB2, TXT, Markdown, and HTML — usable independently and slotted into NakliOS as the `books` app. In standalone mode, the library persists in origin-scoped IndexedDB. Inside NakliOS, books live in the selected Folder or encrypted Crate at `apps/books/library/*`; reading position + bookmarks + per-book notes persist as sidecar JSON at `apps/books/notes/<bookId>.json`.
 
-Success v1: open any supported format from the library, read to completion, close, reopen — position is exactly where it was. Works inside NakliOS (storage access via the host's SDK) and degrades to preview-only when run standalone.
+Success v1.4: open any supported format from the library, read, close, and reopen with the position restored both at `books.naklitechie.com` and inside NakliOS.
 
 Success v1.1: Books remains hosted in every NakliOS desktop mode; users can explicitly switch between connected Folder and Crate libraries, manage a larger flat library, and tune reading appearance. Switching backends never copies or deletes data.
 
 ## Architectural decisions
 
 ### A0. App ID + mount point
-`id:'books'`, served from `https://naklitechie.github.io/Books/` (its own GitHub Pages site). **Cross-origin to NakliOS**, not mirrored. Books doesn't need same-origin — it never calls `showDirectoryPicker` itself (A4 standalone is preview-only via drag-drop; hosted storage goes through `naklios.fs.*` postMessage RPC, which is cross-origin-safe). The NakliOS registry points production at the published site and uses the sibling local checkout only on localhost for browser validation.
+`id:'books'`, served from `https://books.naklitechie.com/` as Cloudflare Worker static assets. **Cross-origin to NakliOS**, not mirrored. Standalone storage is origin-scoped IndexedDB; hosted storage goes through `naklios.fs.*` postMessage RPC, which is cross-origin-safe. The NakliOS registry points production at the custom domain and uses the sibling local checkout only on localhost for browser validation.
 
 ### A1. Single-file-app + vendored libraries
 The app code itself is one `index.html` — markup, styles, logic inline. Third-party libraries (`foliate-js`, `pdfjs-dist`) are **vendored** under `Books/vendor/<lib>@<version>/` and loaded via relative `<script>` paths. No runtime CDN dependency. See A10 for engine details. An internal `Engine` adapter interface insulates app code from library churn.
 
 ### A2. Data path convention
-All persistence under `apps/books/` in the backend selected for Books, via `naklios.fs.*` RPC. Subdirs:
+All persistence uses the same `naklios.fs.*` virtual paths. NakliOS scopes them under `apps/books/` in the selected backend; standalone mode stores them in an origin-scoped IndexedDB object store. Subdirs:
 - `apps/books/library/` — the books themselves (one file per book)
 - `apps/books/notes/<bookId>.json` — per-book sidecar (position, bookmarks, note)
+- `apps/books/covers/` — cached cover thumbnails
 
-No `localStorage` or `IndexedDB` for canonical state.
+`localStorage` is used only for UI preferences. Canonical standalone library state lives in IndexedDB; canonical hosted state remains in the selected Folder or Crate.
 
 ### A3. SDK contract
 Vendor `naklios.js` inline (sdk surface v1). Call `naklios.ready()` after init; `naklios.title('Books — <book-title>')` on book open; subscribe to `naklios.onCapabilitiesChange` for fs availability and to `naklios.theme.onChange` for theme.
 
 ### A4. Standalone behavior (Q1)
-Outside NakliOS (`capabilities.fs === false`), Books is preview-only — a single drag-drop zone, in-memory render, no persistence, no library, no notes. Library + notes + bookmarks UI only appears when hosted.
+Outside NakliOS, the vendored SDK exposes a `browser` filesystem backend backed by IndexedDB. The full library, reading positions, bookmarks, notes, cached covers, filtering, recovery, and removal flows are available. Storage remains local to the browser profile and origin. Local AI is the only host-only reader feature.
 
 ### A5. Book identity (Q2)
 `bookId` is a slugified filename (extension stripped, non-alnum → underscore, trimmed). Collisions get numeric suffixes (`_2`, `_3`). Sidecar carries a `sourceFilename` field for collision detection and future rename-recovery.
@@ -42,7 +43,7 @@ Engine-discriminated position object. The full sidecar shape is in [Schema addit
 
 ### A8. Adding books (Q5) — revised post-v1
 Three paths in hosted mode, two in standalone:
-- **Drop a file** onto the window → in hosted+fs, written to `apps/books/library/<name>` via `naklios.fs.write` then opened if single, just-added if multiple; in standalone, opened as in-memory preview (A4).
+- **Drop a file** onto the window → written to `library/<name>` through the active Browser, Folder, or Crate backend, then opened if single or just added if multiple.
 - **Click "+ Add book"** in the library view (or the empty state) → opens the file picker (`<input type="file" multiple accept="…">`); same behavior as drop.
 - **Sideload via Finder/Files.app** into the user's `apps/books/library/` folder → picked up on next scan (window-focus debounced) per A6.
 
@@ -90,6 +91,20 @@ Enabled: `.epub`, `.pdf`, `.mobi`, `.azw3`, `.fb2`, `.txt`, `.md`, `.html`, `.ht
 ### A13. v1.1 reader appearance
 
 Reflowable formats and plain text support font size, line height, text width, and system/paper/sepia/night profiles. Global defaults live in local preferences because they are UI settings, not canonical library data. A hosted book stores its active override in the book sidecar. PDFs keep their authored page layout.
+
+### A14. v1.4 standalone storage and deployment
+
+- Top-level visits expose a `browser` backend implemented as an IndexedDB
+  virtual filesystem; iframe visits continue to use NakliOS capabilities and
+  RPC storage.
+- The Browser, Folder, and Crate backends share one filesystem contract but
+  never copy data between one another.
+- `navigator.storage.persist()` is requested on the first standalone add as a
+  best-effort protection against storage eviction.
+- Cloudflare Workers serves the app and vendored engines as static assets at
+  `books.naklitechie.com`.
+- Cloudflare Workers Builds watches `NakliTechie/Books` `main` and deploys
+  `npx wrangler deploy` after each push.
 
 ## Schema additions
 
@@ -146,14 +161,15 @@ Reflowable formats and plain text support font size, line height, text width, an
 
 ## Endpoints / public surface
 
-No HTTP endpoints. The app's only public surface is `https://naklitechie.github.io/Books/` (used both standalone and embedded in NakliOS as a cross-origin iframe). Standalone mode is preview-only per A4; hosted mode gets the full library experience via the SDK's `naklios.fs.*` RPC.
+No application HTTP endpoints. The public surface is `https://books.naklitechie.com/`, used both standalone and embedded in NakliOS as a cross-origin iframe. Standalone mode gets its persistent Browser backend; hosted mode gets Folder and Crate backends via the SDK's `naklios.fs.*` RPC.
 
 ## Build sequence
 
 **Phase 1 — Foundation**
 1. Replace [naklOS/apps/books/index.html](../naklOS/apps/books/index.html) stub with a minimal app shell: theme tokens (CSS custom properties wired to `naklios.theme.onChange`), inline `naklios.js` SDK, capability-detection at boot.
 2. Capability branch (A4):
-   - `capabilities.fs === false` → render standalone drag-drop zone with the locked empty-state copy.
+   - top-level + IndexedDB → expose the Browser backend and render the full library.
+   - hosted + `capabilities.fs === false` → render the NakliOS storage recovery state.
    - `capabilities.fs === true` → render library shell.
 3. Library shell: call `naklios.fs.list('library/')`. Empty → sideload empty-state copy (A8). Non-empty → list rows.
 
@@ -177,10 +193,10 @@ No HTTP endpoints. The app's only public surface is `https://naklitechie.github.
 2. Per-book free-text note: textarea, debounced write to sidecar `note` field.
 3. Theme integration: `naklios.theme.onChange` → swap CSS custom properties on `:root`. (Already partly done in Phase 1.)
 4. **Launcher hand-off** (cross-origin, no mirroring — A0):
-   - In NakliOS's `index.html` APPS array, change the `books` entry's `url` and `embedUrl` from `https://naklios.dev/apps/books/` → `https://naklitechie.github.io/Books/`.
+   - In NakliOS's `index.html` APPS array, point the production `url` and `embedUrl` at `https://books.naklitechie.com/`.
    - Delete the stub at `naklOS/apps/books/index.html` (no longer used).
    - Do **not** add `books` to `naklOS/apps/manifest.json` — Books is cross-origin, not mirrored.
-   - Init NakliTechie/Books GitHub repo, push `booksv1` → `main`, enable GitHub Pages on `main`.
+   - Deploy the `NakliTechie/Books` `main` branch through Cloudflare Workers Builds.
 
 ## What this spec deliberately leaves out
 
@@ -190,7 +206,6 @@ The canonical list with revisit triggers lives in [DEFERRED.md](DEFERRED.md). Su
 - **Inline highlights** — bookmarks + free-text note covers v1; highlights need text-selection coordination.
 - **Search** — out of v1.
 - **Multiple libraries / shelves** — one flat `library/`.
-- **Standalone-mode persistence** — preview-only outside the host.
 - **Cross-device sync conflict resolution** — assumed handled by underlying file-system semantics; revisit when wired to private-mesh.
 - **CBZ + CBR** (deferred, shared comic-mode reader); **DjVu / legacy AZW** (rejected with workarounds).
 - **Rename / orphan recovery flow** — sidecars survive renames mechanically; rebind UI remains future work.

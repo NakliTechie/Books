@@ -6,6 +6,8 @@
 
 # Node / misc (defensive — not used at runtime)
 node_modules/
+dist/
+.wrangler/
 
 # Local test fixtures (real books used for smoke testing, never committed)
 _test/

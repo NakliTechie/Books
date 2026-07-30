@@ -15,8 +15,29 @@ for (const [index, match] of [...harness.matchAll(/<script>([\s\S]*?)<\/script>/
   assert.doesNotThrow(() => new Function(match[1]), `host harness script ${index + 1} parses`);
 }
 
-assert.match(html, /fsBackends:\s*\[\]/, 'vendored SDK exposes connected storage backends');
-assert.match(html, /fsBackend:\s*null/, 'vendored SDK exposes the active backend');
+assert.match(
+  html,
+  /standaloneFsAvailable\s*=\s*!inNakliOS\s*&&\s*typeof indexedDB !== 'undefined'/,
+  'standalone mode detects persistent browser storage',
+);
+assert.match(
+  html,
+  /fsBackends:\s*standaloneFsAvailable\s*\?\s*\['browser'\]\s*:\s*\[\]/,
+  'standalone mode exposes its Browser storage backend',
+);
+assert.match(
+  html,
+  /fsBackend:\s*standaloneFsAvailable\s*\?\s*'browser'\s*:\s*null/,
+  'standalone mode selects Browser storage',
+);
+assert.match(html, /indexedDB\.open\(STANDALONE_DB_NAME,\s*1\)/,
+  'standalone library opens a versioned IndexedDB filesystem');
+assert.match(html, /standaloneReadBinary[\s\S]*?standaloneWrite[\s\S]*?standaloneList/,
+  'standalone filesystem supports binary books and directory scans');
+assert.match(html, /id === 'browser' \|\| id === 'fsa' \|\| id === 'crate'/,
+  'Books recognizes Browser, Folder, and Crate backends');
+assert.match(html, /requestStandalonePersistence\(\)/,
+  'standalone adds request durable browser storage when available');
 assert.match(html, /useBackend:\s*function/, 'vendored SDK supports host-mediated backend switching');
 assert.match(html, /ai:\s*false/, 'vendored SDK exposes Local AI capability state');
 assert.match(html, /chat:\{\s*completions:\{\s*create:createAiCompletion/, 'vendored SDK exposes streamed chat completions');
@@ -216,4 +237,4 @@ assert.match(
   'browser harness rejects silent sidecar rebinding after recovery',
 );
 
-console.log('Books v1.1 storage and library contract: PASS');
+console.log('Books persistent storage and library contract: PASS');

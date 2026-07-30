@@ -103,13 +103,15 @@ Multiple `library/` subdirs (e.g. `library/personal/`, `library/work/`) with she
 
 ## Data model
 
-### Standalone-mode persistence (Tijori pattern)
+### Standalone-mode persistence — shipped in v1.4
 
-Self-pickered FSA + IndexedDB for the dir handle, so Books can persist position and notes when run outside NakliOS at `naklitechie.github.io/Books/`.
+Books now uses an origin-scoped IndexedDB virtual filesystem when run outside
+NakliOS at `books.naklitechie.com`. It persists the complete library, positions,
+bookmarks, notes, and cached covers without requiring a directory permission.
 
-**Why deferred:** If standalone is preview-only (per walkthrough Q1's recommended lock), this is unnecessary. Adds dual code path.
-
-**Trigger to revisit:** If walkthrough Q1 flips to "preview-only is insufficient — Books must work fully standalone."
+The earlier FSA-handle proposal was not used: IndexedDB gives the standalone
+site a permission-free library while the shared `naklios.fs` surface keeps the
+reader code identical across Browser, Folder, and Crate backends.
 
 ### Cross-device sync conflict resolution
 

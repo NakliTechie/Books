@@ -1,6 +1,9 @@
 # books — Stage 7 verification (Frontend walkthrough)
 
 > **Date:** 2026-05-18. **Branch:** `booksv1`. **Method:** Headless Chromium via Claude Preview MCP, plus user-driven verification (pending) for the binary-format engines.
+>
+> Historical v1 verification: the preview-only standalone behavior documented
+> here was superseded by the persistent standalone library in v1.4.
 
 ## Automated checks (Claude Preview)
 
