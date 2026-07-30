@@ -30,6 +30,9 @@ multiple source formats as one work and split them again without changing the
 originals or losing format-grounded annotations. Native mode now exposes
 stable references, time remaining, accessible landmarks, deeper typography,
 source-grounded concepts, and explicit Faithful-only structure notices.
+The work-centered library includes deterministic reading-state, rating, shelf,
+tag, and annotation views. Queries, facets, and sort order can be saved as a
+portable view inside the active Browser, Folder, or Crate library.
 
 ## v1.4 highlights
 
@@ -132,6 +135,8 @@ naklios-universe/
       host-mediated NakliOS AI, and evidence-linked provenance
 - [x] Native reader accessibility foundation — source fallbacks, references,
       concepts, reduced motion, typography, storage map, and derived cleanup
+- [x] Work-centered organization — deterministic smart views, shelf/tag
+      facets, ratings, and portable saved searches
 - [x] Contract test at `scripts/test-books-v1_1.mjs`
 - [x] Safe two-backend browser fixture at `test/host-harness.html`
 

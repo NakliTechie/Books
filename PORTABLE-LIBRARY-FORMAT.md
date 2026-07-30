@@ -19,6 +19,8 @@ cache dump.
 - Portable annotation records, including highlights, bookmarks, notes,
   positions, and reader preferences.
 - Legacy sidecars while the v1.4 compatibility window remains open.
+- Portable saved library views, including query, structured shelf/tag/reading
+  filters, and sort order.
 - The semantic schema and export timestamp.
 
 ## Deliberately omitted
@@ -48,7 +50,14 @@ bundle.
   "records": {
     "works": [],
     "annotations": [],
-    "legacySidecars": []
+    "legacySidecars": [],
+    "views": {
+      "schemaVersion": 1,
+      "recordType": "books.library-views",
+      "revision": 1,
+      "views": [],
+      "updatedAt": "2026-07-30T12:00:00.000Z"
+    }
   },
   "omittedRebuildableData": [
     "catalog/catalog.json",
@@ -73,8 +82,10 @@ Import has a read-only preflight before confirmation or storage writes:
 2. Reject unsafe filenames and record identities.
 3. Decode every source and verify its byte length and SHA-256 fingerprint.
 4. Compare every destination path with existing data.
-5. Stop the complete import if any destination contains different bytes or
-   JSON. Books never silently overwrites a conflicting book or portable
+5. Merge saved views with different stable identities, but stop if the same
+   view identity contains different data.
+6. Stop the complete import if any other destination contains different bytes
+   or JSON. Books never silently overwrites a conflicting book or portable
    record.
 
 After a successful preflight and user confirmation, missing records are
@@ -82,4 +93,3 @@ written. Identical existing records are skipped. The process is idempotent:
 retrying the same bundle resumes an interrupted import without duplicating
 works or annotations. The disposable catalog and local indexes rebuild from
 the imported originals and canonical records.
-

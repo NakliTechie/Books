@@ -604,12 +604,16 @@
       );
       app.getElementById('work-title-input').value = 'Sample Field Notes';
       app.getElementById('work-tags-input').value = 'research, local-first';
+      app.getElementById('work-shelves-input').value = 'Fieldwork';
+      app.getElementById('work-rating-input').value = '5';
       app.getElementById('work-details-form').requestSubmit();
       await waitFor(() => {
         const catalog = jsonFromStore('catalog/catalog.json');
         const summary = catalog?.works?.find((work) => work.workId === sampleWorkId);
         return summary?.title === 'Sample Field Notes'
-          && summary.tags.includes('local-first');
+          && summary.tags.includes('local-first')
+          && summary.shelves.includes('Fieldwork')
+          && summary.rating === 5;
       }, 'portable work metadata write');
       if (
         !app.querySelector('.row[data-filename="Sample.md"]')
@@ -716,6 +720,47 @@
       await waitFor(
         () => !app.getElementById('reader').classList.contains('is-open'),
         'library after native accessibility checks',
+      );
+      const libraryViewSelect = app.getElementById('library-view-select');
+      libraryViewSelect.value = 'tag:local-first';
+      libraryViewSelect.dispatchEvent(new Event('change', { bubbles:true }));
+      await waitFor(
+        () => app.querySelectorAll('.row').length === 1
+          && app.querySelector('.row[data-filename="Sample.md"]'),
+        'deterministic tag facet',
+      );
+      app.getElementById('library-view-save').click();
+      await waitFor(
+        () => app.getElementById('saved-view-dialog').open,
+        'portable saved-view dialog',
+      );
+      app.getElementById('saved-view-name').value = 'Local-first research';
+      app.getElementById('saved-view-form').requestSubmit();
+      const savedViews = await waitFor(() => {
+        const record = jsonFromStore('catalog/views.json');
+        return record?.views?.some(
+          (view) => view.name === 'Local-first research'
+            && view.filters.tags.includes('local-first')
+        ) ? record : null;
+      }, 'portable saved-view write');
+      if (
+        savedViews.recordType !== 'books.library-views'
+        || !app.getElementById('library-view-select').value.startsWith('saved:')
+      ) {
+        throw new Error('Saved view did not retain its portable identity');
+      }
+      libraryViewSelect.value = 'state:annotated';
+      libraryViewSelect.dispatchEvent(new Event('change', { bubbles:true }));
+      await waitFor(
+        () => app.querySelector('.row[data-filename="Sample.md"]'),
+        'deterministic annotated smart view',
+      );
+      libraryViewSelect.value = 'all';
+      libraryViewSelect.dispatchEvent(new Event('change', { bubbles:true }));
+      await waitFor(
+        () => app.querySelector('.row[data-filename="Harness.epub"]')
+          && app.querySelector('.row[data-filename="Sample.md"]'),
+        'smart-view reset to all works',
       );
       app.getElementById('annotations-browser-btn').click();
       await waitFor(
@@ -1072,7 +1117,7 @@
       );
 
       setStatus(
-        'PASS · semantic reading, enrichment, grouping, cited Ask, portability, recovery, and rebuild',
+        'PASS · semantic reading, smart views, enrichment, grouping, cited Ask, portability, recovery, and rebuild',
         'pass',
       );
     } catch (error) {

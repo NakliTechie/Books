@@ -578,12 +578,18 @@ body { display: flex; flex-direction: column; }
   margin-bottom: 12px;
 }
 .library-tools { display:flex; align-items:center; gap:7px; flex:1; min-width:220px; }
-.library-filter, .library-sort {
+.library-filter, .library-sort, .library-view-select {
   min-width:0; background:var(--panel); color:var(--ink); border:1px solid var(--line);
   border-radius:6px; padding:7px 9px; font:12px inherit;
 }
 .library-filter { flex:1; }
-.library-sort { flex:0 0 auto; }
+.library-sort, .library-view-select { flex:0 0 auto; max-width:190px; }
+.library-view-action {
+  flex:0 0 auto; border:1px solid var(--line); border-radius:6px; padding:7px 9px;
+  background:var(--panel); color:var(--ink); cursor:pointer; font:11px inherit;
+}
+.library-view-action:hover { border-color:var(--brand); background:var(--row); }
+.library-view-action:disabled { opacity:.45; cursor:not-allowed; }
 .semantic-search {
   width:100%; margin-bottom:10px; display:flex; align-items:center; gap:8px;
 }
@@ -1073,6 +1079,25 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <button type="button" data-close-dialog="annotations-browser-dialog">Close</button>
     </div>
   </div>
+</dialog>
+
+<dialog class="books-dialog" id="saved-view-dialog"
+        aria-labelledby="saved-view-title" aria-describedby="saved-view-summary">
+  <form class="books-dialog-body" id="saved-view-form">
+    <h3 id="saved-view-title">Save library view</h3>
+    <p id="saved-view-summary">
+      Save the current query, facet, and sort order in this storage library.
+    </p>
+    <div class="books-dialog-text-field">
+      <label for="saved-view-name">View name</label>
+      <input id="saved-view-name" type="text" maxlength="120" required
+             autocomplete="off">
+    </div>
+    <div class="books-dialog-actions">
+      <button type="button" data-close-dialog="saved-view-dialog">Cancel</button>
+      <button class="primary" type="submit">Save view</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog class="books-dialog work-details-dialog" id="library-tools-dialog"
@@ -1833,16 +1858,20 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 import {
   addPortableAnnotation,
   createPortableBundle,
+  makeLibraryViewsRecord,
   markAssetTrashed,
+  mergeLibraryViewsRecords,
   mergePortableAnnotationRecords,
   mergeWorkManifests,
   reconcileLegacyAnnotations,
   reanchorPortableAnnotations,
   SEMANTIC_CATALOG_PATH,
+  SEMANTIC_VIEWS_PATH,
   SEMANTIC_WORKS_PREFIX,
   reconcileSemanticLibrary,
   rebuildCatalog,
   removeTrashedAsset,
+  removeLibraryView,
   restoreTrashedAsset,
   semanticManifestPath,
   semanticAnnotationsPath,
@@ -1853,6 +1882,8 @@ import {
   updateAssetFingerprint,
   updateWorkDetails,
   updateWorkMetadata,
+  upsertLibraryView,
+  validateLibraryViewsRecord,
   validatePortableBundle,
   validateSemanticLibrary,
   workForFilename,
@@ -1934,6 +1965,10 @@ const annotationsBrowserDialog = document.getElementById('annotations-browser-di
 const annotationsBrowserSearch = document.getElementById('annotations-browser-search');
 const annotationsBrowserList = document.getElementById('annotations-browser-list');
 const annotationsExportBtn = document.getElementById('annotations-export-btn');
+const savedViewDialog = document.getElementById('saved-view-dialog');
+const savedViewForm = document.getElementById('saved-view-form');
+const savedViewName = document.getElementById('saved-view-name');
+const savedViewSummary = document.getElementById('saved-view-summary');
 const libraryToolsDialog = document.getElementById('library-tools-dialog');
 const libraryHealth = document.getElementById('library-health');
 const libraryValidateBtn = document.getElementById('library-validate-btn');
@@ -2062,6 +2097,9 @@ let orphanSidecars = [];
 let orphanRecoveryTarget = null;
 let libraryFilter = '';
 let librarySort = localStorage.getItem('books.librarySort.v1') || 'recent';
+let libraryViewSelection = 'all';
+let libraryViewsRecord = makeLibraryViewsRecord();
+let workIdsWithAnnotations = new Set();
 let readerSearchResults = [];
 let readerSearchIndex = -1;
 let readerSearchRun = 0;
@@ -3090,6 +3128,7 @@ workDetailsForm.addEventListener('submit', async (event) => {
       }
     }
     workDetailsDialog.close();
+    refreshLibraryViewControl();
     renderLibraryRows();
     renderReaderLibrary();
     scheduleSemanticProcessing();
@@ -4822,19 +4861,127 @@ function workCenteredLibraryEntries(entries = libraryCache) {
   });
 }
 
+function activeLibraryView() {
+  if (!libraryViewSelection.startsWith('saved:')) return null;
+  const viewId = libraryViewSelection.slice('saved:'.length);
+  return libraryViewsRecord.views.find((view) => view.viewId === viewId) || null;
+}
+
+function activeLibraryFilters() {
+  const saved = activeLibraryView();
+  if (saved) return saved.filters;
+  if (libraryViewSelection.startsWith('state:')) {
+    return {
+      readingState:libraryViewSelection.slice('state:'.length),
+      shelves:[],
+      tags:[],
+    };
+  }
+  if (libraryViewSelection.startsWith('shelf:')) {
+    return {
+      readingState:'all',
+      shelves:[libraryViewSelection.slice('shelf:'.length)],
+      tags:[],
+    };
+  }
+  if (libraryViewSelection.startsWith('tag:')) {
+    return {
+      readingState:'all',
+      shelves:[],
+      tags:[libraryViewSelection.slice('tag:'.length)],
+    };
+  }
+  return { readingState:'all', shelves:[], tags:[] };
+}
+
+function libraryViewMatches(entry, filters) {
+  const grouped = entry.groupedEntries || [entry];
+  const hasReadingPosition = grouped.some((row) => row.sidecar?.lastOpened);
+  const workId = entry.work?.workId;
+  if (filters.readingState === 'continue' && !hasReadingPosition) return false;
+  if (filters.readingState === 'unread' && hasReadingPosition) return false;
+  if (
+    filters.readingState === 'rated'
+    && !(Number(entry.work?.rating) > 0)
+  ) return false;
+  if (
+    filters.readingState === 'annotated'
+    && (!workId || !workIdsWithAnnotations.has(workId))
+  ) return false;
+  const shelves = entry.work?.shelves || [];
+  const tags = entry.work?.tags || [];
+  if (!(filters.shelves || []).every((shelf) => shelves.includes(shelf))) return false;
+  if (!(filters.tags || []).every((tag) => tags.includes(tag))) return false;
+  return true;
+}
+
+function libraryViewOptionsMarkup() {
+  const works = semanticCatalog?.works || [];
+  const shelves = Array.from(new Set(works.flatMap((work) => work.shelves || [])))
+    .sort((left, right) => left.localeCompare(right));
+  const tags = Array.from(new Set(works.flatMap((work) => work.tags || [])))
+    .sort((left, right) => left.localeCompare(right));
+  const option = (value, label) =>
+    '<option value="' + escapeHtml(value) + '"' +
+      (libraryViewSelection === value ? ' selected' : '') + '>' +
+      escapeHtml(label) + '</option>';
+  return option('all', 'All works') +
+    '<optgroup label="Reading state">' +
+      option('state:continue', 'Continue reading') +
+      option('state:unread', 'Unread') +
+      option('state:rated', 'Rated') +
+      option('state:annotated', 'Annotated') +
+    '</optgroup>' +
+    (shelves.length
+      ? '<optgroup label="Shelves">' +
+          shelves.map((shelf) => option('shelf:' + shelf, shelf)).join('') +
+        '</optgroup>'
+      : '') +
+    (tags.length
+      ? '<optgroup label="Tags">' +
+          tags.map((tag) => option('tag:' + tag, tag)).join('') +
+        '</optgroup>'
+      : '') +
+    (libraryViewsRecord.views.length
+      ? '<optgroup label="Saved views">' +
+          libraryViewsRecord.views.map((view) =>
+            option('saved:' + view.viewId, view.name)).join('') +
+        '</optgroup>'
+      : '');
+}
+
+function refreshLibraryViewControl() {
+  const select = document.getElementById('library-view-select');
+  if (!select) return;
+  if (
+    libraryViewSelection.startsWith('saved:')
+    && !activeLibraryView()
+  ) libraryViewSelection = 'all';
+  select.innerHTML = libraryViewOptionsMarkup();
+  select.value = libraryViewSelection;
+  const remove = document.getElementById('library-view-remove');
+  if (remove) remove.disabled = !activeLibraryView();
+}
+
 function visibleLibraryBooks() {
   const needle = libraryFilter.trim().toLowerCase();
+  const filters = activeLibraryFilters();
   const books = workCenteredLibraryEntries().filter(({
     filename,
     sidecar,
     work,
     groupedEntries,
+    ...entry
   }) => {
+    const centered = { filename, sidecar, work, groupedEntries, ...entry };
+    if (!libraryViewMatches(centered, filters)) return false;
     if (!needle) return true;
     const haystack = [
       ...(groupedEntries || []).map((entry) => entry.filename),
       work && work.title,
       work && work.authors && work.authors.map((author) => author.name).join(' '),
+      work && (work.tags || []).join(' '),
+      work && (work.shelves || []).join(' '),
       ...(groupedEntries || []).flatMap((entry) => [
         entry.sidecar?.title,
         entry.sidecar?.author,
@@ -4952,13 +5099,14 @@ function renderLibraryRows() {
   renderOrphanSidecars();
   const decorated = visibleLibraryBooks();
   const workCount = workCenteredLibraryEntries().length;
+  const viewActive = libraryViewSelection !== 'all';
   topbarStatus.textContent =
-    (libraryFilter ? decorated.length + ' of ' + workCount : workCount) +
+    ((libraryFilter || viewActive) ? decorated.length + ' of ' + workCount : workCount) +
     ' work' + (workCount === 1 ? '' : 's') +
     ' · ' + backendLabel(activeBackendId());
   if (!decorated.length) {
     list.innerHTML = workCount
-      ? '<div class="card"><p>No books match this filter.</p></div>'
+      ? '<div class="card"><p>No works match this view.</p></div>'
       : '';
     return;
   }
@@ -5797,6 +5945,7 @@ async function storageAccountingSnapshot() {
     sources:new Set(libraryCache.map((entry) => 'library/' + entry.filename)),
     portable:new Set([
       SEMANTIC_CATALOG_PATH,
+      SEMANTIC_VIEWS_PATH,
       ...manifestIds.map(semanticManifestPath),
       ...manifestIds.map(semanticAnnotationsPath),
       ...(await listedDataPaths('notes/')),
@@ -5961,9 +6110,10 @@ async function exportPortableLibrary() {
     '<div class="library-health-summary">Preparing original files and portable records…</div>';
   try {
     await flushPendingWrites();
-    const [annotations, legacySidecars] = await Promise.all([
+    const [annotations, legacySidecars, libraryViews] = await Promise.all([
       readAllPortableAnnotations(),
       readAllLegacySidecars(),
+      readJsonRecord(SEMANTIC_VIEWS_PATH),
     ]);
     const assets = [];
     for (let index = 0; index < libraryCache.length; index++) {
@@ -5985,6 +6135,8 @@ async function exportPortableLibrary() {
       manifests: Array.from(semanticManifests.values()),
       annotations,
       legacySidecars,
+      libraryViews:validateLibraryViewsRecord(libraryViews).valid
+        ? libraryViews : null,
       assets,
       libraryLabel: backendLabel(activeBackendId()),
     });
@@ -6056,6 +6208,8 @@ async function importPortableLibraryFile(file) {
   if (!libraryToolsDialog.open) libraryToolsDialog.showModal();
   const conflicts = [];
   const decodedAssets = [];
+  let importedViewsRecord = null;
+  let shouldWriteImportedViews = false;
   for (const asset of bundle.assets) {
     try {
       const bytes = base64ToBytes(asset.dataBase64);
@@ -6093,6 +6247,21 @@ async function importPortableLibraryFile(file) {
   for (const sidecar of bundle.records.legacySidecars || []) {
     if (await existingJsonConflict('notes/' + sidecar.bookId + '.json', sidecar)) {
       conflicts.push('Reading data ' + sidecar.bookId + ' already differs.');
+    }
+  }
+  if (bundle.records.views) {
+    const existingViews = await readJsonRecord(SEMANTIC_VIEWS_PATH);
+    if (!existingViews) {
+      importedViewsRecord = bundle.records.views;
+      shouldWriteImportedViews = true;
+    } else {
+      const mergedViews = mergeLibraryViewsRecords(
+        existingViews,
+        bundle.records.views,
+      );
+      conflicts.push(...mergedViews.conflicts);
+      importedViewsRecord = mergedViews.record;
+      shouldWriteImportedViews = mergedViews.changed;
     }
   }
   if (conflicts.length) {
@@ -6143,6 +6312,13 @@ async function importPortableLibraryFile(file) {
         await naklios.fs.write(path, JSON.stringify(sidecar, null, 2));
         written++;
       }
+    }
+    if (shouldWriteImportedViews && importedViewsRecord) {
+      await naklios.fs.write(
+        SEMANTIC_VIEWS_PATH,
+        JSON.stringify(importedViewsRecord, null, 2),
+      );
+      written++;
     }
     await listLibrary();
     showToast(
@@ -6666,6 +6842,90 @@ libraryAskDialog.addEventListener('close', () => {
   libraryAskRun++;
 });
 
+function currentLibraryViewDefinition(name) {
+  const existing = activeLibraryView();
+  return {
+    ...(existing ? { viewId:existing.viewId } : {}),
+    name,
+    query:libraryFilter,
+    filters:activeLibraryFilters(),
+    sort:librarySort,
+  };
+}
+
+async function persistLibraryViews(record) {
+  await naklios.fs.write(
+    SEMANTIC_VIEWS_PATH,
+    JSON.stringify(record, null, 2),
+  );
+  libraryViewsRecord = record;
+}
+
+function openSavedViewDialog() {
+  const filters = activeLibraryFilters();
+  const parts = [
+    libraryFilter ? 'query “' + libraryFilter + '”' : 'any search text',
+    filters.readingState !== 'all'
+      ? filters.readingState + ' works' : 'all reading states',
+    ...(filters.shelves || []).map((shelf) => 'shelf “' + shelf + '”'),
+    ...(filters.tags || []).map((tag) => 'tag “' + tag + '”'),
+    'sorted by ' + librarySort,
+  ];
+  savedViewName.value = activeLibraryView()?.name || '';
+  savedViewSummary.textContent =
+    'This portable view will remember ' + parts.join(', ') +
+    ' in the current ' + backendLabel(activeBackendId()) + ' library.';
+  savedViewDialog.showModal();
+  savedViewName.focus();
+}
+
+savedViewForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    const saved = upsertLibraryView(
+      libraryViewsRecord,
+      currentLibraryViewDefinition(savedViewName.value),
+    );
+    await persistLibraryViews(saved.record);
+    libraryViewSelection = 'saved:' + saved.view.viewId;
+    savedViewDialog.close();
+    refreshLibraryViewControl();
+    renderLibraryRows();
+    showToast('Saved this portable library view.');
+  } catch (error) {
+    showToast("Couldn't save view: " + String(error?.message || error), {
+      error:true,
+      duration:5500,
+    });
+  }
+});
+
+async function removeSelectedLibraryView() {
+  const view = activeLibraryView();
+  if (!view) return;
+  const confirmed = await askForConfirmation({
+    title:'Delete saved view?',
+    message:'Delete “' + view.name +
+      '” from this storage library? Books and metadata are not affected.',
+    confirmLabel:'Delete view',
+  });
+  if (!confirmed) return;
+  try {
+    const removed = removeLibraryView(libraryViewsRecord, view.viewId);
+    if (!removed.changed) return;
+    await persistLibraryViews(removed.record);
+    libraryViewSelection = 'all';
+    refreshLibraryViewControl();
+    renderLibraryRows();
+    showToast('Deleted the saved view.');
+  } catch (error) {
+    showToast("Couldn't delete view: " + String(error?.message || error), {
+      error:true,
+      duration:5500,
+    });
+  }
+}
+
 function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   libraryCache = decorated.slice();
   renderReaderLibrary();
@@ -6673,12 +6933,18 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
     '<section class="continue-section" id="continue-section" aria-label="Continue Reading"></section>' +
     '<div class="library-header">' +
       '<div class="library-tools">' +
+        '<select class="library-view-select" id="library-view-select" aria-label="Library view">' +
+          libraryViewOptionsMarkup() +
+        '</select>' +
         '<input class="library-filter" id="library-filter" type="search" placeholder="Filter library…" value="' + escapeHtml(libraryFilter) + '">' +
         '<select class="library-sort" id="library-sort" aria-label="Sort library">' +
           '<option value="recent"' + (librarySort === 'recent' ? ' selected' : '') + '>Recently read</option>' +
           '<option value="title"' + (librarySort === 'title' ? ' selected' : '') + '>Title</option>' +
           '<option value="author"' + (librarySort === 'author' ? ' selected' : '') + '>Author</option>' +
         '</select>' +
+        '<button class="library-view-action" id="library-view-save" type="button">Save view</button>' +
+        '<button class="library-view-action" id="library-view-remove" type="button"' +
+          (activeLibraryView() ? '' : ' disabled') + '>Delete view</button>' +
       '</div>' +
       '<div class="library-header-actions">' +
         '<button class="library-header-action" id="library-ask-btn" type="button">Ask library</button>' +
@@ -6713,7 +6979,26 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   });
   const filter = document.getElementById('library-filter');
   const sort = document.getElementById('library-sort');
+  const viewSelect = document.getElementById('library-view-select');
+  const saveView = document.getElementById('library-view-save');
+  const removeView = document.getElementById('library-view-remove');
   const semanticInput = document.getElementById('semantic-search-input');
+  viewSelect.addEventListener('change', () => {
+    libraryViewSelection = viewSelect.value;
+    const saved = activeLibraryView();
+    if (saved) {
+      libraryFilter = saved.query;
+      librarySort = saved.sort;
+      filter.value = libraryFilter;
+      sort.value = librarySort;
+    }
+    refreshLibraryViewControl();
+    renderLibraryRows();
+  });
+  saveView.addEventListener('click', openSavedViewDialog);
+  removeView.addEventListener('click', () => {
+    void removeSelectedLibraryView();
+  });
   filter.addEventListener('input', () => {
     libraryFilter = filter.value;
     renderLibraryRows();
@@ -8072,6 +8357,7 @@ async function switchLibraryBackend(target) {
     storageDialog.close();
     updateStorageButton();
     libraryFilter = '';
+    libraryViewSelection = 'all';
     clearCoverObjectUrls();
     void drainCoverCleanup();
     await listLibrary();
@@ -8179,6 +8465,10 @@ async function persistActiveAnnotations() {
     semanticAnnotationsPath(activeAnnotationRecord.workId),
     JSON.stringify(activeAnnotationRecord, null, 2),
   );
+  if ((activeAnnotationRecord.annotations || []).some(
+    (annotation) => !annotation.deletedAt,
+  )) workIdsWithAnnotations.add(activeAnnotationRecord.workId);
+  else workIdsWithAnnotations.delete(activeAnnotationRecord.workId);
   renderAnnotationList();
   activeEngine?.renderAnnotations?.(activeAnnotationRecord.annotations || []);
 }
@@ -8558,6 +8848,24 @@ async function listLibrary() {
       semanticCatalog = null;
       semanticManifests = new Map();
     }
+
+    const [storedViews, portableAnnotations] = await Promise.all([
+      readJsonRecord(SEMANTIC_VIEWS_PATH),
+      readAllPortableAnnotations(),
+    ]);
+    libraryViewsRecord = validateLibraryViewsRecord(storedViews).valid
+      ? storedViews
+      : makeLibraryViewsRecord();
+    if (libraryViewSelection.startsWith('saved:') && !activeLibraryView()) {
+      libraryViewSelection = 'all';
+    }
+    workIdsWithAnnotations = new Set(
+      portableAnnotations
+        .filter((record) => (record.annotations || []).some(
+          (annotation) => !annotation.deletedAt,
+        ))
+        .map((record) => record.workId),
+    );
 
     const decorated = books.map((filename) => ({
       filename,

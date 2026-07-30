@@ -98,6 +98,20 @@ assert.match(
 
 assert.match(html, /id="library-filter"/, 'library includes a filter');
 assert.match(html, /id="library-sort"/, 'library includes a sort chooser');
+assert.match(html, /id="library-view-select"/,
+  'library includes deterministic smart-view and facet selection');
+assert.match(html, /id="saved-view-dialog"/,
+  'query-driven views use an app-styled portable save surface');
+assert.match(
+  html,
+  /function libraryViewMatches\([\s\S]*?readingState === 'continue'[\s\S]*?readingState === 'annotated'[\s\S]*?filters\.shelves[\s\S]*?filters\.tags/,
+  'smart views cover reading state, annotations, shelves, and tags without embeddings',
+);
+assert.match(
+  html,
+  /SEMANTIC_VIEWS_PATH[\s\S]*?upsertLibraryView[\s\S]*?persistLibraryViews/,
+  'saved views are portable records in the active storage backend',
+);
 assert.match(html, /id="semantic-search-input"/,
   'library includes full-text search across local passage indexes');
 assert.match(html, /async function runSemanticLibrarySearch\(/,
@@ -575,6 +589,11 @@ assert.match(
   harness,
   /native-reader\[role="document"\]\[tabindex="0"\][\s\S]*?native-fallback-notice[\s\S]*?Quiet source grounding[\s\S]*?reader-font-family[\s\S]*?native preference application/,
   'browser harness verifies accessible Native semantics and typography controls',
+);
+assert.match(
+  harness,
+  /deterministic tag facet[\s\S]*?portable saved-view write[\s\S]*?deterministic annotated smart view[\s\S]*?smart-view reset to all works/,
+  'browser harness verifies portable views and deterministic library facets',
 );
 assert.match(
   harness,

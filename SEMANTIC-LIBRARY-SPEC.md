@@ -334,6 +334,7 @@ A possible shape for evaluation is:
 ```text
 library/                       source assets; current path remains readable
 catalog/works/<workId>.json    portable work and edition manifests
+catalog/views.json             portable saved queries and structured views
 annotations/<workId>.json      user-authored annotation records
 semantic/<workId>/             passages, entities, concepts, scenes
 artifacts/<workId>/            generated covers, images, audio, translations

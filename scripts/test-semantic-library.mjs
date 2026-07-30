@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import {
   addPortableAnnotation,
   createPortableBundle,
+  makeLibraryViewsRecord,
+  mergeLibraryViewsRecords,
   PORTABLE_BUNDLE_VERSION,
   SEMANTIC_CATALOG_PATH,
   SEMANTIC_ANNOTATIONS_PREFIX,
   SEMANTIC_SCHEMA_VERSION,
+  SEMANTIC_VIEWS_PATH,
   SEMANTIC_WORKS_PREFIX,
   legacyBookIdFor,
   markAssetTrashed,
@@ -16,6 +19,7 @@ import {
   reconcileSemanticLibrary,
   rebuildCatalog,
   removeTrashedAsset,
+  removeLibraryView,
   restoreTrashedAsset,
   semanticAnnotationsPath,
   semanticManifestPath,
@@ -27,6 +31,8 @@ import {
   updatePortableAnnotation,
   updateWorkDetails,
   updateWorkMetadata,
+  upsertLibraryView,
+  validateLibraryViewsRecord,
   validatePortableBundle,
   validateSemanticLibrary,
   workForFilename,
@@ -45,6 +51,7 @@ const createId = (kind) => `${kind}_test-${++id}`;
 
 assert.equal(SEMANTIC_SCHEMA_VERSION, 1);
 assert.equal(SEMANTIC_CATALOG_PATH, 'catalog/catalog.json');
+assert.equal(SEMANTIC_VIEWS_PATH, 'catalog/views.json');
 assert.equal(SEMANTIC_WORKS_PREFIX, 'catalog/works/');
 assert.equal(SEMANTIC_ANNOTATIONS_PREFIX, 'annotations/');
 assert.equal(PORTABLE_BUNDLE_VERSION, 1);
@@ -215,6 +222,11 @@ assert.deepEqual(details.manifest.authors, [{ name: 'Jane Austen', source: 'user
 assert.deepEqual(details.manifest.userMetadata.tags, ['classic', 'fiction']);
 assert.deepEqual(details.manifest.userMetadata.shelves, ['Favourites']);
 assert.equal(details.manifest.userMetadata.rating, 5);
+assert.equal(
+  rebuildCatalog([details.manifest], null, now).catalog.works[0].rating,
+  5,
+  'the rebuildable catalog projects portable ratings for deterministic facets',
+);
 assert.equal(details.manifest.metadataProvenance.title, 'user');
 assert.equal(details.manifest.metadataProvenance.authors, 'user');
 const protectedUserDetails = updateWorkMetadata(details.manifest, {
@@ -516,10 +528,54 @@ assert.equal(
   'a confirmed grouping can be reversed without changing source identities',
 );
 
+const emptyViews = makeLibraryViewsRecord({}, now);
+const savedView = upsertLibraryView(emptyViews, {
+  name:'Unread favourites',
+  query:'history',
+  filters:{
+    readingState:'unread',
+    shelves:['Favourites'],
+    tags:['classic'],
+  },
+  sort:'title',
+}, now, createId);
+assert.equal(savedView.changed, true);
+assert.equal(savedView.record.recordType, 'books.library-views');
+assert.equal(savedView.record.views[0].name, 'Unread favourites');
+assert.deepEqual(validateLibraryViewsRecord(savedView.record), {
+  valid:true,
+  errors:[],
+});
+const removedView = removeLibraryView(
+  savedView.record,
+  savedView.view.viewId,
+  now,
+);
+assert.equal(removedView.changed, true);
+assert.equal(removedView.record.views.length, 0);
+const secondSavedView = upsertLibraryView(emptyViews, {
+  name:'Annotated',
+  query:'',
+  filters:{ readingState:'annotated', shelves:[], tags:[] },
+  sort:'recent',
+}, now, createId);
+const mergedViews = mergeLibraryViewsRecords(savedView.record, secondSavedView.record, now);
+assert.equal(mergedViews.changed, true);
+assert.equal(mergedViews.record.views.length, 2);
+const conflictingViews = structuredClone(secondSavedView.record);
+conflictingViews.views[0].name = 'Same identity, changed label';
+assert.equal(
+  mergeLibraryViewsRecords(secondSavedView.record, conflictingViews, now)
+    .conflicts.length,
+  1,
+  'portable saved-view import refuses identity collisions',
+);
+
 const portableBundle = createPortableBundle({
   manifests: [fingerprinted.manifest],
   annotations: [annotationFirst.record],
   legacySidecars: [sidecar],
+  libraryViews:savedView.record,
   assets: [{
     filename: 'Pride & Prejudice.epub',
     byteLength: sourceBytes.byteLength,
@@ -531,6 +587,7 @@ const portableBundle = createPortableBundle({
 });
 assert.equal(portableBundle.recordType, 'books.portable-library');
 assert.deepEqual(portableBundle.records.works, [fingerprinted.manifest]);
+assert.equal(portableBundle.records.views.views.length, 1);
 assert.ok(
   portableBundle.omittedRebuildableData.includes('indexes/'),
   'portable bundles explicitly document omitted rebuildable indexes',
@@ -544,6 +601,7 @@ assert.deepEqual(validatePortableBundle(portableBundle), {
     assets: 1,
     annotationRecords: 1,
     legacySidecars: 1,
+    savedViews: 1,
   },
 });
 const unsafeBundle = structuredClone(portableBundle);

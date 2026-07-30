@@ -229,6 +229,12 @@ state without turning Books into a desktop database form?
 
 ### Work
 
+**Implementation status (2026-07-30):** Work-centered rows, grouped formats,
+portable work details, deterministic reading-state/rating/shelf/tag/annotation
+views, portable saved queries, full-library lexical search, cited Ask, and
+reversible grouping are shipped. Semantic-record curation and larger-library
+scale validation remain in this phase.
+
 1. Replace file-centered rows with work-centered library cards and details.
 2. Show editions and available source formats without duplicating a work.
 3. Add metadata facets approved in Phase 0, such as:

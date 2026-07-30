@@ -1,5 +1,6 @@
 export const SEMANTIC_SCHEMA_VERSION = 1;
 export const SEMANTIC_CATALOG_PATH = 'catalog/catalog.json';
+export const SEMANTIC_VIEWS_PATH = 'catalog/views.json';
 export const SEMANTIC_WORKS_PREFIX = 'catalog/works/';
 export const SEMANTIC_ANNOTATIONS_PREFIX = 'annotations/';
 export const PORTABLE_BUNDLE_VERSION = 1;
@@ -7,7 +8,16 @@ export const PORTABLE_BUNDLE_VERSION = 1;
 const RECORD_TYPE = 'books.work';
 const CATALOG_TYPE = 'books.catalog';
 const ANNOTATIONS_TYPE = 'books.annotations';
+const LIBRARY_VIEWS_TYPE = 'books.library-views';
 const PORTABLE_BUNDLE_TYPE = 'books.portable-library';
+const LIBRARY_VIEW_SORTS = new Set(['recent', 'title', 'author']);
+const LIBRARY_VIEW_READING_STATES = new Set([
+  'all',
+  'continue',
+  'unread',
+  'rated',
+  'annotated',
+]);
 
 function isoNow(now) {
   return typeof now === 'function' ? now() : new Date().toISOString();
@@ -58,6 +68,203 @@ function jsonEqual(left, right) {
 
 function manifestPath(workId) {
   return SEMANTIC_WORKS_PREFIX + workId + '.json';
+}
+
+function normalizeViewStringList(value) {
+  return Array.from(new Set(
+    (Array.isArray(value) ? value : [])
+      .map((item) => typeof item === 'string' ? item.trim() : '')
+      .filter(Boolean)
+      .slice(0, 50),
+  )).sort((left, right) => left.localeCompare(right));
+}
+
+function normalizeLibraryView(view) {
+  if (
+    !view
+    || typeof view.viewId !== 'string'
+    || !/^view_[a-zA-Z0-9_-]{1,240}$/.test(view.viewId)
+    || typeof view.name !== 'string'
+    || !view.name.trim()
+    || view.name.trim().length > 120
+  ) return null;
+  const readingState = LIBRARY_VIEW_READING_STATES.has(
+    view.filters?.readingState,
+  ) ? view.filters.readingState : 'all';
+  const sort = LIBRARY_VIEW_SORTS.has(view.sort) ? view.sort : 'recent';
+  return {
+    viewId:view.viewId,
+    name:view.name.trim(),
+    query:typeof view.query === 'string' ? view.query.trim().slice(0, 500) : '',
+    filters:{
+      readingState,
+      shelves:normalizeViewStringList(view.filters?.shelves),
+      tags:normalizeViewStringList(view.filters?.tags),
+    },
+    sort,
+    createdAt:typeof view.createdAt === 'string' ? view.createdAt : null,
+    updatedAt:typeof view.updatedAt === 'string' ? view.updatedAt : null,
+  };
+}
+
+export function makeLibraryViewsRecord(
+  { views = [], revision = 1 } = {},
+  now = () => new Date().toISOString(),
+) {
+  const timestamp = isoNow(now);
+  return {
+    schemaVersion:SEMANTIC_SCHEMA_VERSION,
+    recordType:LIBRARY_VIEWS_TYPE,
+    revision:Math.max(1, Number(revision) || 1),
+    views:views.map(normalizeLibraryView).filter(Boolean)
+      .sort((left, right) =>
+        left.name.localeCompare(right.name) || left.viewId.localeCompare(right.viewId)),
+    updatedAt:timestamp,
+  };
+}
+
+export function validateLibraryViewsRecord(record) {
+  const errors = [];
+  if (
+    !record
+    || record.schemaVersion !== SEMANTIC_SCHEMA_VERSION
+    || record.recordType !== LIBRARY_VIEWS_TYPE
+    || !Array.isArray(record.views)
+  ) {
+    return {
+      valid:false,
+      errors:[{
+        code:'invalid-library-views-record',
+        message:'The saved-library-views record is invalid or unsupported.',
+      }],
+    };
+  }
+  if (record.views.length > 250) {
+    errors.push({
+      code:'too-many-library-views',
+      message:'A library may contain at most 250 saved views.',
+    });
+  }
+  const ids = new Set();
+  for (const view of record.views) {
+    const normalized = normalizeLibraryView(view);
+    if (!normalized || JSON.stringify(normalized) !== JSON.stringify({
+      viewId:view.viewId,
+      name:view.name,
+      query:view.query || '',
+      filters:{
+        readingState:view.filters?.readingState || 'all',
+        shelves:view.filters?.shelves || [],
+        tags:view.filters?.tags || [],
+      },
+      sort:view.sort || 'recent',
+      createdAt:view.createdAt || null,
+      updatedAt:view.updatedAt || null,
+    })) {
+      errors.push({
+        code:'invalid-library-view',
+        viewId:view?.viewId || null,
+        message:'A saved library view has unsafe or unsupported fields.',
+      });
+      continue;
+    }
+    if (ids.has(view.viewId)) {
+      errors.push({
+        code:'duplicate-library-view-id',
+        viewId:view.viewId,
+        message:'Saved view ' + view.viewId + ' appears more than once.',
+      });
+    }
+    ids.add(view.viewId);
+  }
+  return { valid:errors.length === 0, errors };
+}
+
+export function upsertLibraryView(
+  record,
+  view,
+  now = () => new Date().toISOString(),
+  createId = createRecordId,
+) {
+  const timestamp = isoNow(now);
+  const base = validateLibraryViewsRecord(record).valid
+    ? cloneJson(record)
+    : makeLibraryViewsRecord({}, () => timestamp);
+  const viewId = view?.viewId || createId('view');
+  const existing = base.views.find((candidate) => candidate.viewId === viewId);
+  const normalized = normalizeLibraryView({
+    ...view,
+    viewId,
+    createdAt:existing?.createdAt || timestamp,
+    updatedAt:timestamp,
+  });
+  if (!normalized) throw new Error('Enter a valid saved-view name and filters.');
+  const nextViews = base.views.filter((candidate) => candidate.viewId !== viewId);
+  nextViews.push(normalized);
+  nextViews.sort((left, right) =>
+    left.name.localeCompare(right.name) || left.viewId.localeCompare(right.viewId));
+  if (existing && jsonEqual(existing, normalized)) {
+    return { record:base, view:existing, changed:false };
+  }
+  base.views = nextViews;
+  base.revision = Math.max(1, Number(base.revision) || 1) + 1;
+  base.updatedAt = timestamp;
+  return { record:base, view:normalized, changed:true };
+}
+
+export function removeLibraryView(
+  record,
+  viewId,
+  now = () => new Date().toISOString(),
+) {
+  if (!validateLibraryViewsRecord(record).valid) {
+    return { record, changed:false };
+  }
+  const next = cloneJson(record);
+  const length = next.views.length;
+  next.views = next.views.filter((view) => view.viewId !== viewId);
+  if (next.views.length === length) return { record, changed:false };
+  next.revision = Math.max(1, Number(next.revision) || 1) + 1;
+  next.updatedAt = isoNow(now);
+  return { record:next, changed:true };
+}
+
+export function mergeLibraryViewsRecords(
+  existingRecord,
+  incomingRecord,
+  now = () => new Date().toISOString(),
+) {
+  const existingValidation = validateLibraryViewsRecord(existingRecord);
+  const incomingValidation = validateLibraryViewsRecord(incomingRecord);
+  if (!existingValidation.valid || !incomingValidation.valid) {
+    return {
+      record:existingRecord,
+      changed:false,
+      conflicts:['A saved-library-views record is invalid.'],
+    };
+  }
+  const byId = new Map(existingRecord.views.map((view) => [view.viewId, view]));
+  const conflicts = [];
+  const additions = [];
+  for (const view of incomingRecord.views) {
+    const known = byId.get(view.viewId);
+    if (!known) additions.push(view);
+    else if (!jsonEqual(known, view)) {
+      conflicts.push('Saved view "' + view.name + '" has the same identity but different data.');
+    }
+  }
+  if (conflicts.length || !additions.length) {
+    return { record:existingRecord, changed:false, conflicts };
+  }
+  const timestamp = isoNow(now);
+  const record = makeLibraryViewsRecord({
+    views:existingRecord.views.concat(cloneJson(additions)),
+    revision:Math.max(
+      Number(existingRecord.revision) || 1,
+      Number(incomingRecord.revision) || 1,
+    ) + 1,
+  }, () => timestamp);
+  return { record, changed:true, conflicts:[] };
 }
 
 export function makeWorkManifest({
@@ -382,6 +589,7 @@ function catalogPayload(manifests) {
         assetCount: manifest.assets.filter((asset) =>
           asset.availability === 'available' || asset.availability === 'missing').length,
         availableAssetCount: manifest.assets.filter((asset) => asset.availability === 'available').length,
+        rating: manifest.userMetadata?.rating ?? null,
         tags: cloneJson(manifest.userMetadata?.tags || []),
         shelves: cloneJson(manifest.userMetadata?.shelves || []),
         manifestPath: manifestPath(manifest.workId),
@@ -811,6 +1019,7 @@ export function createPortableBundle({
   manifests = [],
   annotations = [],
   legacySidecars = [],
+  libraryViews = null,
   assets = [],
   libraryLabel = null,
   now = () => new Date().toISOString(),
@@ -826,6 +1035,7 @@ export function createPortableBundle({
       works: cloneJson(manifests),
       annotations: cloneJson(annotations),
       legacySidecars: cloneJson(legacySidecars),
+      ...(libraryViews ? { views:cloneJson(libraryViews) } : {}),
     },
     omittedRebuildableData: [
       'catalog/catalog.json',
@@ -865,6 +1075,7 @@ export function validatePortableBundle(bundle) {
     ? bundle.records.annotations : [];
   const legacySidecars = Array.isArray(bundle?.records?.legacySidecars)
     ? bundle.records.legacySidecars : [];
+  const libraryViews = bundle?.records?.views || null;
   const assets = Array.isArray(bundle?.assets) ? bundle.assets : [];
   if (!Array.isArray(bundle?.records?.works)) {
     errors.push({ code: 'missing-work-records', message: 'The bundle has no work-record list.' });
@@ -911,6 +1122,10 @@ export function validatePortableBundle(bundle) {
       });
     }
   }
+  if (libraryViews) {
+    const viewValidation = validateLibraryViewsRecord(libraryViews);
+    errors.push(...viewValidation.errors);
+  }
 
   const libraryValidation = validateSemanticLibrary({
     sourceFilenames: Array.from(filenames),
@@ -932,6 +1147,7 @@ export function validatePortableBundle(bundle) {
       assets: assets.length,
       annotationRecords: annotations.length,
       legacySidecars: legacySidecars.length,
+      savedViews:libraryViews?.views?.length || 0,
     },
   };
 }
