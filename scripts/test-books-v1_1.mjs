@@ -190,6 +190,42 @@ assert.match(html, /id="reader-open-file"/, 'reader includes an explicit file-op
 assert.match(html, /id="reader-searchbar"/, 'reader includes an in-book search surface');
 assert.match(html, /id="reader-ai-btn"/, 'reader exposes Local AI only in reading mode');
 assert.match(html, /id="reader-ai-dialog"/, 'reader has an app-styled Local AI review dialog');
+assert.match(html, /id="ai-provider-dialog"/,
+  'standalone mode has a visible local/BYOK provider configuration surface');
+assert.match(html, /id="library-ask-dialog"/,
+  'the library has a source-grounded Ask surface');
+assert.match(html, /id="library-ask-btn"/,
+  'work-centered library controls expose Ask without entering a reader');
+assert.match(
+  html,
+  /AI_PROVIDER_CONFIG_KEY[\s\S]*?localStorage\.setItem\(AI_PROVIDER_CONFIG_KEY[\s\S]*?AI_PROVIDER_SESSION_KEY[\s\S]*?sessionStorage\.setItem/,
+  'provider identity persists locally while credentials remain session-only',
+);
+assert.match(
+  html,
+  /config\.providerClass === 'remote'[\s\S]*?!aiRemoteConsent\.checked[\s\S]*?makeProviderConsent\(config, \['answerFromSources'\]\)/,
+  'remote BYOK use requires destination-specific consent',
+);
+assert.match(
+  html,
+  /function retrieveAskSources\([\s\S]*?searchLexicalIndex[\s\S]*?semanticAnnotationsPath/,
+  'Ask retrieves local passage and annotation evidence before inference',
+);
+assert.match(
+  html,
+  /buildGroundedMessages\([\s\S]*?runAiMessages\([\s\S]*?validateGroundedAnswer\([\s\S]*?persistAiRun\(makeAiRunRecord/,
+  'Ask validates cited responses and records provider/evidence provenance',
+);
+assert.match(
+  html,
+  /function openAskCitation\([\s\S]*?openBookFromLibrary[\s\S]*?faithfulPositionForPassage/,
+  'AI citations navigate back to the faithful source passage',
+);
+assert.doesNotMatch(
+  html,
+  /naklios\.fs\.write\([\s\S]{0,200}AI_PROVIDER_SESSION_KEY/,
+  'provider credentials are never written to library storage',
+);
 assert.match(html, /Find in book \(⌘F\)/, 'reader advertises the standard search shortcut');
 assert.match(html, /function renderReaderLibrary\(\)/, 'reader library can refresh without leaving the book');
 assert.match(
@@ -349,9 +385,17 @@ assert.match(
 assert.match(html, /doc\?\.getSelection\?\.\(\)\?\.toString/, 'EPUB context prefers the visible selection');
 assert.match(html, /scope:`page \$\{this\.currentPage \|\| 1\}`/, 'PDF context names and extracts the current page');
 assert.match(html, /window\.getSelection\?\.\(\)/, 'text context prefers the visible selection');
-assert.match(html, /You are the private reading companion inside NakliOS Books/,
-  'reading prompts are passage-scoped and disclose model limits');
+assert.match(
+  html,
+  /You are the private reading companion inside Books[\s\S]*?untrusted quoted[\s\S]*?do not[\s\S]*?claim to have read the rest of the book/,
+  'reading prompts are passage-scoped, injection-aware, and disclose model limits',
+);
 assert.match(html, /readerAiController\?\.abort\(\)/, 'reader generation can be cancelled');
+assert.match(
+  html,
+  /activeReaderAiSourceRef[\s\S]*?READER_PROMPT_VERSION[\s\S]*?single-passage-boundary/,
+  'reader AI writes evidence-linked provenance records',
+);
 assert.match(html, /const iterator = this\.view\.search[\s\S]*?for await \(const item of iterator\)/,
   'Foliate search uses its CFI-aware full-book search');
 assert.match(html, /await page\.getTextContent\(\)/,
@@ -445,6 +489,11 @@ assert.match(
   harness,
   /Move this book to Trash[\s\S]*?recoverable trash record[\s\S]*?recoverable Trash restore action[\s\S]*?Trash restores original bytes and portable identity/,
   'browser harness verifies reversible removal through Trash',
+);
+assert.match(
+  harness,
+  /library-ask-btn[\s\S]*?source-grounded cited answer[\s\S]*?UNTRUSTED_SOURCE_EXCERPTS_JSON[\s\S]*?AI provenance run record[\s\S]*?AI citation faithful-source navigation/,
+  'browser harness verifies cited host-mediated Ask and faithful source navigation',
 );
 assert.match(
   harness,

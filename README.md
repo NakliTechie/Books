@@ -23,7 +23,9 @@ The foundation now includes work/edition/asset identity, resumable local
 passage indexing and concepts, Books-native reading, portable highlights,
 library-wide annotation memory, library validation, catalog rebuild, and
 conflict-safe portable export/import. Book removal now uses recoverable Trash;
-permanent deletion is a separate confirmed action.
+permanent deletion is a separate confirmed action. Source-grounded Ask works
+through NakliOS AI or a visible OpenAI-compatible local/BYOK endpoint, with
+passage citations and durable model-run provenance.
 
 ## v1.4 highlights
 
@@ -33,8 +35,9 @@ permanent deletion is a separate confirmed action.
   paths as NakliOS storage, keeping one application path across environments.
 - Static Cloudflare Worker deployment at `books.naklitechie.com`, with GitHub
   Workers Builds deploying every update pushed to `main`.
-- NakliOS AI remains available only inside NakliOS because it uses the host's
-  inference broker and per-destination consent.
+- Optional AI works through NakliOS's host-mediated broker or a standalone,
+  visible OpenAI-compatible local/BYOK endpoint. Remote book-content requests
+  require destination-specific consent; provider keys remain session-only.
 
 ## v1.1 highlights
 
@@ -67,7 +70,8 @@ permanent deletion is a separate confirmed action.
 - Books uses the shared `naklios.ai` model service: it does not download or
   manage a second model and never receives another app's prompts.
 - Responses stream into a cancellable, app-styled dialog and cannot alter the
-  book or its notes. Standalone reading remains fully usable without AI.
+  book or its notes. Standalone can use a local/BYOK provider, while reading
+  and local lexical search remain fully usable without AI.
 
 ## How this fits in the repo
 
@@ -81,6 +85,7 @@ naklios-universe/
     ├── SEMANTIC-LIBRARY-SPEC.md  ← proposed v2+ product and architecture
     ├── SEMANTIC-LIBRARY-WORKPLAN.md ← pending phases and decision gates
     ├── PORTABLE-LIBRARY-FORMAT.md ← documented backup/import bundle
+    ├── AI-PROVIDER-PRIVACY.md  ← provider, consent, and provenance boundary
     ├── CALIBRE-RESEARCH.md       ← comparison input, not a parity mandate
     ├── walkthroughs.md           ← open scope-defining questions
     ├── DEFERRED.md               ← v2+ items with revisit triggers
@@ -118,6 +123,8 @@ naklios-universe/
 - [x] Semantic foundation — work identity, local passages/search/concepts,
       Native reader, portable highlights, validation, backup/import, and
       recoverable Trash
+- [x] Grounded AI boundary — cited library Ask, standalone local/BYOK,
+      host-mediated NakliOS AI, and evidence-linked provenance
 - [x] Contract test at `scripts/test-books-v1_1.mjs`
 - [x] Safe two-backend browser fixture at `test/host-harness.html`
 
@@ -136,6 +143,8 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
   gated plan containing all pending work
 - [PORTABLE-LIBRARY-FORMAT.md](PORTABLE-LIBRARY-FORMAT.md) — versioned,
   conflict-safe original-file and portable-record bundle
+- [AI-PROVIDER-PRIVACY.md](AI-PROVIDER-PRIVACY.md) — exact standalone and
+  NakliOS model boundary, consent, credential, and provenance rules
 
 ## Context
 

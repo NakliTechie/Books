@@ -208,6 +208,7 @@
   }
 
   let activeBackend = 'fsa';
+  let capturedAiChat = null;
   const stores = {
     fsa: new Map([
       ['library/Sample.md', new TextEncoder().encode(
@@ -236,6 +237,11 @@
   const capabilities = () => ({
     type: 'naklios:capabilities',
     fs: true,
+    ai: true,
+    aiModel: 'harness-grounded',
+    aiModelLabel: 'Harness grounded AI',
+    aiProvider: 'browser',
+    aiLocal: true,
     fsBackend: activeBackend,
     fsBackends: [
       { id: 'fsa', label: 'Folder', name: 'Test Folder' },
@@ -718,9 +724,59 @@
           ),
         'Trash restores original bytes and portable identity',
       );
+      app.getElementById('library-ask-btn').click();
+      await waitFor(
+        () => app.getElementById('library-ask-dialog').open,
+        'source-grounded library Ask dialog',
+      );
+      app.getElementById('library-ask-question').value =
+        'What does the sample say about a quiet test book?';
+      app.getElementById('library-ask-submit').click();
+      const citedAnswer = await waitFor(
+        () => app.getElementById('library-ask-output')
+          .textContent.includes('[S1]')
+          && app.querySelector('[data-ask-citation="S1"]'),
+        'source-grounded cited answer',
+      );
+      if (
+        !capturedAiChat?.messages?.[0]?.content.includes('untrusted quoted data')
+        || !capturedAiChat.messages[1].content.includes(
+          'UNTRUSTED_SOURCE_EXCERPTS_JSON'
+        )
+      ) {
+        throw new Error('Library Ask did not isolate untrusted source text');
+      }
+      const aiRunPath = await waitFor(
+        () => [...stores.fsa.keys()].find(
+          (path) => /^semantic\/ai-runs\/airun_.+\.json$/.test(path)
+        ),
+        'AI provenance run record',
+      );
+      const aiRun = jsonFromStore(aiRunPath);
+      if (
+        aiRun?.provider?.providerClass !== 'naklios'
+        || aiRun?.status !== 'complete'
+        || !aiRun.inputs?.some((input) => input.passageId)
+        || JSON.stringify(aiRun).includes('session-secret')
+      ) {
+        throw new Error('AI run provenance was incomplete or contained credentials');
+      }
+      citedAnswer.click();
+      await waitFor(
+        () => app.getElementById('reader').classList.contains('is-open')
+          && app.getElementById('reader-status').textContent.includes(
+            'AI source [S1]'
+          ),
+        'AI citation faithful-source navigation',
+      );
+      app.getElementById('back-btn').click();
+      await waitFor(
+        () => !app.getElementById('reader').classList.contains('is-open'),
+        'library after AI citation',
+      );
 
       setStatus(
-        'PASS · semantic reading, annotation memory, portability, and Trash recovery',
+        'PASS · semantic reading, cited Ask, portability, and Trash recovery',
         'pass',
       );
     } catch (error) {
@@ -754,6 +810,31 @@
       });
       return;
     }
+    if (msg.type === 'naklios:ai:chat') {
+      capturedAiChat = msg;
+      send({
+        type:'naklios:ai:event',
+        requestId:msg.requestId,
+        event:'status',
+        status:'generating',
+      });
+      send({
+        type:'naklios:ai:event',
+        requestId:msg.requestId,
+        event:'token',
+        model:'harness-grounded',
+        token:'The sample describes a quiet test book [S1].',
+      });
+      send({
+        type:'naklios:ai:event',
+        requestId:msg.requestId,
+        event:'done',
+        model:'harness-grounded',
+        finishReason:'stop',
+      });
+      return;
+    }
+    if (msg.type === 'naklios:ai:cancel') return;
     if (typeof msg.type !== 'string' || !msg.type.startsWith('naklios:fs:')) return;
 
     const op = msg.type.slice('naklios:fs:'.length);
