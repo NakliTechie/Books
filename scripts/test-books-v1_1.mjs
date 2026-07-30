@@ -9,7 +9,11 @@ const paginator = readFileSync(
 );
 
 for (const [index, match] of [...html.matchAll(/<script(?:\s+type="module")?>([\s\S]*?)<\/script>/g)].entries()) {
-  assert.doesNotThrow(() => new Function(match[1]), `inline Books script ${index + 1} parses`);
+  const parseable = match[1].replace(
+    /import\s*\{[\s\S]*?\}\s*from\s*['"][^'"]+['"];\s*/,
+    '',
+  );
+  assert.doesNotThrow(() => new Function(parseable), `inline Books script ${index + 1} parses`);
 }
 for (const [index, match] of [...harness.matchAll(/<script>([\s\S]*?)<\/script>/g)].entries()) {
   assert.doesNotThrow(() => new Function(match[1]), `host harness script ${index + 1} parses`);
@@ -38,6 +42,27 @@ assert.match(html, /id === 'browser' \|\| id === 'fsa' \|\| id === 'crate'/,
   'Books recognizes Browser, Folder, and Crate backends');
 assert.match(html, /requestStandalonePersistence\(\)/,
   'standalone adds request durable browser storage when available');
+assert.match(html, /from '\.\/semantic-library\.js'/,
+  'Books loads the shared semantic-library domain model');
+assert.match(html, /async function ensureSemanticFoundation\(/,
+  'library scans reconcile portable work manifests');
+assert.match(html, /async function syncPortableAnnotationsForManifest\(/,
+  'legacy reading data migrates into portable work annotations');
+assert.match(
+  html,
+  /write\('notes\/' \+ bookId[\s\S]*?syncPortableAnnotationsForSidecar\(data\)/,
+  'sidecar durability is followed by portable annotation synchronization',
+);
+assert.match(
+  html,
+  /for \(const manifest of result\.changedManifests\)[\s\S]*?if \(result\.catalogChanged\)/,
+  'canonical work manifests are persisted before the rebuildable catalog',
+);
+assert.match(
+  html,
+  /semantic catalog unavailable; using source scan/,
+  'catalog failure preserves the faithful source-scan reader fallback',
+);
 assert.match(html, /useBackend:\s*function/, 'vendored SDK supports host-mediated backend switching');
 assert.match(html, /ai:\s*false/, 'vendored SDK exposes Local AI capability state');
 assert.match(html, /chat:\{\s*completions:\{\s*create:createAiCompletion/, 'vendored SDK exposes streamed chat completions');
@@ -235,6 +260,16 @@ assert.match(
   harness,
   /has\('notes\/missing-book\.json'\)[\s\S]*?has\('notes\/Missing\.json'\)/,
   'browser harness rejects silent sidecar rebinding after recovery',
+);
+assert.match(
+  harness,
+  /jsonFromStore\('catalog\/catalog\.json'\)[\s\S]*?aliases\.sourceFilenames\['Harness\.epub'\]/,
+  'browser harness verifies portable work catalog migration',
+);
+assert.match(
+  harness,
+  /jsonFromStore\('annotations\/' \+ recoveredWorkId \+ '\.json'\)[\s\S]*?annotation\.kind === 'note'[\s\S]*?annotation\.kind === 'bookmark'/,
+  'browser harness verifies recovered notes and bookmarks become portable annotations',
 );
 
 console.log('Books persistent storage and library contract: PASS');

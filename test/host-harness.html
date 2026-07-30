@@ -215,6 +215,11 @@
     return null;
   }
 
+  function jsonFromStore(path) {
+    if (!stores.fsa.has(path)) return null;
+    return JSON.parse(bytesToText(stores.fsa.get(path)));
+  }
+
   function percent(text) {
     const match = String(text || '').match(/(\d+)%/);
     return match ? Number(match[1]) : -1;
@@ -237,6 +242,22 @@
         () => app.querySelector('.row[data-filename="Harness.epub"]'),
         'Harness.epub in the hosted Folder library',
       );
+      const initialCatalog = await waitFor(
+        () => jsonFromStore('catalog/catalog.json'),
+        'semantic catalog migration',
+      );
+      if (
+        initialCatalog.recordType !== 'books.catalog'
+        || !initialCatalog.aliases.sourceFilenames['Harness.epub']
+        || !initialCatalog.aliases.sourceFilenames['Sample.md']
+      ) {
+        throw new Error('Semantic catalog did not preserve hosted source discovery');
+      }
+      const initialManifestPaths = [...stores.fsa.keys()]
+        .filter((path) => /^catalog\/works\/work_.+\.json$/.test(path));
+      if (initialManifestPaths.length !== 2) {
+        throw new Error('Semantic migration did not create one manifest per source');
+      }
       row.click();
       await waitFor(
         () => app.getElementById('reader').classList.contains('is-open') &&
@@ -348,9 +369,27 @@
       if (!stores.fsa.has('notes/missing-book.json') || stores.fsa.has('notes/Missing.json')) {
         throw new Error('Recovery rebound the orphan to a different sidecar');
       }
+      const recoveredCatalog = jsonFromStore('catalog/catalog.json');
+      const recoveredWorkId = recoveredCatalog?.aliases?.sourceFilenames?.['Missing.epub'];
+      const recoveredAnnotations = recoveredWorkId
+        ? jsonFromStore('annotations/' + recoveredWorkId + '.json')
+        : null;
+      if (
+        !recoveredWorkId
+        || recoveredAnnotations?.recordType !== 'books.annotations'
+        || !recoveredAnnotations.annotations.some(
+          (annotation) => annotation.kind === 'note'
+            && annotation.body.includes('must survive')
+        )
+        || !recoveredAnnotations.annotations.some(
+          (annotation) => annotation.kind === 'bookmark'
+        )
+      ) {
+        throw new Error('Recovered v1 reading data was not migrated portably');
+      }
 
       setStatus(
-        'PASS · EPUB navigation, search, cover cache, restoration, and orphan recovery work',
+        'PASS · EPUB, semantic migration, portable annotations, and recovery work',
         'pass',
       );
     } catch (error) {

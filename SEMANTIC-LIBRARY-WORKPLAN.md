@@ -1,8 +1,9 @@
 # Books — Private Semantic Library work plan
 
-> **Lifecycle:** `pending` — proposed sequencing for v2+.
+> **Lifecycle:** `active` — implementation sequence for v2+.
 >
-> **Implementation status:** Not started. This plan gathers the pending items
+> **Implementation status:** Phase 0 decisions accepted; Phase 1 in progress.
+> This plan gathers the pending items
 > from [DEFERRED.md](DEFERRED.md), the candidates in
 > [CALIBRE-RESEARCH.md](CALIBRE-RESEARCH.md), and the requirements in
 > [SEMANTIC-LIBRARY-SPEC.md](SEMANTIC-LIBRARY-SPEC.md). Inclusion here prevents
@@ -59,7 +60,8 @@ approved release slice.
 
 ## Phase 0 — Product boundary and architecture decisions
 
-**Status:** Next planning session.
+**Status:** Accepted. The binding choices and Calibre dispositions are in
+[SEMANTIC-LIBRARY-DECISIONS.md](SEMANTIC-LIBRARY-DECISIONS.md).
 
 **Question:** Which parts of a modern private semantic library are the first
 product, and which Calibre-inspired capabilities are distraction?
@@ -114,7 +116,7 @@ product, and which Calibre-inspired capabilities are distraction?
 
 ## Phase 1 — Work identity, catalog, migration, and basic safety
 
-**Status:** Pending Phase 0.
+**Status:** In progress.
 
 **Question:** Can Books represent a durable library without making a catalog
 database the single point of failure?

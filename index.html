@@ -1271,6 +1271,18 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 <script type="module">
 'use strict';
 
+import {
+  reconcileLegacyAnnotations,
+  SEMANTIC_CATALOG_PATH,
+  SEMANTIC_WORKS_PREFIX,
+  reconcileSemanticLibrary,
+  rebuildCatalog,
+  semanticManifestPath,
+  semanticAnnotationsPath,
+  updateWorkMetadata,
+  workForFilename,
+} from './semantic-library.js';
+
 const VENDOR_FOLIATE = './vendor/foliate-js@1.0.1/';
 const VENDOR_PDFJS   = './vendor/pdfjs-dist@5.7.284/';
 
@@ -1348,6 +1360,8 @@ let activeBookId = null;
 let activeSourceFilename = null;
 let bookOpenInProgress = false;
 let libraryCache = [];
+let semanticCatalog = null;
+let semanticManifests = new Map();
 let orphanSidecars = [];
 let orphanRecoveryTarget = null;
 let libraryFilter = '';
@@ -1680,6 +1694,9 @@ function writeSidecarDebounced(bookId, data) {
   const timer = setTimeout(() => {
     pendingWrites.delete(bookId);
     naklios.fs.write('notes/' + bookId + '.json', JSON.stringify(data, null, 2))
+      .then(() => syncPortableAnnotationsForSidecar(data).catch((error) => {
+        console.warn('Books: portable annotation sync failed for', bookId, error);
+      }))
       .catch((err) => console.warn('Books: sidecar write failed for', bookId, err));
   }, 1000);
   pendingWrites.set(bookId, { timer, data });
@@ -1691,6 +1708,9 @@ function flushPendingWritesSync() {
   for (const [bookId, { timer, data }] of pendingWrites.entries()) {
     clearTimeout(timer);
     naklios.fs.write('notes/' + bookId + '.json', JSON.stringify(data, null, 2))
+      .then(() => syncPortableAnnotationsForSidecar(data).catch((error) => {
+        console.warn('Books: portable annotation flush failed for', bookId, error);
+      }))
       .catch((err) => console.warn('Books: sidecar flush failed for', bookId, err));
   }
   pendingWrites.clear();
@@ -1702,6 +1722,7 @@ async function flushPendingWrites() {
     clearTimeout(timer);
     writes.push(
       naklios.fs.write('notes/' + bookId + '.json', JSON.stringify(data, null, 2))
+        .then(() => syncPortableAnnotationsForSidecar(data))
         .catch((err) => {
           console.warn('Books: sidecar flush failed for', bookId, err);
           throw err;
@@ -1743,6 +1764,129 @@ function makeInitialSidecar({ bookId, sourceFilename, engineKey }) {
     coverMime: null,
     coverUnavailable: false,
   };
+}
+
+// ============================================================
+// Semantic catalog — portable per-work manifests + rebuildable cache
+// ============================================================
+
+async function readJsonRecord(path) {
+  try {
+    if (!(await naklios.fs.exists(path))) return null;
+    const raw = await naklios.fs.read(path);
+    const record = JSON.parse(raw);
+    return record && typeof record === 'object' ? record : null;
+  } catch (error) {
+    console.warn('Books: ignored unreadable JSON record', path, error);
+    return null;
+  }
+}
+
+async function readSemanticManifests() {
+  let entries = [];
+  try {
+    entries = stripListPrefix(
+      await naklios.fs.list(SEMANTIC_WORKS_PREFIX),
+      SEMANTIC_WORKS_PREFIX,
+    );
+  } catch (_) {
+    return [];
+  }
+  const records = await Promise.all(
+    entries
+      .filter((name) => typeof name === 'string' && name.endsWith('.json'))
+      .map((name) => readJsonRecord(SEMANTIC_WORKS_PREFIX + name)),
+  );
+  return records.filter(Boolean);
+}
+
+async function syncPortableAnnotationsForManifest(manifest, sidecars) {
+  const path = semanticAnnotationsPath(manifest.workId);
+  const existingRecord = await readJsonRecord(path);
+  const result = reconcileLegacyAnnotations({
+    manifest,
+    sidecars,
+    existingRecord,
+  });
+  if (result.changed) {
+    await naklios.fs.write(path, JSON.stringify(result.record, null, 2));
+  }
+  return result.record;
+}
+
+async function syncPortableAnnotationsForSidecar(sidecar) {
+  if (!sidecar?.sourceFilename || !semanticCatalog) return;
+  const work = workForFilename(semanticCatalog, sidecar.sourceFilename);
+  const manifest = work && semanticManifests.get(work.workId);
+  if (!manifest) return;
+  await syncPortableAnnotationsForManifest(manifest, [sidecar]);
+}
+
+async function ensureSemanticFoundation(sourceFilenames, sidecars) {
+  const [existingCatalog, existingManifests] = await Promise.all([
+    readJsonRecord(SEMANTIC_CATALOG_PATH),
+    readSemanticManifests(),
+  ]);
+  const result = reconcileSemanticLibrary({
+    sourceFilenames,
+    sidecars,
+    existingCatalog,
+    existingManifests,
+  });
+
+  // Manifests are canonical. Write them before the rebuildable catalog so an
+  // interrupted migration can always repair its discovery index next time.
+  for (const manifest of result.changedManifests) {
+    await naklios.fs.write(
+      semanticManifestPath(manifest.workId),
+      JSON.stringify(manifest, null, 2),
+    );
+  }
+  for (const manifest of result.manifests) {
+    const filenames = new Set(
+      manifest.assets.map((asset) => asset.sourceFilename).filter(Boolean),
+    );
+    const workSidecars = sidecars.filter(
+      (sidecar) => filenames.has(sidecar?.sourceFilename),
+    );
+    if (workSidecars.length) {
+      await syncPortableAnnotationsForManifest(manifest, workSidecars);
+    }
+  }
+  if (result.catalogChanged) {
+    await naklios.fs.write(
+      SEMANTIC_CATALOG_PATH,
+      JSON.stringify(result.catalog, null, 2),
+    );
+  }
+  semanticCatalog = result.catalog;
+  semanticManifests = new Map(
+    result.manifests.map((manifest) => [manifest.workId, manifest]),
+  );
+  return result;
+}
+
+async function syncSemanticMetadata(filename, sidecar) {
+  const work = workForFilename(semanticCatalog, filename);
+  const current = work && semanticManifests.get(work.workId);
+  if (!current || !sidecar) return;
+  const update = updateWorkMetadata(current, sidecar);
+  if (!update.changed) return;
+  await naklios.fs.write(
+    semanticManifestPath(update.manifest.workId),
+    JSON.stringify(update.manifest, null, 2),
+  );
+  semanticManifests.set(update.manifest.workId, update.manifest);
+  const rebuilt = rebuildCatalog(Array.from(semanticManifests.values()), semanticCatalog);
+  semanticCatalog = rebuilt.catalog;
+  if (rebuilt.changed) {
+    await naklios.fs.write(
+      SEMANTIC_CATALOG_PATH,
+      JSON.stringify(rebuilt.catalog, null, 2),
+    );
+  }
+  const cached = libraryCache.find((entry) => entry.filename === filename);
+  if (cached) cached.work = workForFilename(semanticCatalog, filename);
 }
 
 // ============================================================
@@ -2349,10 +2493,12 @@ function renderLibraryEmpty() {
 
 function visibleLibraryBooks() {
   const needle = libraryFilter.trim().toLowerCase();
-  const books = libraryCache.filter(({ filename, sidecar }) => {
+  const books = libraryCache.filter(({ filename, sidecar, work }) => {
     if (!needle) return true;
     const haystack = [
       filename,
+      work && work.title,
+      work && work.authors && work.authors.map((author) => author.name).join(' '),
       sidecar && sidecar.title,
       sidecar && sidecar.author,
     ].filter(Boolean).join(' ').toLowerCase();
@@ -2360,13 +2506,15 @@ function visibleLibraryBooks() {
   });
   books.sort((a, b) => {
     if (librarySort === 'title') {
-      const aTitle = (a.sidecar && a.sidecar.title) || a.filename;
-      const bTitle = (b.sidecar && b.sidecar.title) || b.filename;
+      const aTitle = (a.work && a.work.title) || (a.sidecar && a.sidecar.title) || a.filename;
+      const bTitle = (b.work && b.work.title) || (b.sidecar && b.sidecar.title) || b.filename;
       return aTitle.localeCompare(bTitle);
     }
     if (librarySort === 'author') {
-      const aAuthor = (a.sidecar && a.sidecar.author) || '';
-      const bAuthor = (b.sidecar && b.sidecar.author) || '';
+      const aAuthor = (a.work && a.work.authors || []).map((author) => author.name).join(', ')
+        || (a.sidecar && a.sidecar.author) || '';
+      const bAuthor = (b.work && b.work.authors || []).map((author) => author.name).join(', ')
+        || (b.sidecar && b.sidecar.author) || '';
       return aAuthor.localeCompare(bAuthor) || a.filename.localeCompare(b.filename);
     }
     const aT = (a.sidecar && a.sidecar.lastOpened) ? Date.parse(a.sidecar.lastOpened) : 0;
@@ -2473,10 +2621,12 @@ function renderLibraryRows() {
       : '';
     return;
   }
-  list.innerHTML = decorated.map(({ filename, sidecar }) => {
+  list.innerHTML = decorated.map(({ filename, sidecar, work }) => {
     const ext = extOf(filename);
-    const title = (sidecar && sidecar.title) || filename.replace(/\.[a-z0-9]+$/i, '');
-    const author = (sidecar && sidecar.author) || '';
+    const title = (work && work.title) || (sidecar && sidecar.title)
+      || filename.replace(/\.[a-z0-9]+$/i, '');
+    const author = (work && work.authors || []).map((entry) => entry.name).join(', ')
+      || (sidecar && sidecar.author) || '';
     const lastRead = (sidecar && sidecar.lastOpened) ? formatRelativeTime(sidecar.lastOpened) : '';
     return '<div class="row" data-filename="' + escapeHtml(filename) + '">' +
              coverMarkup(sidecar, title) +
@@ -2614,9 +2764,11 @@ function renderReaderLibrary() {
       '<div class="reader-library-empty">This library is empty. Use Open file… to add a book.</div>';
     return;
   }
-  readerLibraryList.innerHTML = libraryCache.map(({ filename, sidecar }) => {
-    const title = (sidecar && sidecar.title) || filename.replace(/\.[a-z0-9]+$/i, '');
-    const author = (sidecar && sidecar.author) || '';
+  readerLibraryList.innerHTML = libraryCache.map(({ filename, sidecar, work }) => {
+    const title = (work && work.title) || (sidecar && sidecar.title)
+      || filename.replace(/\.[a-z0-9]+$/i, '');
+    const author = (work && work.authors || []).map((entry) => entry.name).join(', ')
+      || (sidecar && sidecar.author) || '';
     const current = filename === activeSourceFilename;
     return '<button class="reader-library-item" type="button" data-filename="' +
         escapeHtml(filename) + '" aria-current="' + (current ? 'true' : 'false') + '"' +
@@ -3060,6 +3212,13 @@ async function openBookFromFile(file, persistInfo) {
       }
       const cachedBook = libraryCache.find((entry) => entry.filename === persistInfo.sourceFilename);
       if (cachedBook) cachedBook.sidecar = activeSidecar;
+      try {
+        await syncSemanticMetadata(persistInfo.sourceFilename, activeSidecar);
+      } catch (error) {
+        // A portable metadata update is repairable and must never prevent the
+        // faithful reader from opening the original.
+        console.warn('Books: semantic metadata sync failed', error);
+      }
       renderReaderLibrary();
       void cacheActiveCover();
 
@@ -3800,9 +3959,20 @@ async function listLibrary() {
       } catch (_) { /* skip malformed sidecars */ }
     }));
 
+    try {
+      await ensureSemanticFoundation(books, sidecarRows.map((entry) => entry.sidecar));
+    } catch (error) {
+      // The v1.4 scan remains the reading fallback if catalog migration or
+      // repair cannot be persisted on this backend.
+      console.warn('Books: semantic catalog unavailable; using source scan', error);
+      semanticCatalog = null;
+      semanticManifests = new Map();
+    }
+
     const decorated = books.map((filename) => ({
       filename,
       sidecar: sidecarByFilename.get(filename) || null,
+      work: workForFilename(semanticCatalog, filename),
     }));
 
     // Sort: lastOpened desc (sidecar'd first), then alphabetical for the rest

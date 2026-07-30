@@ -1,10 +1,12 @@
 # Books — Private Semantic Library extension spec
 
-> **Lifecycle:** `proposed` — v2+ product and architecture direction.
+> **Lifecycle:** `active` — v2+ product and architecture direction.
 >
-> **Implementation status:** Pending. This document extends the shipped v1.4
-> reader contract in [SPEC.md](SPEC.md); it does not authorize implementation
-> by itself. Sequencing and gates live in
+> **Implementation status:** Foundation in progress. Accepted architectural
+> choices are recorded in
+> [SEMANTIC-LIBRARY-DECISIONS.md](SEMANTIC-LIBRARY-DECISIONS.md). This document
+> extends the shipped v1.4 reader contract in [SPEC.md](SPEC.md). Sequencing
+> and gates live in
 > [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md).
 
 ## Thesis

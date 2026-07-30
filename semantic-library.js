@@ -1,0 +1,526 @@
+export const SEMANTIC_SCHEMA_VERSION = 1;
+export const SEMANTIC_CATALOG_PATH = 'catalog/catalog.json';
+export const SEMANTIC_WORKS_PREFIX = 'catalog/works/';
+export const SEMANTIC_ANNOTATIONS_PREFIX = 'annotations/';
+
+const RECORD_TYPE = 'books.work';
+const CATALOG_TYPE = 'books.catalog';
+const ANNOTATIONS_TYPE = 'books.annotations';
+
+function isoNow(now) {
+  return typeof now === 'function' ? now() : new Date().toISOString();
+}
+
+function uuidFallback() {
+  const time = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 14);
+  return time + '-' + random;
+}
+
+export function createRecordId(kind, randomUUID = globalThis.crypto?.randomUUID?.bind(globalThis.crypto)) {
+  const value = randomUUID ? randomUUID() : uuidFallback();
+  return String(kind) + '_' + String(value).toLowerCase();
+}
+
+export function legacyBookIdFor(filename) {
+  return String(filename)
+    .replace(/\.[a-z0-9]{2,5}$/i, '')
+    .replace(/[^a-zA-Z0-9-]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'book';
+}
+
+function extensionOf(filename) {
+  const match = String(filename || '').match(/\.([a-z0-9]+)$/i);
+  return match ? match[1].toLowerCase() : '';
+}
+
+function titleFromFilename(filename) {
+  return String(filename || '').replace(/\.[a-z0-9]+$/i, '');
+}
+
+function authorRecords(author, source = 'legacy-sidecar') {
+  const names = Array.isArray(author) ? author : [author];
+  return names
+    .map((value) => typeof value === 'string' ? value.trim() : '')
+    .filter(Boolean)
+    .map((name) => ({ name, source }));
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function jsonEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function manifestPath(workId) {
+  return SEMANTIC_WORKS_PREFIX + workId + '.json';
+}
+
+export function makeWorkManifest({
+  filename,
+  sidecar = null,
+  now = () => new Date().toISOString(),
+  createId = createRecordId,
+}) {
+  const createdAt = isoNow(now);
+  const workId = createId('work');
+  const editionId = createId('edition');
+  const assetId = createId('asset');
+  const legacyBookId = sidecar?.bookId || legacyBookIdFor(filename);
+  const title = sidecar?.title || titleFromFilename(filename);
+  const format = extensionOf(filename);
+
+  return {
+    schemaVersion: SEMANTIC_SCHEMA_VERSION,
+    recordType: RECORD_TYPE,
+    workId,
+    title,
+    authors: authorRecords(sidecar?.author),
+    userMetadata: {
+      rating: null,
+      tags: [],
+      shelves: [],
+    },
+    editions: [{
+      editionId,
+      language: null,
+      identifiers: {},
+      assetIds: [assetId],
+      createdAt,
+      updatedAt: createdAt,
+    }],
+    assets: [{
+      assetId,
+      editionId,
+      sourcePath: 'library/' + filename,
+      sourceFilename: filename,
+      format,
+      byteLength: null,
+      fingerprint: null,
+      fingerprintStatus: 'pending',
+      availability: 'available',
+      importedAt: createdAt,
+      updatedAt: createdAt,
+    }],
+    legacy: {
+      bookIds: [legacyBookId],
+      sourceFilenames: [filename],
+      sidecarPath: sidecar?.bookId ? 'notes/' + sidecar.bookId + '.json' : null,
+    },
+    createdAt,
+    updatedAt: createdAt,
+  };
+}
+
+export function updateWorkMetadata(manifest, sidecar, now = () => new Date().toISOString()) {
+  if (!manifest || !sidecar) return { manifest, changed: false };
+  const next = cloneJson(manifest);
+  let changed = false;
+  const title = typeof sidecar.title === 'string' ? sidecar.title.trim() : '';
+  const authors = authorRecords(sidecar.author);
+  if (title && next.title !== title) {
+    next.title = title;
+    changed = true;
+  }
+  if (authors.length && !jsonEqual(next.authors, authors)) {
+    next.authors = authors;
+    changed = true;
+  }
+  const legacyBookId = sidecar.bookId;
+  if (legacyBookId && !next.legacy.bookIds.includes(legacyBookId)) {
+    next.legacy.bookIds.push(legacyBookId);
+    next.legacy.bookIds.sort();
+    changed = true;
+  }
+  const sidecarPath = legacyBookId ? 'notes/' + legacyBookId + '.json' : null;
+  if (sidecarPath && next.legacy.sidecarPath !== sidecarPath) {
+    next.legacy.sidecarPath = sidecarPath;
+    changed = true;
+  }
+  if (changed) next.updatedAt = isoNow(now);
+  return { manifest: next, changed };
+}
+
+function normalizeManifest(manifest) {
+  if (
+    !manifest
+    || manifest.schemaVersion !== SEMANTIC_SCHEMA_VERSION
+    || manifest.recordType !== RECORD_TYPE
+    || typeof manifest.workId !== 'string'
+    || !manifest.workId
+    || !Array.isArray(manifest.editions)
+    || !Array.isArray(manifest.assets)
+  ) return null;
+  return cloneJson(manifest);
+}
+
+function catalogPayload(manifests) {
+  const aliases = {
+    legacyBookIds: {},
+    sourceFilenames: {},
+  };
+  const works = manifests
+    .map((manifest) => {
+      const sourceFilenames = manifest.assets
+        .filter((asset) => asset.availability !== 'removed')
+        .map((asset) => asset.sourceFilename)
+        .filter(Boolean)
+        .sort();
+      for (const filename of sourceFilenames) {
+        aliases.sourceFilenames[filename] = manifest.workId;
+      }
+      for (const bookId of manifest.legacy?.bookIds || []) {
+        aliases.legacyBookIds[bookId] = manifest.workId;
+      }
+      return {
+        workId: manifest.workId,
+        title: manifest.title,
+        authors: cloneJson(manifest.authors || []),
+        sourceFilenames,
+        assetCount: manifest.assets.filter((asset) => asset.availability !== 'removed').length,
+        availableAssetCount: manifest.assets.filter((asset) => asset.availability === 'available').length,
+        tags: cloneJson(manifest.userMetadata?.tags || []),
+        shelves: cloneJson(manifest.userMetadata?.shelves || []),
+        manifestPath: manifestPath(manifest.workId),
+        updatedAt: manifest.updatedAt,
+      };
+    })
+    .sort((left, right) => left.workId.localeCompare(right.workId));
+  return { works, aliases };
+}
+
+export function rebuildCatalog(
+  manifests,
+  existingCatalog = null,
+  now = () => new Date().toISOString(),
+) {
+  const payload = catalogPayload(manifests);
+  const existingPayload = existingCatalog && {
+    works: existingCatalog.works,
+    aliases: existingCatalog.aliases,
+  };
+  const changed = (
+    !existingCatalog
+    || existingCatalog.schemaVersion !== SEMANTIC_SCHEMA_VERSION
+    || existingCatalog.recordType !== CATALOG_TYPE
+    || !jsonEqual(existingPayload, payload)
+  );
+  if (!changed) return { catalog: cloneJson(existingCatalog), changed: false };
+  return {
+    catalog: {
+      schemaVersion: SEMANTIC_SCHEMA_VERSION,
+      recordType: CATALOG_TYPE,
+      revision: Math.max(0, Number(existingCatalog?.revision) || 0) + 1,
+      works: payload.works,
+      aliases: payload.aliases,
+      updatedAt: isoNow(now),
+    },
+    changed: true,
+  };
+}
+
+export function reconcileSemanticLibrary({
+  sourceFilenames = [],
+  sidecars = [],
+  existingManifests = [],
+  existingCatalog = null,
+  now = () => new Date().toISOString(),
+  createId = createRecordId,
+} = {}) {
+  const availableSources = new Set(
+    sourceFilenames.filter((value) => typeof value === 'string' && value),
+  );
+  const sidecarByFilename = new Map(
+    sidecars
+      .filter((sidecar) => sidecar && typeof sidecar.sourceFilename === 'string')
+      .map((sidecar) => [sidecar.sourceFilename, sidecar]),
+  );
+  const manifests = existingManifests
+    .map(normalizeManifest)
+    .filter(Boolean);
+  const changedWorkIds = new Set();
+  const assetByFilename = new Map();
+
+  for (const manifest of manifests) {
+    for (const asset of manifest.assets) {
+      if (asset?.sourceFilename && !assetByFilename.has(asset.sourceFilename)) {
+        assetByFilename.set(asset.sourceFilename, { manifest, asset });
+      }
+    }
+  }
+
+  for (const filename of availableSources) {
+    const known = assetByFilename.get(filename);
+    if (!known) {
+      const manifest = makeWorkManifest({
+        filename,
+        sidecar: sidecarByFilename.get(filename) || null,
+        now,
+        createId,
+      });
+      manifests.push(manifest);
+      changedWorkIds.add(manifest.workId);
+      assetByFilename.set(filename, { manifest, asset: manifest.assets[0] });
+      continue;
+    }
+    if (known.asset.availability !== 'available') {
+      known.asset.availability = 'available';
+      known.asset.updatedAt = isoNow(now);
+      known.manifest.updatedAt = known.asset.updatedAt;
+      changedWorkIds.add(known.manifest.workId);
+    }
+    const metadataUpdate = updateWorkMetadata(
+      known.manifest,
+      sidecarByFilename.get(filename),
+      now,
+    );
+    if (metadataUpdate.changed) {
+      const index = manifests.indexOf(known.manifest);
+      manifests[index] = metadataUpdate.manifest;
+      changedWorkIds.add(metadataUpdate.manifest.workId);
+      for (const asset of metadataUpdate.manifest.assets) {
+        if (asset?.sourceFilename) {
+          assetByFilename.set(asset.sourceFilename, {
+            manifest: metadataUpdate.manifest,
+            asset,
+          });
+        }
+      }
+    }
+  }
+
+  for (const manifest of manifests) {
+    for (const asset of manifest.assets) {
+      if (
+        asset.availability !== 'removed'
+        && !availableSources.has(asset.sourceFilename)
+        && asset.availability !== 'missing'
+      ) {
+        asset.availability = 'missing';
+        asset.updatedAt = isoNow(now);
+        manifest.updatedAt = asset.updatedAt;
+        changedWorkIds.add(manifest.workId);
+      }
+    }
+  }
+
+  const catalogResult = rebuildCatalog(manifests, existingCatalog, now);
+  return {
+    manifests,
+    catalog: catalogResult.catalog,
+    changedManifests: manifests.filter((manifest) => changedWorkIds.has(manifest.workId)),
+    catalogChanged: catalogResult.changed,
+  };
+}
+
+export function workForFilename(catalog, filename) {
+  const workId = catalog?.aliases?.sourceFilenames?.[filename];
+  if (!workId) return null;
+  return catalog.works.find((work) => work.workId === workId) || null;
+}
+
+export function semanticManifestPath(workId) {
+  return manifestPath(workId);
+}
+
+export function semanticAnnotationsPath(workId) {
+  return SEMANTIC_ANNOTATIONS_PREFIX + workId + '.json';
+}
+
+function legacySourceKey(bookId, kind, sourceId) {
+  return [bookId, kind, sourceId || 'default'].join(':');
+}
+
+function portableTarget(asset, engine, position) {
+  return {
+    assetId: asset?.assetId || null,
+    sourceFilename: asset?.sourceFilename || null,
+    selectors: [{
+      type: 'legacy-engine-position',
+      engine: engine || asset?.format || null,
+      value: cloneJson(position || {}),
+    }],
+  };
+}
+
+function upsertLegacyRecord({
+  existingByKey,
+  key,
+  kind,
+  createId,
+  createdAt,
+  bookId,
+  fields,
+}) {
+  const existing = existingByKey.get(key);
+  return {
+    ...(existing || {}),
+    annotationId: existing?.annotationId || createId('annotation'),
+    kind,
+    ...fields,
+    legacySource: { key, bookId },
+    createdAt: existing?.createdAt || createdAt,
+    updatedAt: fields.updatedAt || existing?.updatedAt || createdAt,
+  };
+}
+
+export function reconcileLegacyAnnotations({
+  manifest,
+  sidecars = [],
+  existingRecord = null,
+  now = () => new Date().toISOString(),
+  createId = createRecordId,
+} = {}) {
+  if (!manifest?.workId) {
+    throw new Error('A valid work manifest is required to migrate annotations.');
+  }
+  const existing = (
+    existingRecord
+    && existingRecord.schemaVersion === SEMANTIC_SCHEMA_VERSION
+    && existingRecord.recordType === ANNOTATIONS_TYPE
+    && existingRecord.workId === manifest.workId
+  ) ? cloneJson(existingRecord) : null;
+  const existingLegacy = new Map(
+    (existing?.annotations || [])
+      .filter((record) => record?.legacySource?.key)
+      .map((record) => [record.legacySource.key, record]),
+  );
+  const incomingBookIds = new Set(
+    sidecars
+      .filter((sidecar) => sidecar?.sourceFilename)
+      .map((sidecar) => sidecar.bookId || legacyBookIdFor(sidecar.sourceFilename)),
+  );
+  const untouchedAnnotations = (existing?.annotations || [])
+    .filter((record) => (
+      !record?.legacySource?.key
+      || !incomingBookIds.has(record.legacySource.bookId)
+    ));
+  const untouchedPositions = (existing?.positions || [])
+    .filter((record) => !incomingBookIds.has(record?.legacySource?.bookId));
+  const untouchedPreferences = (existing?.preferences || [])
+    .filter((record) => !incomingBookIds.has(record?.legacySource?.bookId));
+  const migrated = [];
+  const positions = [];
+  const preferences = [];
+  const migrationTime = isoNow(now);
+
+  for (const sidecar of sidecars) {
+    if (!sidecar || typeof sidecar.sourceFilename !== 'string') continue;
+    const asset = manifest.assets.find(
+      (candidate) => candidate.sourceFilename === sidecar.sourceFilename,
+    );
+    if (!asset) continue;
+    const bookId = sidecar.bookId || legacyBookIdFor(sidecar.sourceFilename);
+    const engine = sidecar.engine || asset.format || null;
+
+    if (sidecar.position && typeof sidecar.position === 'object') {
+      positions.push({
+        positionId: 'position_' + asset.assetId,
+        assetId: asset.assetId,
+        target: portableTarget(asset, engine, sidecar.position),
+        lastOpened: sidecar.lastOpened || null,
+        legacySource: {
+          key: legacySourceKey(bookId, 'position', asset.assetId),
+          bookId,
+        },
+      });
+    }
+
+    if (sidecar.readerPrefs && typeof sidecar.readerPrefs === 'object') {
+      preferences.push({
+        assetId: asset.assetId,
+        values: cloneJson(sidecar.readerPrefs),
+        legacySource: {
+          key: legacySourceKey(bookId, 'preferences', asset.assetId),
+          bookId,
+        },
+      });
+    }
+
+    const bookmarks = Array.isArray(sidecar.bookmarks) ? sidecar.bookmarks : [];
+    for (let index = 0; index < bookmarks.length; index++) {
+      const bookmark = bookmarks[index] || {};
+      const sourceId = bookmark.id || String(index);
+      const key = legacySourceKey(bookId, 'bookmark', sourceId);
+      migrated.push(upsertLegacyRecord({
+        existingByKey: existingLegacy,
+        key,
+        kind: 'bookmark',
+        createId,
+        createdAt: bookmark.ts || migrationTime,
+        bookId,
+        fields: {
+          label: typeof bookmark.label === 'string' ? bookmark.label : '',
+          body: '',
+          target: portableTarget(asset, engine, bookmark.position),
+          updatedAt: bookmark.ts || migrationTime,
+        },
+      }));
+    }
+
+    if (typeof sidecar.note === 'string' && sidecar.note.trim()) {
+      const key = legacySourceKey(bookId, 'book-note', asset.assetId);
+      migrated.push(upsertLegacyRecord({
+        existingByKey: existingLegacy,
+        key,
+        kind: 'note',
+        createId,
+        createdAt: migrationTime,
+        bookId,
+        fields: {
+          label: 'Book note',
+          body: sidecar.note,
+          target: {
+            assetId: asset.assetId,
+            sourceFilename: asset.sourceFilename,
+            selectors: [{ type: 'whole-work' }],
+          },
+        },
+      }));
+    }
+  }
+
+  const annotations = untouchedAnnotations
+    .concat(migrated)
+    .sort((left, right) => left.annotationId.localeCompare(right.annotationId));
+  positions.push(...untouchedPositions);
+  preferences.push(...untouchedPreferences);
+  positions.sort((left, right) => left.assetId.localeCompare(right.assetId));
+  preferences.sort((left, right) => left.assetId.localeCompare(right.assetId));
+  const payload = {
+    annotations,
+    positions,
+    preferences,
+    legacy: {
+      bookIds: Array.from(new Set(
+        (existing?.legacy?.bookIds || []).concat(
+          sidecars
+            .filter((sidecar) => sidecar?.sourceFilename)
+            .map((sidecar) => sidecar.bookId || legacyBookIdFor(sidecar.sourceFilename)),
+        ),
+      )).sort(),
+    },
+  };
+  const existingPayload = existing && {
+    annotations: existing.annotations || [],
+    positions: existing.positions || [],
+    preferences: existing.preferences || [],
+    legacy: existing.legacy || { bookIds: [] },
+  };
+  if (existing && jsonEqual(existingPayload, payload)) {
+    return { record: existing, changed: false };
+  }
+  return {
+    record: {
+      schemaVersion: SEMANTIC_SCHEMA_VERSION,
+      recordType: ANNOTATIONS_TYPE,
+      workId: manifest.workId,
+      revision: Math.max(0, Number(existing?.revision) || 0) + 1,
+      ...payload,
+      updatedAt: migrationTime,
+    },
+    changed: true,
+  };
+}

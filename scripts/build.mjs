@@ -9,6 +9,7 @@ await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
 await Promise.all([
   cp(resolve(projectRoot, 'index.html'), resolve(outputDir, 'index.html')),
+  cp(resolve(projectRoot, 'semantic-library.js'), resolve(outputDir, 'semantic-library.js')),
   cp(resolve(projectRoot, '_headers'), resolve(outputDir, '_headers')),
   cp(resolve(projectRoot, 'vendor'), resolve(outputDir, 'vendor'), { recursive: true }),
 ]);

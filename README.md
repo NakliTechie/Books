@@ -12,9 +12,11 @@ The modern take is not “Calibre in a browser.” It is a **private semantic
 library**: the user owns the files, but the library actively helps them
 understand, read, connect, and remember what is inside.
 
-This direction is planning-only. The proposed product and architecture live in
-[SEMANTIC-LIBRARY-SPEC.md](SEMANTIC-LIBRARY-SPEC.md); the gated execution
-sequence and complete pending-item map live in
+This direction is now active. The product and architecture live in
+[SEMANTIC-LIBRARY-SPEC.md](SEMANTIC-LIBRARY-SPEC.md), accepted foundation
+choices in
+[SEMANTIC-LIBRARY-DECISIONS.md](SEMANTIC-LIBRARY-DECISIONS.md), and the gated
+execution sequence and complete pending-item map in
 [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md).
 
 ## v1.4 highlights
