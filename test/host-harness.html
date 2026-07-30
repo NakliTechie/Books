@@ -213,7 +213,8 @@
   const stores = {
     fsa: new Map([
       ['library/Sample.md', new TextEncoder().encode(
-        '# Sample book\n\nA quiet test book for NakliOS Books.\n\nSecond paragraph.'
+        '# Sample book\n\nA quiet test book for NakliOS Books.\n\n' +
+        '| Authored | table |\n| --- | --- |\n| stays | faithful |\n\nSecond paragraph.'
       )],
       ['library/Harness.epub', minimalEpub()],
       ['notes/missing-book.json', JSON.stringify({
@@ -656,6 +657,66 @@
         throw new Error('Model semantic enrichment lost evidence, provenance, or its injection boundary');
       }
       app.getElementById('work-details-dialog').close();
+
+      app.querySelector('.row[data-filename="Sample.md"]').click();
+      await waitFor(
+        () => app.getElementById('reader').classList.contains('is-open')
+          && !app.getElementById('reader-mode-btn').hidden,
+        'enriched work reader reopen',
+      );
+      app.getElementById('reader-mode-btn').click();
+      await waitFor(
+        () => app.querySelector('.native-reader[role="document"][tabindex="0"]')
+          && app.querySelector('.native-passage[aria-label]')
+          && app.querySelector('.native-fallback-notice')
+            ?.textContent.includes('table layout')
+          && Array.from(app.querySelectorAll('.native-concept')).some(
+            (concept) => concept.textContent.includes('Quiet source grounding')
+          )
+          && app.getElementById('reader-status').textContent.includes(
+            'Reference '
+          ),
+        'accessible native concepts and faithful-only structure notice',
+      );
+      app.getElementById('reader-prefs-btn').click();
+      await waitFor(
+        () => app.getElementById('reader-prefs-dialog').open,
+        'native typography controls',
+      );
+      app.getElementById('reader-font-family').value = 'humanist';
+      app.getElementById('reader-text-align').value = 'justify';
+      app.getElementById('reader-paragraph-spacing').value = '1.4';
+      for (const controlId of [
+        'reader-font-family',
+        'reader-text-align',
+        'reader-paragraph-spacing',
+      ]) {
+        app.getElementById(controlId).dispatchEvent(
+          new Event('change', { bubbles:true })
+        );
+      }
+      const nativeDocument = app.querySelector('.native-document');
+      await waitFor(
+        () => nativeDocument.style.fontFamily.includes('Trebuchet')
+          && nativeDocument.style.textAlign === 'justify'
+          && nativeDocument.style.getPropertyValue(
+            '--native-paragraph-spacing'
+          ) === '1.4em',
+        'native preference application',
+      );
+      app.getElementById('reader-prefs-dialog').close();
+      app.getElementById('reader-mode-btn').click();
+      await waitFor(
+        () => app.getElementById('reader-mode-btn').getAttribute(
+          'aria-pressed'
+        ) === 'false',
+        'faithful reader after native accessibility checks',
+      );
+      app.getElementById('back-btn').click();
+      await waitFor(
+        () => !app.getElementById('reader').classList.contains('is-open'),
+        'library after native accessibility checks',
+      );
       app.getElementById('annotations-browser-btn').click();
       await waitFor(
         () => app.getElementById('annotations-browser-dialog').open
@@ -943,8 +1004,75 @@
         'library after AI citation',
       );
 
+      const sourceBeforeDerivedClear = bytesToText(
+        stores.fsa.get('library/Sample.md')
+      );
+      const annotationIdsBeforeDerivedClear = jsonFromStore(
+        'annotations/' + sampleWorkId + '.json'
+      ).annotations.map((annotation) => annotation.annotationId).sort();
+      app.getElementById('library-tools-btn').click();
+      await waitFor(
+        () => app.getElementById('library-tools-dialog').open
+          && app.getElementById('library-storage-accounting')
+            .textContent.includes('Original sources')
+          && app.getElementById('library-storage-accounting')
+            .textContent.includes('Semantic + AI'),
+        'local storage accounting by data class',
+      );
+      app.getElementById('processing-toggle-btn').click();
+      await waitFor(
+        () => app.getElementById('processing-state-label')
+          .textContent.includes('paused'),
+        'background semantic processing pause',
+      );
+      app.getElementById('derived-clear-btn').click();
+      await waitFor(
+        () => app.getElementById('confirm-dialog').open
+          && app.getElementById('confirm-dialog-title').textContent.includes(
+            'Clear local derived data'
+          ),
+        'derived data cleanup confirmation',
+      );
+      app.getElementById('confirm-dialog-ok').click();
+      await waitFor(
+        () => ![...stores.fsa.keys()].some((path) =>
+          path.startsWith('jobs/')
+          || path.startsWith('indexes/')
+          || /^semantic\/(?:ai-runs\/|work_.+\/)/.test(path)
+          || path.startsWith('covers/')
+        )
+          && stores.fsa.has('library/Sample.md')
+          && stores.fsa.has('catalog/works/' + sampleWorkId + '.json')
+          && stores.fsa.has('annotations/' + sampleWorkId + '.json'),
+        'derived cleanup preserves originals and portable records',
+      );
+      if (
+        bytesToText(stores.fsa.get('library/Sample.md'))
+          !== sourceBeforeDerivedClear
+        || JSON.stringify(jsonFromStore(
+          'annotations/' + sampleWorkId + '.json'
+        ).annotations.map((annotation) => annotation.annotationId).sort())
+          !== JSON.stringify(annotationIdsBeforeDerivedClear)
+      ) {
+        throw new Error('Derived cleanup changed source bytes or user annotation identities');
+      }
+      app.getElementById('library-tools-btn').click();
+      await waitFor(
+        () => app.getElementById('library-tools-dialog').open
+          && app.getElementById('processing-state-label')
+            .textContent.includes('paused'),
+        'processing remains paused after cleanup',
+      );
+      app.getElementById('processing-toggle-btn').click();
+      app.getElementById('library-tools-dialog').close();
+      await waitFor(
+        () => jsonFromStore('jobs/' + sampleWorkId + '.json')
+          ?.stages?.deterministicSemantics?.status === 'complete',
+        'resumable local rebuild after derived cleanup',
+      );
+
       setStatus(
-        'PASS · semantic reading, enrichment, grouping, cited Ask, portability, and Trash recovery',
+        'PASS · semantic reading, enrichment, grouping, cited Ask, portability, recovery, and rebuild',
         'pass',
       );
     } catch (error) {

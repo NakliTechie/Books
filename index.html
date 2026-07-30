@@ -409,7 +409,21 @@ body { display: flex; flex-direction: column; }
   border-left:2px solid transparent; padding-left:14px;
 }
 .native-passage:target,.native-passage.is-current { border-left-color:var(--brand); }
-.native-passage p { margin:0 0 0.9em; }
+.native-passage:focus { outline:2px solid var(--brand); outline-offset:4px; }
+.native-passage p { margin:0 0 var(--native-paragraph-spacing,.9em); }
+.native-fallback-notice {
+  margin:0 0 12px; padding:8px 10px; border-left:3px solid var(--brand);
+  background:color-mix(in srgb,var(--brand) 8%,transparent);
+  color:var(--muted); font:11px/1.5 system-ui,sans-serif;
+}
+.native-concepts {
+  display:flex; flex-wrap:wrap; align-items:center; gap:5px; margin:9px 0 4px;
+  color:var(--muted); font:10px/1.35 system-ui,sans-serif;
+}
+.native-concept {
+  border:1px solid var(--line); border-radius:999px; padding:3px 7px;
+  background:color-mix(in srgb,var(--row) 72%,transparent); color:var(--ink);
+}
 .native-source-link {
   display:block; margin:5px 0 0 auto; border:0; background:transparent;
   color:var(--muted); cursor:pointer; font:10px/1.2 system-ui,sans-serif;
@@ -420,6 +434,14 @@ body { display: flex; flex-direction: column; }
   border:1px solid var(--line); border-radius:999px; padding:5px 9px;
   background:color-mix(in srgb,var(--panel) 92%,transparent);
   color:var(--muted); font:10px/1 system-ui,sans-serif;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior:auto !important;
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+  }
 }
 .reader-content mark[data-annotation-id] {
   color:inherit; border-radius:2px; padding:0 1px;
@@ -635,6 +657,27 @@ body { display: flex; flex-direction: column; }
 .library-tools-actions button:disabled { opacity:.5; cursor:not-allowed; }
 .trash-section {
   margin-top:14px; padding-top:12px; border-top:1px solid var(--line);
+}
+.derived-storage-section {
+  margin-top:14px; padding-top:12px; border-top:1px solid var(--line);
+}
+.derived-storage-head {
+  display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+  margin-bottom:8px;
+}
+.storage-accounting {
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px;
+}
+.storage-accounting-row {
+  display:flex; justify-content:space-between; gap:8px; padding:7px 8px;
+  border:1px solid var(--line); border-radius:6px; background:var(--body);
+  color:var(--muted); font-size:10px;
+}
+.storage-accounting-row strong { color:var(--ink); font-weight:600; }
+.derived-storage-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:8px; }
+.derived-storage-actions button {
+  padding:7px 9px; border:1px solid var(--line); border-radius:6px;
+  background:var(--row); color:var(--ink); cursor:pointer; font-size:10px;
 }
 .trash-section-head {
   display:flex; align-items:baseline; justify-content:space-between; gap:8px;
@@ -901,7 +944,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <button class="nav-btn" id="prev-btn" type="button" hidden aria-label="Previous" title="Previous (←)">◀</button>
     <button class="nav-btn" id="next-btn" type="button" hidden aria-label="Next" title="Next (→ or Space)">▶</button>
     <div class="reader-title" id="reader-title">…</div>
-    <div class="status" id="reader-status"></div>
+    <div class="status" id="reader-status" role="status" aria-live="polite"></div>
     <button class="storage-btn" id="reader-storage-btn" type="button" hidden>Storage</button>
     <button class="reader-mode-btn" id="reader-mode-btn" type="button" hidden
             aria-pressed="false" title="Switch between authored and Books-native reading">Native</button>
@@ -1049,6 +1092,18 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <button type="button" id="library-export-btn">Export library</button>
       <button type="button" id="library-import-btn">Import bundle</button>
     </div>
+    <section class="derived-storage-section" aria-labelledby="derived-storage-title">
+      <div class="derived-storage-head">
+        <strong id="derived-storage-title">Local storage map</strong>
+        <span id="processing-state-label">Checking…</span>
+      </div>
+      <div class="storage-accounting" id="library-storage-accounting"
+           aria-live="polite"></div>
+      <div class="derived-storage-actions">
+        <button type="button" id="processing-toggle-btn">Pause processing</button>
+        <button type="button" id="derived-clear-btn">Clear derived data…</button>
+      </div>
+    </section>
     <section class="trash-section" aria-labelledby="trash-section-title">
       <div class="trash-section-head">
         <strong id="trash-section-title">Trash</strong>
@@ -1135,6 +1190,26 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div class="books-dialog-field">
       <label for="reader-page-width">Text width</label>
       <input id="reader-page-width" type="range" min="480" max="1000" step="20">
+    </div>
+    <div class="books-dialog-field">
+      <label for="reader-font-family">Typeface</label>
+      <select id="reader-font-family">
+        <option value="book">Book serif</option>
+        <option value="system">System sans</option>
+        <option value="humanist">Humanist sans</option>
+      </select>
+    </div>
+    <div class="books-dialog-field">
+      <label for="reader-text-align">Text alignment</label>
+      <select id="reader-text-align">
+        <option value="start">Natural rag</option>
+        <option value="justify">Justified</option>
+      </select>
+    </div>
+    <div class="books-dialog-field">
+      <label for="reader-paragraph-spacing">Paragraph spacing</label>
+      <input id="reader-paragraph-spacing" type="range"
+             min="0.4" max="1.8" step="0.1">
     </div>
     <div class="books-dialog-field">
       <label for="reader-profile">Profile</label>
@@ -1787,6 +1862,7 @@ import {
   extractDeterministicSemantics,
   makeProcessingRun,
   normalizePassageText,
+  PASSAGE_EXTRACTOR_VERSION,
   passagesPath,
   processingRunPath,
   searchLexicalIndex,
@@ -1864,6 +1940,10 @@ const libraryValidateBtn = document.getElementById('library-validate-btn');
 const libraryRebuildBtn = document.getElementById('library-rebuild-btn');
 const libraryExportBtn = document.getElementById('library-export-btn');
 const libraryImportBtn = document.getElementById('library-import-btn');
+const libraryStorageAccounting = document.getElementById('library-storage-accounting');
+const processingStateLabel = document.getElementById('processing-state-label');
+const processingToggleBtn = document.getElementById('processing-toggle-btn');
+const derivedClearBtn = document.getElementById('derived-clear-btn');
 const portableLibraryImportInput = document.getElementById('portable-library-import-input');
 const trashCount = document.getElementById('trash-count');
 const trashList = document.getElementById('trash-list');
@@ -1932,6 +2012,9 @@ const readerPrefsDialog = document.getElementById('reader-prefs-dialog');
 const readerFontSize = document.getElementById('reader-font-size');
 const readerLineHeight = document.getElementById('reader-line-height');
 const readerPageWidth = document.getElementById('reader-page-width');
+const readerFontFamily = document.getElementById('reader-font-family');
+const readerTextAlign = document.getElementById('reader-text-align');
+const readerParagraphSpacing = document.getElementById('reader-paragraph-spacing');
 const readerProfile = document.getElementById('reader-profile');
 const readerSearchBtn = document.getElementById('reader-search-btn');
 const readerSearchbar = document.getElementById('reader-searchbar');
@@ -1963,6 +2046,9 @@ let semanticCatalog = null;
 let semanticManifests = new Map();
 let semanticProcessingTimer = null;
 let semanticProcessingTail = Promise.resolve();
+const PROCESSING_PAUSED_KEY = 'books.semanticProcessingPaused.v1';
+let semanticProcessingPaused =
+  localStorage.getItem(PROCESSING_PAUSED_KEY) === 'true';
 let semanticSearchTimer = null;
 let semanticSearchRun = 0;
 let semanticSearchResults = new Map();
@@ -1991,6 +2077,9 @@ const DEFAULT_READER_PREFS = Object.freeze({
   fontSize: 17,
   lineHeight: 1.7,
   pageWidth: 720,
+  fontFamily: 'book',
+  textAlign: 'start',
+  paragraphSpacing: 0.9,
   profile: 'system',
 });
 const READER_PREFS_KEY = 'books.readerPrefs.v1';
@@ -2217,12 +2306,39 @@ function clampNumber(value, min, max, fallback) {
 function normaliseReaderPrefs(value) {
   const p = value && typeof value === 'object' ? value : {};
   const profiles = ['system', 'paper', 'sepia', 'night'];
+  const fontFamilies = ['book', 'system', 'humanist'];
+  const textAlignments = ['start', 'justify'];
   return {
     fontSize: clampNumber(p.fontSize, 12, 28, DEFAULT_READER_PREFS.fontSize),
     lineHeight: clampNumber(p.lineHeight, 1.2, 2.2, DEFAULT_READER_PREFS.lineHeight),
     pageWidth: clampNumber(p.pageWidth, 480, 1000, DEFAULT_READER_PREFS.pageWidth),
+    fontFamily:fontFamilies.includes(p.fontFamily)
+      ? p.fontFamily : DEFAULT_READER_PREFS.fontFamily,
+    textAlign:textAlignments.includes(p.textAlign)
+      ? p.textAlign : DEFAULT_READER_PREFS.textAlign,
+    paragraphSpacing:clampNumber(
+      p.paragraphSpacing,
+      0.4,
+      1.8,
+      DEFAULT_READER_PREFS.paragraphSpacing,
+    ),
     profile: profiles.includes(p.profile) ? p.profile : DEFAULT_READER_PREFS.profile,
   };
+}
+
+function readerFontStack(fontFamily) {
+  if (fontFamily === 'system') {
+    return '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  }
+  if (fontFamily === 'humanist') {
+    return '"Trebuchet MS", "Gill Sans", "Segoe UI", sans-serif';
+  }
+  return 'Georgia, "Iowan Old Style", "Palatino Linotype", serif';
+}
+
+function preferredScrollBehavior() {
+  return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ? 'auto' : 'smooth';
 }
 
 function loadReaderPrefs() {
@@ -3001,6 +3117,7 @@ function textSectionsFromSource(text, format) {
     for (const element of doc.querySelectorAll('script, style, noscript, template')) {
       element.remove();
     }
+    const unsupportedStructures = nativeFallbackStructures(doc);
     const sections = [];
     let current = { label: doc.title || 'Document', parts: [] };
     for (const element of doc.body.querySelectorAll('h1, h2, h3, p, li, blockquote, pre')) {
@@ -3011,6 +3128,7 @@ function textSectionsFromSource(text, format) {
           label: current.label,
           text: current.parts.join('\n\n'),
           anchor: { kind: 'text-offset', sectionIndex: sections.length },
+          unsupportedStructures,
         });
         current = { label: value, parts: [] };
       } else if (/^H[1-3]$/.test(element.tagName)) {
@@ -3024,16 +3142,27 @@ function textSectionsFromSource(text, format) {
         label: current.label,
         text: current.parts.join('\n\n'),
         anchor: { kind: 'text-offset', sectionIndex: sections.length },
+        unsupportedStructures,
       });
     }
     return sections.length ? sections : [{
       label: doc.title || 'Document',
       text: doc.body.textContent || '',
       anchor: { kind: 'text-offset', sectionIndex: 0 },
+      unsupportedStructures,
     }];
   }
 
   if (format === 'md') {
+    const unsupportedStructures = [];
+    if (/```|~~~/.test(text)) unsupportedStructures.push('preformatted content');
+    if (/^\s*\|.+\|\s*$/m.test(text)) unsupportedStructures.push('table layout');
+    if (/\$\$[\s\S]+?\$\$|\\\(.+?\\\)/.test(text)) {
+      unsupportedStructures.push('mathematical notation');
+    }
+    if (/!\[[^\]]*\]\([^)]+\)/.test(text)) {
+      unsupportedStructures.push('authored figure');
+    }
     const sections = [];
     let label = 'Document';
     let parts = [];
@@ -3043,6 +3172,7 @@ function textSectionsFromSource(text, format) {
         label,
         text: parts.join('\n'),
         anchor: { kind: 'text-offset', sectionIndex: sections.length },
+        unsupportedStructures,
       });
       parts = [];
     };
@@ -3064,6 +3194,22 @@ function textSectionsFromSource(text, format) {
     text,
     anchor: { kind: 'text-offset', sectionIndex: 0 },
   }];
+}
+
+function nativeFallbackStructures(doc) {
+  const checks = [
+    ['table', 'table layout'],
+    ['math, [role="math"]', 'mathematical notation'],
+    ['pre', 'preformatted content'],
+    ['figure, img, svg, canvas, video, audio', 'authored figure or media'],
+    ['[epub\\:type~="footnote"], [epub\\:type~="endnote"], aside[role="doc-footnote"]',
+      'footnote or endnote'],
+    ['a[href]', 'authored link target'],
+  ];
+  return checks.flatMap(([selector, label]) => {
+    try { return doc.querySelector(selector) ? [label] : []; }
+    catch (_) { return []; }
+  });
 }
 
 function foliateSectionLabels(book) {
@@ -3107,6 +3253,7 @@ async function extractSectionsForAsset(asset, binary) {
           label: 'Page ' + pageNumber,
           text: content.items.map((item) => item.str || '').join(' '),
           anchor: { kind: 'pdf-page', page: pageNumber },
+          unsupportedStructures:['authored page layout'],
         });
       }
     } finally {
@@ -3136,6 +3283,7 @@ async function extractSectionsForAsset(asset, binary) {
       sections.push({
         label: labels.get(index) || 'Section ' + (index + 1),
         text: doc.body?.innerText || doc.body?.textContent || '',
+        unsupportedStructures:nativeFallbackStructures(doc),
         anchor: {
           kind: 'foliate-section',
           sectionIndex: index,
@@ -3206,7 +3354,7 @@ async function processSemanticWork(manifest, backendId) {
       run.stages.passages.status !== 'complete'
       || !passageRecord
       || passageRecord.assetId !== asset.assetId
-      || passageRecord.extractorVersion !== 'passages-v1'
+      || passageRecord.extractorVersion !== PASSAGE_EXTRACTOR_VERSION
     ) {
       run = await writeProcessingRun(
         updateProcessingStage(run, currentStage, 'running'),
@@ -3222,7 +3370,7 @@ async function processSemanticWork(manifest, backendId) {
       passageRecord = {
         schemaVersion: 1,
         recordType: 'books.passages',
-        extractorVersion: 'passages-v1',
+        extractorVersion: PASSAGE_EXTRACTOR_VERSION,
         workId: manifest.workId,
         assetId: asset.assetId,
         passages,
@@ -3237,7 +3385,10 @@ async function processSemanticWork(manifest, backendId) {
         run,
         currentStage,
         'complete',
-        { passageCount: passages.length, extractorVersion: 'passages-v1' },
+        {
+          passageCount:passages.length,
+          extractorVersion:PASSAGE_EXTRACTOR_VERSION,
+        },
       ));
     }
     const annotationsPath = semanticAnnotationsPath(manifest.workId);
@@ -3348,7 +3499,10 @@ async function processSemanticWork(manifest, backendId) {
 
 async function runSemanticProcessingQueue(backendId) {
   for (const manifest of semanticManifests.values()) {
-    if (!processingStillOwnsBackend(backendId)) return;
+    if (
+      semanticProcessingPaused
+      || !processingStillOwnsBackend(backendId)
+    ) return;
     if (manifest.recordState === 'merged') continue;
     await processSemanticWork(manifest, backendId);
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -3357,6 +3511,7 @@ async function runSemanticProcessingQueue(backendId) {
 
 function scheduleSemanticProcessing() {
   clearTimeout(semanticProcessingTimer);
+  if (semanticProcessingPaused) return;
   const backendId = activeBackendId();
   if (!backendId) return;
   semanticProcessingTimer = setTimeout(() => {
@@ -3597,7 +3752,10 @@ class FoliateEngine {
       ':root { color-scheme: light dark; } ' +
       'html, body { background:' + palette.background + ' !important; color:' + palette.color + ' !important; } ' +
       'body { font-size:' + p.fontSize + 'px !important; line-height:' + p.lineHeight + ' !important; ' +
-      'max-width:' + p.pageWidth + 'px !important; margin-inline:auto !important; }'
+      'font-family:' + readerFontStack(p.fontFamily) + ' !important; ' +
+      'text-align:' + p.textAlign + ' !important; ' +
+      'max-width:' + p.pageWidth + 'px !important; margin-inline:auto !important; } ' +
+      'p { margin-block-end:' + p.paragraphSpacing + 'em !important; }'
     );
   }
   onRelocate(cb) { this._cb = cb; }
@@ -4137,11 +4295,17 @@ class TextEngine {
   }
   async next() {
     if (!this.viewer) return;
-    this.viewer.scrollBy({ top: this.viewer.clientHeight * 0.9, behavior: 'smooth' });
+    this.viewer.scrollBy({
+      top:this.viewer.clientHeight * 0.9,
+      behavior:preferredScrollBehavior(),
+    });
   }
   async prev() {
     if (!this.viewer) return;
-    this.viewer.scrollBy({ top: -this.viewer.clientHeight * 0.9, behavior: 'smooth' });
+    this.viewer.scrollBy({
+      top:-this.viewer.clientHeight * 0.9,
+      behavior:preferredScrollBehavior(),
+    });
   }
   async getTOC() { return null; }
   async jumpToTocItem() { /* no-op — TXT/MD/HTML have no chapter structure in v1 */ }
@@ -4155,6 +4319,8 @@ class TextEngine {
       Object.assign(this.pre.style, {
         fontSize: p.fontSize + 'px',
         lineHeight: String(p.lineHeight),
+        fontFamily:readerFontStack(p.fontFamily),
+        textAlign:p.textAlign,
         color: palette.color,
       });
     }
@@ -4174,26 +4340,47 @@ class TextEngine {
 
 class NativeEngine {
   static engineKey = 'native';
-  constructor(container, passageRecord, manifest) {
+  constructor(container, passageRecord, manifest, semanticRecord = null) {
     this.container = container;
     this.record = passageRecord;
     this.manifest = manifest;
+    this.semanticRecord = semanticRecord;
     this.viewer = null;
     this.article = null;
     this._cb = null;
     this._sourceCb = null;
     this._scrollT = null;
     this.currentPassageId = passageRecord?.passages?.[0]?.passageId || null;
+    this._wordCounts = (passageRecord?.passages || []).map(
+      (passage) => (String(passage.text || '').match(/\S+/g) || []).length,
+    );
   }
   async load() {
     this.viewer = document.createElement('div');
     this.viewer.className = 'native-reader';
+    this.viewer.tabIndex = 0;
+    this.viewer.setAttribute('role', 'document');
+    this.viewer.setAttribute(
+      'aria-label',
+      'Books-native reading view for ' + (this.manifest?.title || 'this work'),
+    );
     this.article = document.createElement('article');
     this.article.className = 'native-document';
     const heading = document.createElement('h1');
     heading.className = 'native-work-heading';
+    heading.id = 'native-work-heading';
     heading.textContent = this.manifest?.title || 'Book';
+    this.article.setAttribute('aria-labelledby', heading.id);
     this.article.appendChild(heading);
+    const conceptsByPassage = new Map();
+    for (const concept of this.semanticRecord?.concepts || []) {
+      if (concept.userState?.hidden) continue;
+      for (const evidence of concept.evidence || []) {
+        const rows = conceptsByPassage.get(evidence.passageId) || [];
+        rows.push(concept);
+        conceptsByPassage.set(evidence.passageId, rows);
+      }
+    }
     let previousLabel = null;
     for (const passage of this.record.passages || []) {
       const label = passage.structure?.label || null;
@@ -4210,6 +4397,22 @@ class NativeEngine {
       section.id = passage.passageId;
       section.dataset.passageId = passage.passageId;
       section.dataset.passageOrder = String(passage.order);
+      section.tabIndex = -1;
+      section.setAttribute(
+        'aria-label',
+        (label || 'Passage') + ', reference ' +
+          (passage.order + 1) + ' of ' + this.record.passages.length,
+      );
+      const unsupported = passage.structure?.unsupportedStructures || [];
+      if (unsupported.length) {
+        const notice = document.createElement('aside');
+        notice.className = 'native-fallback-notice';
+        notice.setAttribute('role', 'note');
+        notice.textContent =
+          'Faithful mode retains ' + unsupported.join(', ') +
+          ' at this location. The reflow below contains its extracted text only.';
+        section.appendChild(notice);
+      }
       const passageContent = document.createElement('div');
       passageContent.dataset.passageContent = '';
       for (const paragraphText of String(passage.text).split(/\n{2,}/)) {
@@ -4218,17 +4421,50 @@ class NativeEngine {
         passageContent.appendChild(paragraph);
       }
       section.appendChild(passageContent);
+      const passageConcepts = (conceptsByPassage.get(passage.passageId) || [])
+        .slice()
+        .sort((left, right) => {
+          const leftModel = left.generatedBy?.mode === 'model-assisted' ? 1 : 0;
+          const rightModel = right.generatedBy?.mode === 'model-assisted' ? 1 : 0;
+          return rightModel - leftModel
+            || (Number(right.confidence) || 0) - (Number(left.confidence) || 0)
+            || String(left.label).localeCompare(String(right.label));
+        });
+      if (passageConcepts.length) {
+        const concepts = document.createElement('aside');
+        concepts.className = 'native-concepts';
+        concepts.setAttribute('aria-label', 'Source-grounded concepts');
+        const prefix = document.createElement('span');
+        prefix.textContent = 'Concepts';
+        concepts.appendChild(prefix);
+        for (const concept of passageConcepts.slice(0, 8)) {
+          const chip = document.createElement('span');
+          chip.className = 'native-concept';
+          chip.dataset.conceptId = concept.conceptId;
+          chip.textContent = concept.userState?.labelOverride || concept.label;
+          chip.title = concept.generatedBy?.mode === 'model-assisted'
+            ? 'Model-assisted · linked to this source passage'
+            : 'Local deterministic candidate · linked to this source passage';
+          concepts.appendChild(chip);
+        }
+        section.appendChild(concepts);
+      }
       const source = document.createElement('button');
       source.className = 'native-source-link';
       source.type = 'button';
       source.dataset.sourcePassage = passage.passageId;
       source.textContent = 'View authored source ↗';
+      source.setAttribute(
+        'aria-label',
+        'View authored source for reference ' + (passage.order + 1),
+      );
       section.appendChild(source);
       this.article.appendChild(section);
     }
     const location = document.createElement('div');
     location.className = 'native-location';
-    location.textContent = 'Native · 0%';
+    location.setAttribute('aria-hidden', 'true');
+    location.textContent = this._locationLabel(0);
     this.viewer.append(this.article, location);
     this.container.appendChild(this.viewer);
     this.viewer.addEventListener('scroll', () => this._onScroll());
@@ -4252,20 +4488,47 @@ class NativeEngine {
         else break;
       }
       for (const passage of passages) passage.classList.toggle('is-current', passage === current);
+      for (const passage of passages) {
+        if (passage === current) passage.setAttribute('aria-current', 'location');
+        else passage.removeAttribute('aria-current');
+      }
       if (current) this.currentPassageId = current.dataset.passageId;
       const total = Math.max(1, this.viewer.scrollHeight - this.viewer.clientHeight);
       const fraction = Math.max(0, Math.min(1, this.viewer.scrollTop / total));
       const badge = this.viewer.querySelector('.native-location');
-      if (badge) badge.textContent = 'Native · ' + Math.round(fraction * 100) + '%';
+      if (badge) badge.textContent = this._locationLabel(fraction);
       if (this._cb) this._cb(this.getPosition());
     }, 120);
+  }
+  _locationLabel(fraction) {
+    const passages = this.record.passages || [];
+    const index = Math.max(0, passages.findIndex(
+      (passage) => passage.passageId === this.currentPassageId,
+    ));
+    const remainingWords = this._wordCounts
+      .slice(index)
+      .reduce((sum, count) => sum + count, 0);
+    const minutes = Math.max(1, Math.ceil(remainingWords / 230));
+    return 'Native · reference ' + (index + 1) + ' of ' +
+      Math.max(1, passages.length) + ' · ' + Math.round(fraction * 100) +
+      '% · about ' + minutes + ' min left';
   }
   getPosition() {
     if (!this.viewer) return { passageId:this.currentPassageId, fraction:0 };
     const total = Math.max(1, this.viewer.scrollHeight - this.viewer.clientHeight);
+    const passages = this.record.passages || [];
+    const passageIndex = Math.max(0, passages.findIndex(
+      (passage) => passage.passageId === this.currentPassageId,
+    ));
+    const remainingWords = this._wordCounts
+      .slice(passageIndex)
+      .reduce((sum, count) => sum + count, 0);
     return {
       passageId: this.currentPassageId,
       fraction: Math.max(0, Math.min(1, this.viewer.scrollTop / total)),
+      reference:passageIndex + 1,
+      referenceCount:passages.length,
+      minutesRemaining:Math.max(1, Math.ceil(remainingWords / 230)),
     };
   }
   async jumpTo(position) {
@@ -4277,6 +4540,7 @@ class NativeEngine {
     if (target) {
       target.scrollIntoView({ block:'start' });
       this.currentPassageId = position.passageId;
+      target.focus({ preventScroll:true });
       return;
     }
     if (Number.isFinite(position.fraction)) {
@@ -4427,10 +4691,16 @@ class NativeEngine {
   }
   clearSearch() {}
   async next() {
-    this.viewer?.scrollBy({ top:this.viewer.clientHeight * 0.88, behavior:'smooth' });
+    this.viewer?.scrollBy({
+      top:this.viewer.clientHeight * 0.88,
+      behavior:preferredScrollBehavior(),
+    });
   }
   async prev() {
-    this.viewer?.scrollBy({ top:-this.viewer.clientHeight * 0.88, behavior:'smooth' });
+    this.viewer?.scrollBy({
+      top:-this.viewer.clientHeight * 0.88,
+      behavior:preferredScrollBehavior(),
+    });
   }
   async getTOC() {
     const seen = new Set();
@@ -4458,7 +4728,13 @@ class NativeEngine {
       maxWidth:p.pageWidth + 'px',
       fontSize:p.fontSize + 'px',
       lineHeight:String(p.lineHeight),
+      fontFamily:readerFontStack(p.fontFamily),
+      textAlign:p.textAlign,
     });
+    this.article.style.setProperty(
+      '--native-paragraph-spacing',
+      p.paragraphSpacing + 'em',
+    );
   }
   onRelocate(cb) { this._cb = cb; }
   onSource(cb) { this._sourceCb = cb; }
@@ -5464,14 +5740,178 @@ async function openLibraryTools() {
   libraryRebuildBtn.disabled = true;
   trashCount.textContent = 'Checking…';
   trashList.innerHTML = '';
+  libraryStorageAccounting.innerHTML =
+    '<span class="semantic-search-state">Measuring local records…</span>';
+  syncProcessingControls();
   libraryToolsDialog.showModal();
   await Promise.all([
     validateActiveLibrary().catch((error) => {
       console.warn('Books: library validation failed', error);
     }),
     refreshTrashRecords(),
+    refreshStorageAccounting(),
   ]);
 }
+
+function formatByteCount(value) {
+  const bytes = Math.max(0, Number(value) || 0);
+  if (bytes < 1024) return Math.round(bytes) + ' B';
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let amount = bytes / 1024;
+  let unit = units[0];
+  for (let index = 1; index < units.length && amount >= 1024; index++) {
+    amount /= 1024;
+    unit = units[index];
+  }
+  return amount.toFixed(amount >= 100 ? 0 : amount >= 10 ? 1 : 2) + ' ' + unit;
+}
+
+async function listedDataPaths(prefix) {
+  try {
+    return stripListPrefix(await naklios.fs.list(prefix), prefix)
+      .filter((name) => typeof name === 'string' && name && !name.endsWith('/'))
+      .map((name) => prefix + name);
+  } catch (_) {
+    return [];
+  }
+}
+
+async function storedPathSize(path) {
+  try {
+    return toArrayBuffer(await naklios.fs.readBinary(path)).byteLength;
+  } catch (_) {
+    try {
+      return new TextEncoder().encode(await naklios.fs.read(path)).byteLength;
+    } catch (_) {
+      return 0;
+    }
+  }
+}
+
+async function storageAccountingSnapshot() {
+  const manifestIds = Array.from(semanticManifests.keys());
+  const workIds = Array.from(semanticManifests.values())
+    .filter((manifest) => manifest.recordState !== 'merged')
+    .map((manifest) => manifest.workId);
+  const categories = {
+    sources:new Set(libraryCache.map((entry) => 'library/' + entry.filename)),
+    portable:new Set([
+      SEMANTIC_CATALOG_PATH,
+      ...manifestIds.map(semanticManifestPath),
+      ...manifestIds.map(semanticAnnotationsPath),
+      ...(await listedDataPaths('notes/')),
+    ]),
+    passages:new Set(workIds.map(passagesPath)),
+    indexes:new Set(workIds.map(workLexicalIndexPath)),
+    semantics:new Set([
+      ...workIds.map(semanticRecordsPath),
+      ...workIds.map(processingRunPath),
+      ...(await listedDataPaths(AI_RUNS_PREFIX)),
+    ]),
+    media:new Set(await listedDataPaths('covers/')),
+  };
+  const totals = {};
+  for (const [category, paths] of Object.entries(categories)) {
+    totals[category] = (await Promise.all(
+      Array.from(paths, storedPathSize),
+    )).reduce((sum, size) => sum + size, 0);
+  }
+  return { totals, categories };
+}
+
+function syncProcessingControls() {
+  processingStateLabel.textContent = semanticProcessingPaused
+    ? 'Background processing paused'
+    : 'Background processing active';
+  processingToggleBtn.textContent = semanticProcessingPaused
+    ? 'Resume processing' : 'Pause processing';
+}
+
+async function refreshStorageAccounting() {
+  syncProcessingControls();
+  try {
+    const snapshot = await storageAccountingSnapshot();
+    const rows = [
+      ['Original sources', snapshot.totals.sources],
+      ['Portable records', snapshot.totals.portable],
+      ['Passages', snapshot.totals.passages],
+      ['Lexical indexes', snapshot.totals.indexes],
+      ['Semantic + AI', snapshot.totals.semantics],
+      ['Cover cache', snapshot.totals.media],
+    ];
+    libraryStorageAccounting.innerHTML = rows.map(([label, size]) =>
+      '<div class="storage-accounting-row"><span>' + escapeHtml(label) +
+        '</span><strong>' + escapeHtml(formatByteCount(size)) +
+        '</strong></div>'
+    ).join('');
+    return snapshot;
+  } catch (error) {
+    libraryStorageAccounting.innerHTML =
+      '<span class="semantic-search-state">Storage could not be measured: ' +
+        escapeHtml(String(error?.message || error)) + '</span>';
+    return null;
+  }
+}
+
+processingToggleBtn.addEventListener('click', () => {
+  semanticProcessingPaused = !semanticProcessingPaused;
+  localStorage.setItem(
+    PROCESSING_PAUSED_KEY,
+    String(semanticProcessingPaused),
+  );
+  syncProcessingControls();
+  if (!semanticProcessingPaused) scheduleSemanticProcessing();
+  showToast(
+    semanticProcessingPaused
+      ? 'Paused background parsing. Reading and existing indexes still work.'
+      : 'Resumed background parsing.',
+  );
+});
+
+derivedClearBtn.addEventListener('click', async () => {
+  if (libraryToolsDialog.open) libraryToolsDialog.close();
+  const confirmed = await askForConfirmation({
+    title:'Clear local derived data?',
+    message:'Passages, lexical indexes, generated semantic records, AI run ' +
+      'history, processing checkpoints, and cover thumbnails will be removed. ' +
+      'Original books, work metadata, reading positions, notes, bookmarks, ' +
+      'highlights, Trash, and provider settings are preserved.',
+    confirmLabel:'Clear derived data',
+  });
+  if (!confirmed) return;
+  const wasPaused = semanticProcessingPaused;
+  semanticProcessingPaused = true;
+  clearTimeout(semanticProcessingTimer);
+  try {
+    await semanticProcessingTail.catch(() => {});
+    const snapshot = await storageAccountingSnapshot();
+    const derivedPaths = new Set([
+      ...snapshot.categories.passages,
+      ...snapshot.categories.indexes,
+      ...snapshot.categories.semantics,
+      ...snapshot.categories.media,
+    ]);
+    for (const path of derivedPaths) await deletePathIfPresent(path);
+    clearCoverObjectUrls();
+    semanticProcessingPaused = wasPaused;
+    if (!semanticProcessingPaused) scheduleSemanticProcessing();
+    await listLibrary();
+    showToast(
+      wasPaused
+        ? 'Cleared derived data. Processing remains paused.'
+        : 'Cleared derived data. A local rebuild is queued.',
+      { duration:6000 },
+    );
+  } catch (error) {
+    semanticProcessingPaused = wasPaused;
+    if (!semanticProcessingPaused) scheduleSemanticProcessing();
+    showToast(
+      'Derived-data cleanup paused safely: ' +
+        String(error?.message || error),
+      { error:true, duration:7000 },
+    );
+  }
+});
 
 async function rebuildActiveCatalog() {
   const report = latestLibraryValidation || await validateActiveLibrary();
@@ -7054,10 +7494,14 @@ async function switchToNativeMode() {
     readerContent.innerHTML = '';
     resetReaderSearch();
     readerSearchbar.hidden = true;
+    const nativeSemanticRecord = await readJsonRecord(
+      semanticRecordsPath(manifest.workId),
+    );
     activeEngine = new NativeEngine(
       readerContent,
       activeNativePassageRecord,
       manifest,
+      nativeSemanticRecord,
     );
     await activeEngine.load();
     activeEngine.applyPreferences(activeReaderPrefs);
@@ -7072,7 +7516,7 @@ async function switchToNativeMode() {
       if (!activeSidecar || activeReaderMode !== 'native') return;
       activeSidecar.nativePosition = position;
       activeSidecar.lastOpened = new Date().toISOString();
-      readerStatus.textContent = 'Native · ' + Math.round((position.fraction || 0) * 100) + '%';
+      readerStatus.textContent = describePosition('native', position);
       writeSidecarDebounced(activeBookId, activeSidecar);
     });
     activeEngine.onSource((passage) => {
@@ -7138,6 +7582,12 @@ readerModeBtn.addEventListener('click', () => {
 
 function describePosition(engineKey, pos) {
   if (!pos) return '';
+  if (engineKey === 'native' && pos.reference) {
+    return 'Reference ' + pos.reference + ' of ' +
+      Math.max(pos.reference, Number(pos.referenceCount) || pos.reference) +
+      ' · ' + Math.round((pos.fraction || 0) * 100) + '% · about ' +
+      Math.max(1, Number(pos.minutesRemaining) || 1) + ' min left';
+  }
   if (engineKey === 'pdf' && pos.page) {
     const pct = typeof pos.scrollY === 'number' ? Math.round(pos.scrollY * 100) : 0;
     return 'p.' + pos.page + (pct ? ' · ' + pct + '%' : '');
@@ -7250,6 +7700,9 @@ function syncReaderPrefsControls() {
   readerFontSize.value = String(p.fontSize);
   readerLineHeight.value = String(p.lineHeight);
   readerPageWidth.value = String(p.pageWidth);
+  readerFontFamily.value = p.fontFamily;
+  readerTextAlign.value = p.textAlign;
+  readerParagraphSpacing.value = String(p.paragraphSpacing);
   readerProfile.value = p.profile;
 }
 
@@ -7258,6 +7711,9 @@ function readReaderPrefsControls() {
     fontSize: readerFontSize.value,
     lineHeight: readerLineHeight.value,
     pageWidth: readerPageWidth.value,
+    fontFamily:readerFontFamily.value,
+    textAlign:readerTextAlign.value,
+    paragraphSpacing:readerParagraphSpacing.value,
     profile: readerProfile.value,
   });
 }
@@ -7278,7 +7734,15 @@ readerPrefsBtn.addEventListener('click', () => {
   syncReaderPrefsControls();
   readerPrefsDialog.showModal();
 });
-[readerFontSize, readerLineHeight, readerPageWidth, readerProfile].forEach((control) => {
+[
+  readerFontSize,
+  readerLineHeight,
+  readerPageWidth,
+  readerFontFamily,
+  readerTextAlign,
+  readerParagraphSpacing,
+  readerProfile,
+].forEach((control) => {
   control.addEventListener('input', applyReaderPrefsFromDialog);
   control.addEventListener('change', applyReaderPrefsFromDialog);
 });

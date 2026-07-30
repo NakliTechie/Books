@@ -27,7 +27,9 @@ permanent deletion is a separate confirmed action. Source-grounded Ask works
 through NakliOS AI or a visible OpenAI-compatible local/BYOK endpoint, with
 passage citations and durable model-run provenance. Users can explicitly group
 multiple source formats as one work and split them again without changing the
-originals or losing format-grounded annotations.
+originals or losing format-grounded annotations. Native mode now exposes
+stable references, time remaining, accessible landmarks, deeper typography,
+source-grounded concepts, and explicit Faithful-only structure notices.
 
 ## v1.4 highlights
 
@@ -88,6 +90,7 @@ naklios-universe/
     ├── SEMANTIC-LIBRARY-WORKPLAN.md ← pending phases and decision gates
     ├── PORTABLE-LIBRARY-FORMAT.md ← documented backup/import bundle
     ├── AI-PROVIDER-PRIVACY.md  ← provider, consent, and provenance boundary
+    ├── NATIVE-READER.md        ← reflow, fidelity, accessibility, and cleanup contract
     ├── CALIBRE-RESEARCH.md       ← comparison input, not a parity mandate
     ├── walkthroughs.md           ← open scope-defining questions
     ├── DEFERRED.md               ← v2+ items with revisit triggers
@@ -127,6 +130,8 @@ naklios-universe/
       recoverable Trash
 - [x] Grounded AI boundary — cited library Ask, standalone local/BYOK,
       host-mediated NakliOS AI, and evidence-linked provenance
+- [x] Native reader accessibility foundation — source fallbacks, references,
+      concepts, reduced motion, typography, storage map, and derived cleanup
 - [x] Contract test at `scripts/test-books-v1_1.mjs`
 - [x] Safe two-backend browser fixture at `test/host-harness.html`
 
@@ -147,6 +152,8 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
   conflict-safe original-file and portable-record bundle
 - [AI-PROVIDER-PRIVACY.md](AI-PROVIDER-PRIVACY.md) — exact standalone and
   NakliOS model boundary, consent, credential, and provenance rules
+- [NATIVE-READER.md](NATIVE-READER.md) — Native/Faithful fidelity,
+  accessibility, preferences, and derived-data lifecycle
 
 ## Context
 

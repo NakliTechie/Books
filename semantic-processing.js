@@ -1,5 +1,5 @@
 export const PROCESSING_SCHEMA_VERSION = 1;
-export const PASSAGE_EXTRACTOR_VERSION = 'passages-v1';
+export const PASSAGE_EXTRACTOR_VERSION = 'passages-v2';
 export const LEXICAL_INDEX_VERSION = 'lexical-v1';
 export const DETERMINISTIC_SEMANTICS_VERSION = 'deterministic-semantics-v1';
 
@@ -114,6 +114,11 @@ export async function segmentSections({
         structure: {
           sectionIndex,
           label: section.label || null,
+          unsupportedStructures:Array.from(new Set(
+            (section.unsupportedStructures || [])
+              .map((value) => String(value || '').trim())
+              .filter(Boolean),
+          )).sort(),
         },
         anchor: {
           format,

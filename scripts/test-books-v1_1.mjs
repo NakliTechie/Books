@@ -239,6 +239,31 @@ assert.match(
 );
 assert.match(
   html,
+  /reader-font-family[\s\S]*?reader-text-align[\s\S]*?reader-paragraph-spacing/,
+  'reflow controls include typeface, justification, and paragraph spacing',
+);
+assert.match(
+  html,
+  /prefers-reduced-motion:\s*reduce[\s\S]*?preferredScrollBehavior/,
+  'reader motion follows the operating-system reduced-motion preference',
+);
+assert.match(
+  html,
+  /class NativeEngine[\s\S]*?role', 'document'[\s\S]*?native-fallback-notice[\s\S]*?native-concepts[\s\S]*?aria-current[\s\S]*?minutesRemaining/,
+  'Native mode exposes landmarks, fallbacks, concepts, references, and time remaining',
+);
+assert.match(
+  html,
+  /library-storage-accounting[\s\S]*?processing-toggle-btn[\s\S]*?derived-clear-btn/,
+  'library tools expose storage accounting, processing pause, and derived cleanup',
+);
+assert.match(
+  html,
+  /storageAccountingSnapshot[\s\S]*?Original sources[\s\S]*?Portable records[\s\S]*?Semantic \+ AI[\s\S]*?Clear local derived data/,
+  'storage lifecycle separates canonical, user-owned, and rebuildable data',
+);
+assert.match(
+  html,
   /buildGroundedMessages\([\s\S]*?runAiMessages\([\s\S]*?validateGroundedAnswer\([\s\S]*?persistAiRun\(makeAiRunRecord/,
   'Ask validates cited responses and records provider/evidence provenance',
 );
@@ -545,6 +570,16 @@ assert.match(
   harness,
   /work-split-btn[\s\S]*?Split these formats[\s\S]*?reversible work split[\s\S]*?format-grounded reading data/,
   'browser harness verifies the grouped-work split round trip',
+);
+assert.match(
+  harness,
+  /native-reader\[role="document"\]\[tabindex="0"\][\s\S]*?native-fallback-notice[\s\S]*?Quiet source grounding[\s\S]*?reader-font-family[\s\S]*?native preference application/,
+  'browser harness verifies accessible Native semantics and typography controls',
+);
+assert.match(
+  harness,
+  /local storage accounting by data class[\s\S]*?background semantic processing pause[\s\S]*?derived cleanup preserves originals and portable records[\s\S]*?resumable local rebuild/,
+  'browser harness verifies safe derived-data lifecycle controls',
 );
 
 console.log('Books persistent storage and library contract: PASS');

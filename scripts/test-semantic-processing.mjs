@@ -4,6 +4,7 @@ import {
   extractDeterministicSemantics,
   makeProcessingRun,
   normalizePassageText,
+  PASSAGE_EXTRACTOR_VERSION,
   passagesPath,
   processingRunPath,
   searchLexicalIndex,
@@ -15,6 +16,7 @@ import {
 } from '../semantic-processing.js';
 
 assert.equal(normalizePassageText(' One  two\r\n\r\n\r\nThree '), 'One two\n\nThree');
+assert.equal(PASSAGE_EXTRACTOR_VERSION, 'passages-v2');
 assert.deepEqual(tokenize('Memory, private-library 2026'), [
   'memory',
   'private-library',
@@ -31,6 +33,7 @@ const passages = await segmentSections({
       label: 'Foundations',
       text: 'A private library preserves memory.\n\nSemantic retrieval connects memory to evidence.',
       anchor: { sectionIndex: 0, cfi: 'epubcfi(/6/2)' },
+      unsupportedStructures:['authored figure', 'mathematics'],
     },
     {
       label: 'Practice',
@@ -43,6 +46,10 @@ assert.ok(passages.length >= 2);
 assert.equal(passages[0].workId, 'work_test');
 assert.equal(passages[0].anchor.format, 'epub');
 assert.equal(passages[0].anchor.engine.cfi, 'epubcfi(/6/2)');
+assert.deepEqual(passages[0].structure.unsupportedStructures, [
+  'authored figure',
+  'mathematics',
+]);
 assert.match(passages[0].anchor.quoteHash, /^sha256:[a-f0-9]{64}$/);
 assert.equal(passages[0].passageId, 'passage_asset_test_0_0_35');
 
