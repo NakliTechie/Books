@@ -35,7 +35,7 @@ All persistence uses the same `naklios.fs.*` virtual paths. NakliOS scopes them 
 Vendor `naklios.js` inline (sdk surface v1). Call `naklios.ready()` after init; `naklios.title('Books — <book-title>')` on book open; subscribe to `naklios.onCapabilitiesChange` for fs availability and to `naklios.theme.onChange` for theme.
 
 ### A4. Standalone behavior (Q1)
-Outside NakliOS, the vendored SDK exposes a `browser` filesystem backend backed by IndexedDB. The full library, reading positions, bookmarks, notes, cached covers, filtering, recovery, and removal flows are available. Storage remains local to the browser profile and origin. Local AI is the only host-only reader feature.
+Outside NakliOS, the vendored SDK exposes a `browser` filesystem backend backed by IndexedDB. The full library, reading positions, bookmarks, notes, cached covers, filtering, recovery, and removal flows are available. Storage remains local to the browser profile and origin. Optional AI is host-mediated inside NakliOS or uses a visible local/remote BYOK provider in standalone mode; reading and lexical search do not depend on it.
 
 ### A5. Book identity (Q2)
 `bookId` is a slugified filename (extension stripped, non-alnum → underscore, trimmed). Collisions get numeric suffixes (`_2`, `_3`). Sidecar carries a `sourceFilename` field for collision detection and future rename-recovery.

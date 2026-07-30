@@ -1,12 +1,12 @@
 # books
 
-> **Lifecycle:** `living` — v1.4 persistent standalone library.
+> **Lifecycle:** `living` — private semantic-library foundation.
 
 Books is a single-file, browser-native reader for ePub, PDF, MOBI, AZW3, FB2, TXT, Markdown, and HTML. It works as a standalone application at `https://books.naklitechie.com/` and as the `books` app inside NakliOS.
 
 Standalone books and sidecars persist in origin-scoped IndexedDB on the current device. Inside NakliOS, they live under `apps/books/` in the selected Folder or encrypted Crate. Browser, Folder, and Crate remain separate libraries; switching never copies or deletes data.
 
-## Proposed v2+ direction
+## Semantic-library direction
 
 The modern take is not “Calibre in a browser.” It is a **private semantic
 library**: the user owns the files, but the library actively helps them
@@ -91,13 +91,14 @@ naklios-universe/
 │   └── index.html                ← Books registry entry + storage host
 └── Books/                        ← THIS INITIATIVE
     ├── SPEC.md                   ← shipped v1.4 architectural decisions
-    ├── SEMANTIC-LIBRARY-SPEC.md  ← proposed v2+ product and architecture
-    ├── SEMANTIC-LIBRARY-WORKPLAN.md ← pending phases and decision gates
+    ├── SEMANTIC-LIBRARY-SPEC.md  ← active product and architecture contract
+    ├── SEMANTIC-LIBRARY-WORKPLAN.md ← phase status and remaining decision gates
     ├── PORTABLE-LIBRARY-FORMAT.md ← documented backup/import bundle
     ├── SYNC-CONTRACT.md          ← future private-continuity conflict rules
     ├── STORAGE-RECOVERY.md       ← quotas, data classes, and recovery order
-    ├── AI-PROVIDER-PRIVACY.md  ← provider, consent, and provenance boundary
-    ├── NATIVE-READER.md        ← reflow, fidelity, accessibility, and cleanup contract
+    ├── AI-PROVIDER-PRIVACY.md    ← provider, consent, and provenance boundary
+    ├── NATIVE-READER.md          ← reflow, fidelity, accessibility, and cleanup contract
+    ├── SECURITY-REVIEW.md        ← current threat-boundary and release review
     ├── CALIBRE-RESEARCH.md       ← comparison input, not a parity mandate
     ├── walkthroughs.md           ← open scope-defining questions
     ├── DEFERRED.md               ← v2+ items with revisit triggers
@@ -153,10 +154,10 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
 - [DEFERRED.md](DEFERRED.md)
 - [CALIBRE-RESEARCH.md](CALIBRE-RESEARCH.md) — official feature inventory and
   comparison worksheet
-- [SEMANTIC-LIBRARY-SPEC.md](SEMANTIC-LIBRARY-SPEC.md) — proposed private
-  semantic library extension
-- [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md) — phased,
-  gated plan containing all pending work
+- [SEMANTIC-LIBRARY-SPEC.md](SEMANTIC-LIBRARY-SPEC.md) — active private
+  semantic-library contract and decision ledger
+- [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md) — completed
+  foundation phases and remaining explicit decision gates
 - [PORTABLE-LIBRARY-FORMAT.md](PORTABLE-LIBRARY-FORMAT.md) — versioned,
   conflict-safe original-file and portable-record bundle
 - [AI-PROVIDER-PRIVACY.md](AI-PROVIDER-PRIVACY.md) — exact standalone and
@@ -167,6 +168,8 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
   deterministic record-level conflict behavior for any future transport
 - [STORAGE-RECOVERY.md](STORAGE-RECOVERY.md) — backend isolation, browser
   quota guidance, and recovery order
+- [SECURITY-REVIEW.md](SECURITY-REVIEW.md) — application, provider, portable
+  data, and Cloudflare release boundaries
 
 ## Context
 
