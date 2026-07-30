@@ -34,8 +34,21 @@ assert.match(
   /fsBackend:\s*standaloneFsAvailable\s*\?\s*'browser'\s*:\s*null/,
   'standalone mode selects Browser storage',
 );
-assert.match(html, /indexedDB\.open\(STANDALONE_DB_NAME,\s*1\)/,
+assert.match(html, /indexedDB\.open\(STANDALONE_DB_NAME,\s*STANDALONE_DB_VERSION\)/,
   'standalone library opens a versioned IndexedDB filesystem');
+assert.match(html, /STANDALONE_DB_VERSION\s*=\s*2/,
+  'standalone storage schema includes remembered folder handles');
+assert.match(html, /async function standaloneConnectFolder\(/,
+  'standalone mode can connect a user-granted folder library');
+assert.match(html, /async function standaloneFolderWalkSources\(/,
+  'folder libraries recursively discover supported source books');
+assert.match(
+  html,
+  /STANDALONE_FOLDER_SIDECAR\s*=\s*'\.books'[\s\S]*?canonicalMetadata:'sidecar'/,
+  'folder libraries reserve a durable Books-owned sidecar',
+);
+assert.match(html, /function persistStandaloneFolderInventory\(/,
+  'standalone folder scans persist versioned inventory records');
 assert.match(html, /standaloneReadBinary[\s\S]*?standaloneWrite[\s\S]*?standaloneList/,
   'standalone filesystem supports binary books and directory scans');
 assert.match(html, /id === 'browser' \|\| id === 'fsa' \|\| id === 'crate'/,
@@ -46,6 +59,12 @@ assert.match(html, /from '\.\/semantic-library\.js'/,
   'Books loads the shared semantic-library domain model');
 assert.match(html, /from '\.\/semantic-processing\.js'/,
   'Books loads the shared local processing pipeline');
+assert.match(html, /id="work-processing-cancel-btn"/,
+  'per-work processing can be cancelled and resumed');
+assert.match(html, /id="work-connections-section"/,
+  'book details expose evidence-linked ideas across the library');
+assert.match(html, /recoverStandaloneFolderRename/,
+  'standalone Folder mode preserves work identity through strong-hash renames');
 assert.match(html, /async function ensureSemanticFoundation\(/,
   'library scans reconcile portable work manifests');
 assert.match(html, /async function syncPortableAnnotationsForManifest\(/,
@@ -112,10 +131,20 @@ assert.match(
   /SEMANTIC_VIEWS_PATH[\s\S]*?upsertLibraryView[\s\S]*?persistLibraryViews/,
   'saved views are portable records in the active storage backend',
 );
+assert.match(
+  html,
+  /async function mutateSemanticManifest\(workId, mutate\)[\s\S]*?semanticManifestMutationTails[\s\S]*?updateWorkDetails\(latest, values\)[\s\S]*?updateAssetFingerprint\(latest, asset\.assetId/,
+  'user metadata and background fingerprints mutate the latest manifest serially',
+);
 assert.match(html, /id="semantic-search-input"/,
   'library includes full-text search across local passage indexes');
 assert.match(html, /async function runSemanticLibrarySearch\(/,
   'library full-text search reads its offline per-work indexes');
+assert.match(
+  html,
+  /let semanticLibraryQuery = ''[\s\S]*?value="' \+[\s\S]*?escapeHtml\(semanticLibraryQuery\)[\s\S]*?runSemanticLibrarySearch\(semanticLibraryQuery\)/,
+  'semantic search survives a background library reconciliation rerender',
+);
 assert.match(
   html,
   /searchLexicalIndex\(index, normalized\)[\s\S]*?data-semantic-result/,
@@ -132,7 +161,7 @@ assert.match(html, /function openWorkDetails\(/,
   'work details load portable metadata and local processing state');
 assert.match(
   html,
-  /updateWorkDetails\(current[\s\S]*?portable-metadata-changed[\s\S]*?scheduleSemanticProcessing/,
+  /updateWorkDetails\(latest, values\)[\s\S]*?portable-metadata-changed[\s\S]*?scheduleSemanticProcessing/,
   'metadata edits persist canonically and refresh affected search metadata',
 );
 assert.match(html, /id="add-highlight-btn"/,
@@ -202,6 +231,11 @@ assert.match(html, /id="reader-library"/, 'reader keeps the library visible in a
 assert.match(html, /id="reader-library-list"/, 'reader sidebar includes the library contents');
 assert.match(html, /id="reader-open-file"/, 'reader includes an explicit file-open control');
 assert.match(html, /id="reader-searchbar"/, 'reader includes an in-book search surface');
+assert.match(
+  html,
+  /function queueReaderNavigation\(method\)[\s\S]*?readerNavigationTail[\s\S]*?queueReaderNavigation\('next'\)/,
+  'reader navigation serializes rapid page turns instead of dropping them',
+);
 assert.match(html, /id="reader-ai-btn"/, 'reader exposes Local AI only in reading mode');
 assert.match(html, /id="reader-ai-sidecar"/,
   'reader has a persistent app-styled Local AI sidecar');

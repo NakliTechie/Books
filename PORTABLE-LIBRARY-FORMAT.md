@@ -9,6 +9,11 @@ Books exports a library as UTF-8 JSON with the filename suffix
 movement between Browser, Folder, and Crate libraries. It is not a derived
 cache dump.
 
+This export bundle is distinct from a live Folder library's `.books/` sidecar.
+The sidecar keeps canonical records and rebuildable indexes next to an existing
+recursive collection without base64-copying its sources. See
+[FOLDER-LIBRARY-FORMAT.md](FOLDER-LIBRARY-FORMAT.md).
+
 ## Included
 
 - Every available original source file, encoded as base64 without changing its

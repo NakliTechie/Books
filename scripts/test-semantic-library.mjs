@@ -16,6 +16,7 @@ import {
   mergePortableAnnotationRecords,
   mergeWorkManifests,
   reconcileLegacyAnnotations,
+  recoverRenamedAssetIdentity,
   reanchorPortableAnnotations,
   reconcileSemanticLibrary,
   rebuildCatalog,
@@ -164,6 +165,32 @@ assert.equal(
   ).changed,
   false,
   'repeating the same fingerprint is idempotent',
+);
+const previouslyMissing = structuredClone(fingerprinted.manifest);
+previouslyMissing.assets[0].availability = 'missing';
+const renameRecovery = recoverRenamedAssetIdentity(
+  previouslyMissing,
+  first.manifests[1],
+  {
+    previousAssetId:previouslyMissing.assets[0].assetId,
+    currentFilename:'Renamed Pride.epub',
+    fingerprint,
+    byteLength:sourceBytes.byteLength,
+  },
+  now,
+);
+assert.equal(
+  renameRecovery.primary.assets[0].assetId,
+  previouslyMissing.assets[0].assetId,
+  'a strong-fingerprint rename preserves the original asset identity',
+);
+assert.equal(renameRecovery.primary.assets[0].sourceFilename, 'Renamed Pride.epub');
+assert.equal(renameRecovery.primary.assets[0].availability, 'available');
+assert.equal(renameRecovery.tombstone.recordState, 'merged');
+assert.equal(renameRecovery.tombstone.mergedInto, previouslyMissing.workId);
+assert.equal(
+  renameRecovery.tombstone.mergeReason,
+  'strong-fingerprint-rename-recovery',
 );
 
 const trashed = markAssetTrashed(

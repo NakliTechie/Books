@@ -1,12 +1,14 @@
 {
   "name": "naklios-books",
-  "version": "1.4.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "wrangler dev",
-    "test": "node scripts/test-books-v1_1.mjs && node scripts/test-semantic-library.mjs && node scripts/test-semantic-processing.mjs && node scripts/test-semantic-ai.mjs && node scripts/test-local-ai-sidecar.mjs && node scripts/test-security-contract.mjs && node scripts/test-deploy-contract.mjs",
+    "test": "node scripts/test-books-v1_1.mjs && node scripts/test-folder-library.mjs && node scripts/test-library-scale.mjs && node scripts/test-semantic-library.mjs && node scripts/test-semantic-processing.mjs && node scripts/test-embedding-binary.mjs && python3 scripts/test-native-vector-shard.py && node scripts/test-semantic-embedding-sidecar.mjs && node scripts/test-idea-graph.mjs && node scripts/test-native-indexer.mjs && node scripts/test-semantic-ai.mjs && node scripts/test-local-ai-sidecar.mjs && node scripts/test-security-contract.mjs && node scripts/test-deploy-contract.mjs",
+    "index": "python3 scripts/books-index.py",
+    "benchmark:indexer": "node scripts/benchmark-native-indexer.mjs",
     "check:deploy": "npm run build && wrangler deploy --dry-run",
     "deploy": "npm run build && wrangler deploy"
   },

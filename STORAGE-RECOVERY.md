@@ -36,6 +36,23 @@ remain authoritative.
 - A user should export a portable bundle before clearing site data or moving to
   a new browser profile.
 
+## Standalone Folder storage
+
+Folder sources are read in place. Canonical records and rebuildable derived
+artifacts live under the granted root's `.books/` directory. IndexedDB stores
+only a remembered directory handle, so clearing browser site data removes that
+convenience but not the Folder library.
+
+Reconnect by choosing the same root again. Books validates `.books/library.json`,
+opens the last complete inventory immediately, then reconciles the directory
+in the background. Permission loss is reported as disconnection; it does not
+mark sources deleted. A unique SHA-256 match recovers work identity after a
+move or rename, while an ambiguous match remains for review.
+
+The native indexer and browser share stage leases. An unexpired foreign lease
+prevents concurrent writes to the same work; an expired lease may be reclaimed.
+Malformed or missing derived vector shards are ignored and regenerated.
+
 ## Recovery order
 
 1. Validate original paths and canonical portable records.

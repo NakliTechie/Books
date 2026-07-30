@@ -27,10 +27,11 @@ This is the consolidated queue, not a committed release roadmap:
 |---|---|---|
 | Scanned-PDF OCR, with Baidu PaddleOCR as the first candidate | Pending evaluation | Complete the OCR privacy, runtime, quality, anchoring, and licensing spike below |
 | Source-grounded AI illustrations | Pending product decision | Approve the Phase 6 generation policy |
-| Local embeddings / semantic-similarity index | Pending product decision | Demonstrate material value beyond lexical retrieval and define storage/privacy |
+| Local embeddings / semantic-similarity index | Shipped in Books 2.0 | Continue measuring retrieval quality and storage on real libraries |
 | Metadata and cover provider | Pending policy decision | Approve licensing, attribution, caching, and destination consent |
 | Sovereign sync transport and mobile continuity | Pending product decision | Select a transport for the shipped version/tombstone/conflict contract |
-| Standalone folder libraries with durable sidecar metadata | Pending architecture and performance spike | Approve the folder layout, reconciliation rules, permission recovery, and large-library benchmarks |
+| Standalone folder libraries with durable sidecar metadata | Shipped in Books 2.0 | Continue browser compatibility and stress testing |
+| Native filesystem watcher | Pending evaluation | Demonstrate value beyond rerunning the incremental index command |
 | TTS, dictionaries, reading profiles, and deeper reader controls | Pending per-feature evaluation | Rank against observed reader demand and accessibility impact |
 | Generated title cards and other derived media | Pending product decision | Open the Phase 6 artifact pipeline |
 | CBZ/CBR and DjVu | Parked | Approve dedicated reader/extractor contracts and representative corpora |
@@ -216,15 +217,15 @@ Books now uses an origin-scoped IndexedDB virtual filesystem when run outside
 NakliOS at `books.naklitechie.com`. It persists the complete library, positions,
 bookmarks, notes, and cached covers without requiring a directory permission.
 
-The earlier FSA-handle proposal was not used: IndexedDB gives the standalone
-site a permission-free library while the shared `naklios.fs` surface keeps the
-reader code identical across Browser, Folder, and Crate backends.
+IndexedDB remains the default permission-free option. Books 2.0 also ships the
+earlier FSA direction as an explicit Folder backend while the shared
+`naklios.fs` surface keeps reader code identical across Browser, Folder, and
+Crate.
 
 ### Standalone folder libraries and durable sidecars
 
-**Status:** Pending. IndexedDB remains the shipped, permission-free Browser
-backend; this work adds an optional folder-backed standalone library rather
-than replacing it.
+**Status:** Shipped in Books 2.0. IndexedDB remains the permission-free Browser
+backend; Folder is an optional standalone library rather than a replacement.
 
 The user can choose **Add folder** and grant Books access to an existing
 collection. Books reconciles supported files in that folder, reads sources in
@@ -248,8 +249,8 @@ Folder reconciliation must be incremental and reviewable:
 
 - Inventory paths, sizes, and modification times first; fingerprint only new
   or changed candidates.
-- Checkpoint long scans, run them away from the main interaction path, and
-  expose progress, pause, cancel, and manual rescan controls.
+- Keep tree enumeration restartable and put expensive fingerprinting/parsing
+  in the checkpointed, pausable, per-work cancellable queue.
 - Reconcile additions and changes automatically while connected. A missing
   file or lost permission is not an immediate destructive delete; removals
   enter a reviewable/tombstoned state.
@@ -261,16 +262,17 @@ Folder reconciliation must be incremental and reviewable:
   detection, memory, and recovery on collections large enough to expose
   browser limits.
 
-Open architecture questions include the sidecar directory name and schema,
-atomic/journaled writes across browser implementations, case and path
-normalization, rename detection, external metadata edits, multiple folder
-roots, permission re-grant UX, and whether optional derived data belongs in
-the folder. The spike must also test conflicts and partial updates caused by
-external folder-sync tools.
+The shipped `.books/` contract, generation ordering, path rules,
+strong-fingerprint rename recovery, shared browser/native jobs, compact vector
+shards, and permission recovery are documented in
+`FOLDER-LIBRARY-FORMAT.md`.
 
-**Trigger to revisit:** Run the Phase 7A spike with representative 1k, 10k,
-and stress-scale collections, then approve the portable directory contract
-and reconciliation behavior.
+**Still pending:** multiple physical roots in one visible library, a native
+watch daemon, case-collision UX across operating systems, and long-running
+stress tests against externally synced partial writes.
+
+**Trigger to revisit:** Large real-world folder telemetry or explicit demand
+shows that rerunning the incremental native indexer is insufficient.
 
 ### Cross-device sync conflict resolution
 

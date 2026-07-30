@@ -1,5 +1,9 @@
 # Books — Private Semantic Library work plan
 
+> Completed extension: library-level ingestion, folder durability, native
+> indexing, and cross-book idea matching are documented in
+> [LIBRARY-INTELLIGENCE-WORKPLAN.md](LIBRARY-INTELLIGENCE-WORKPLAN.md).
+
 > **Lifecycle:** `active` — implementation sequence for v2+.
 >
 > **Implementation status (2026-07-30):** Phases 0–5 and the approved
@@ -496,9 +500,10 @@ Books' current installation or a central service?
 
 ## Phase 7A — Standalone folder libraries and durable sidecars
 
-**Status:** Pending architecture and performance spike. This extends
-standalone Books with an optional user-granted folder backend; it does not
-remove the permission-free IndexedDB Browser backend.
+**Status:** Core delivered in Books 2.0. This extends standalone Books with an
+optional user-granted folder backend; it does not remove the permission-free
+IndexedDB Browser backend. Multiple roots, a native watch daemon,
+case-collision UX, and prolonged external-sync stress testing remain deferred.
 
 **Question:** Can Books use an existing filesystem collection in place, keep
 canonical metadata beside it, and reconcile large libraries without making
@@ -533,11 +538,13 @@ startup or reading depend on a full rescan?
    migration rules before writing user folders.
 2. Implement a cheap inventory pass using relative path, file type, byte size,
    and modification time; hash and parse only new or plausibly changed files.
-3. Make scans incremental, checkpointed, resumable, pausable, cancellable, and
-   observable. Reading an already-known book must not wait for the scan.
-4. Reconcile new and changed books while connected through manual refresh,
-   focus/visibility refresh, and a bounded background cadence. Do not promise
-   a native filesystem watcher where the platform does not provide one.
+3. Keep tree enumeration observable and restartable; place expensive hashing
+   and parsing in the incremental, checkpointed, resumable, pausable, and
+   per-work cancellable queue. Reading an already-known book does not wait for
+   the scan.
+4. Reconcile new and changed books after connect, on load, and on focus. Do
+   not promise a native filesystem watcher where the platform does not provide
+   one.
 5. Route missing sources into a reviewable availability/tombstone flow.
    Require repeated confirmation or an explicit user action before treating a
    disappearance as deletion.
@@ -547,8 +554,9 @@ startup or reading depend on a full rescan?
    and clear handling for unreadable or partially granted subdirectories.
 8. Virtualize library rendering and bound concurrent filesystem, parsing,
    cover, and indexing work.
-9. Define journaled or otherwise recoverable sidecar writes so interruption
-   cannot leave canonical metadata half-written.
+9. Use complete inventory generations, closed browser writable streams, and
+   native `fsync` plus atomic replacement so interruption retains the previous
+   complete pointer or a rebuildable derived artifact.
 10. Decide whether derived indexes and media are stored in a folder cache
     subtree, browser cache, or either; they remain rebuildable in every case.
 11. Apply the existing version, tombstone, and conflict contract when an
@@ -742,7 +750,7 @@ Each accepted large bet receives a separate spec, threat model, and work plan.
 | DjVu support | `DEFERRED.md` | Phase 8 | Parked |
 | Legacy AZW support | `DEFERRED.md` | Phase 8 | Rejected for core |
 | Multiple libraries / shelves | `DEFERRED.md` | Phase 3 shelves; Phase 7 backend movement | Shelves shipped; backend movement parked |
-| Standalone folder libraries and durable sidecars | `DEFERRED.md` | Phase 7A | Pending architecture and performance spike |
+| Standalone folder libraries and durable sidecars | `DEFERRED.md` | Phase 7A | Core shipped in Books 2.0; extended stress work remains |
 | Cross-device conflict resolution | `DEFERRED.md` | Phase 7 | Contract shipped; transport pending decision |
 | Library index format migration | `DEFERRED.md` | Phase 1 | Shipped |
 
@@ -774,14 +782,14 @@ opening one of the remaining gates rather than silently expanding scope:
 1. Run the gated scanned-PDF OCR evaluation, with PaddleOCR as the first
    candidate.
 2. Decide whether to design source-grounded illustration generation (Phase 6).
-3. Decide whether embeddings add enough value beyond lexical retrieval to
-   justify their storage and privacy model.
-4. Decide whether any metadata provider meets the licensing, attribution,
+3. Decide whether any metadata provider meets the licensing, attribution,
    caching, and consent bar.
-5. Decide whether to select a sovereign sync transport for the documented
+4. Decide whether to select a sovereign sync transport for the documented
    record/conflict contract.
-6. Run the standalone folder-library spike and approve its portable sidecar
-   layout, permission recovery, reconciliation semantics, and scale targets.
+5. Decide whether multiple roots, native watching, or backend movement solve
+   enough real-library friction to justify their added conflict semantics.
+6. Continue measuring shipped local-embedding retrieval quality and storage on
+   large real collections.
 7. Re-rank the parked Phase 8 formats and Phase 9 Calibre-shaped separate bets.
 
 The standing product test remains:

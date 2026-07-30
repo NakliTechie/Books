@@ -121,6 +121,14 @@ async function loadModel() {
 async function generate(messages, id, maxTokens) {
   activeRequestId = id;
   stoppingCriteria.reset();
+  const normalizedMessages = messages.map(message => ({
+    role:String(message?.role || 'user'),
+    content:['system', 'developer'].includes(String(message?.role || ''))
+      ? String(message?.content || '')
+      : Array.isArray(message?.content)
+      ? message.content
+      : [{ type:'text', text:String(message?.content || '') }],
+  }));
   const streamer = new TextStreamer(processor.tokenizer, {
     skip_prompt:true,
     skip_special_tokens:true,
@@ -128,7 +136,8 @@ async function generate(messages, id, maxTokens) {
       self.postMessage({ type:'token', id, token });
     },
   });
-  const prompt = processor.apply_chat_template(messages, {
+  const prompt = processor.apply_chat_template(normalizedMessages, {
+    enable_thinking:false,
     add_generation_prompt:true,
   });
   const inputs = await processor(prompt, null, null, {
@@ -137,10 +146,7 @@ async function generate(messages, id, maxTokens) {
   await model.generate({
     ...inputs,
     max_new_tokens:Math.min(2048, Math.max(1, Number(maxTokens) || 600)),
-    do_sample:true,
-    temperature:0.2,
-    top_k:32,
-    top_p:0.9,
+    do_sample:false,
     streamer,
     stopping_criteria:stoppingCriteria,
   });
@@ -346,11 +352,8 @@ export class BrowserLocalAi {
         request.cleanup();
         request.reject(error);
       } else if (this.loading) {
-        this.loading = false;
-        this.error = error.message;
+        this.stopWorker(error, { report:true });
         this.status = 'Could not load ' + this.model.label + '.';
-        this.loadReject?.(error);
-        this.clearLoadPromise();
         this.emit();
       }
     }

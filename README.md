@@ -4,7 +4,13 @@
 
 Books is a single-file, browser-native reader for ePub, PDF, MOBI, AZW3, FB2, TXT, Markdown, and HTML. It works as a standalone application at `https://books.naklitechie.com/` and as the `books` app inside NakliOS.
 
-Standalone books and sidecars persist in origin-scoped IndexedDB on the current device. Inside NakliOS, they live under `apps/books/` in the selected Folder or encrypted Crate. Browser, Folder, and Crate remain separate libraries; switching never copies or deletes data.
+Standalone Books now offers both a permission-free Browser library in
+origin-scoped IndexedDB and an optional Folder library that reads a recursive
+collection in place. Folder metadata lives beside the books in `.books/`, so
+browser-site-data loss does not erase its reading history. Inside NakliOS,
+records live under `apps/books/` in the selected Folder or encrypted Crate.
+Browser, Folder, and Crate remain separate libraries; switching never copies
+or deletes data.
 
 ## Semantic-library direction
 
@@ -36,6 +42,43 @@ tag, and annotation views. Queries, facets, and sort order can be saved as a
 portable view inside the active Browser, Folder, or Crate library. Generated
 concepts remain inspectable and can be renamed, hidden, merged, or split
 through portable work-manifest overrides that survive derived-data rebuilds.
+
+## v2.0 highlights — library intelligence
+
+- Open an existing directory as a standalone library. Books recursively finds
+  supported formats, opens known books from its cached inventory immediately,
+  and reconciles additions, changes, moves, renames, and missing files in the
+  background.
+- Canonical work metadata, reading state, annotations, shelves, saved views,
+  and curation live in a documented `.books/` sidecar. The browser remembers
+  the directory handle only as a reconnect convenience.
+- Browser and native executors share durable per-work jobs with stage status,
+  checkpoints, cancellation, retry, and expiring leases. Reading remains
+  available if parsing, OCR, embeddings, or an AI provider is unavailable.
+- An explicitly enabled 23 MB MiniLM encoder creates local semantic vectors;
+  compact Float32 shards avoid JSON-vector bloat. Optional Gemma, NakliOS AI,
+  Ollama, LM Studio, or remote BYOK enrichment produces source-grounded ideas
+  with provider and model provenance.
+- Books matches ideas across works with bounded nearest-neighbour candidates,
+  typed relationships, confidence, and passage evidence. Hybrid library search
+  combines lexical passages and semantic ideas, and book details expose
+  evidence-linked connections into other books.
+- `scripts/books-index.py` is the native collection indexer for larger
+  libraries. It performs recursive incremental scans, preserves identity
+  through strong-fingerprint renames, and writes the same portable artifacts
+  the browser consumes.
+- The 10,000-book inventory and 3,000-idea scale contracts run in the regular
+  test suite. Resource-aware browser processing yields to reading and
+  interactive AI, pauses on critically low battery, and respects Data Saver
+  before downloading the semantic model.
+- The checked-in native benchmark is reproducible with
+  `npm run benchmark:indexer -- 1000`; the release-development machine measured
+  3.25 seconds cold and 0.66 seconds warm for 1,000 small Markdown books.
+
+The folder layout and executor contract are documented in
+[FOLDER-LIBRARY-FORMAT.md](FOLDER-LIBRARY-FORMAT.md), with the completed
+implementation plan in
+[LIBRARY-INTELLIGENCE-WORKPLAN.md](LIBRARY-INTELLIGENCE-WORKPLAN.md).
 
 ## v1.4 highlights
 
@@ -100,6 +143,8 @@ naklios-universe/
     ├── SPEC.md                   ← shipped v1.4 architectural decisions
     ├── SEMANTIC-LIBRARY-SPEC.md  ← active product and architecture contract
     ├── SEMANTIC-LIBRARY-WORKPLAN.md ← phase status and remaining decision gates
+    ├── LIBRARY-INTELLIGENCE-WORKPLAN.md ← completed v2 ingestion/ideas plan
+    ├── FOLDER-LIBRARY-FORMAT.md ← durable `.books/` sidecar and executor contract
     ├── PORTABLE-LIBRARY-FORMAT.md ← documented backup/import bundle
     ├── SYNC-CONTRACT.md          ← future private-continuity conflict rules
     ├── STORAGE-RECOVERY.md       ← quotas, data classes, and recovery order
@@ -149,6 +194,15 @@ naklios-universe/
       concepts, reduced motion, typography, storage map, and derived cleanup
 - [x] Work-centered organization — deterministic smart views, shelf/tag
       facets, ratings, and portable saved searches
+- [x] v2.0 Folder libraries — recursive in-place sources, durable `.books/`
+      records, incremental generations, permission recovery, and hash-based
+      rename identity
+- [x] v2.0 Library intelligence — shared browser/native queue, compact local
+      vectors, source-grounded ideas, typed cross-book relations, and hybrid
+      search
+- [x] v2.0 Native indexer — local CPU/GPU or OpenAI-compatible/Ollama
+      processing without stored credentials
+- [x] Scale contracts — 10,000-book inventory and 3,000-idea bounded graph
 - [x] Contract test at `scripts/test-books-v1_1.mjs`
 - [x] Safe two-backend browser fixture at `test/host-harness.html`
 
@@ -167,6 +221,8 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
   foundation phases and remaining explicit decision gates
 - [PORTABLE-LIBRARY-FORMAT.md](PORTABLE-LIBRARY-FORMAT.md) — versioned,
   conflict-safe original-file and portable-record bundle
+- [FOLDER-LIBRARY-FORMAT.md](FOLDER-LIBRARY-FORMAT.md) — recursive folder
+  inventory, `.books/` sidecar, shared jobs, and derived artifact schemas
 - [AI-PROVIDER-PRIVACY.md](AI-PROVIDER-PRIVACY.md) — exact standalone and
   NakliOS model boundary, consent, credential, and provenance rules
 - [NATIVE-READER.md](NATIVE-READER.md) — Native/Faithful fidelity,
@@ -193,6 +249,26 @@ npm install
 npm test
 npm run dev
 ```
+
+Index a folder natively without changing its source files:
+
+```sh
+npm run index -- /path/to/library --no-embeddings
+
+# SentenceTransformers on local CPU/GPU
+npm run index -- /path/to/library
+
+# Ollama or another OpenAI-compatible local endpoint
+npm run index -- /path/to/library \
+  --endpoint http://127.0.0.1:11434 \
+  --embedding-model nomic-embed-text \
+  --chat-model gemma3:4b
+```
+
+Install `sentence-transformers` for in-process embeddings and `pypdf` for
+native PDF text extraction. MOBI/AZW3 native parsing uses Calibre's
+`ebook-convert` when installed. Credentials are accepted only through
+`--api-key` or `BOOKS_AI_API_KEY` and are never written into `.books/`.
 
 `wrangler.jsonc` deploys the checked-in app and vendored readers as Worker
 static assets. Cloudflare Workers Builds watches the GitHub `main` branch; a

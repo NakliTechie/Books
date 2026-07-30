@@ -14,7 +14,11 @@ for (const asset of [
   'semantic-library.js',
   'semantic-processing.js',
   'semantic-ai.js',
+  'folder-library.js',
   'local-ai-sidecar.js',
+  'semantic-embedding-sidecar.js',
+  'idea-graph.js',
+  'embedding-binary.js',
   '_headers',
 ]) {
   assert.match(

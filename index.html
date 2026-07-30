@@ -935,6 +935,23 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   margin:10px 0; padding:9px 10px; border-radius:7px; background:var(--row);
   color:var(--muted); font-size:11px; line-height:1.45;
 }
+.work-processing-controls {
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.work-processing-controls .work-processing-state { flex:1; }
+.work-processing-controls button {
+  flex:0 0 auto;
+  border:1px solid var(--border);
+  background:var(--surface);
+  color:var(--muted);
+  border-radius:8px;
+  padding:6px 9px;
+  font:inherit;
+  font-size:10px;
+  cursor:pointer;
+}
 .work-concepts { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 0; }
 .work-concept {
   border:1px solid var(--line); border-radius:999px; padding:5px 8px;
@@ -944,6 +961,15 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 .work-concept[data-state="hidden"] { opacity:.58; text-decoration:line-through; }
 .work-concept[data-state="merged"] { opacity:.7; border-style:dashed; }
 .work-concept-status { color:var(--muted); font-size:9px; }
+.work-connections { display:grid; gap:6px; margin:8px 0 0; }
+.work-connection {
+  display:grid; gap:3px; width:100%; text-align:left;
+  border:1px solid var(--line); border-radius:7px; padding:8px 9px;
+  background:var(--body); color:var(--ink); cursor:pointer; font:inherit;
+}
+.work-connection:hover { border-color:var(--brand); }
+.work-connection strong { font-size:11px; font-weight:650; }
+.work-connection span { color:var(--muted); font-size:10px; line-height:1.4; }
 .concept-curation-meta {
   padding:9px 10px; border:1px solid var(--line); border-radius:7px;
   background:var(--row); color:var(--muted); font-size:11px; line-height:1.5;
@@ -1266,6 +1292,36 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
         <button type="button" id="derived-clear-btn">Clear derived data…</button>
       </div>
     </section>
+    <section class="derived-storage-section"
+             aria-labelledby="background-intelligence-title">
+      <div class="derived-storage-head">
+        <strong id="background-intelligence-title">Background intelligence</strong>
+        <span id="background-intelligence-status">Off</span>
+      </div>
+      <p>
+        A compact local encoder quietly processes queued books one at a time.
+        Its first download is about 23 MB; no book text leaves this device.
+      </p>
+      <label>
+        <input type="checkbox" id="background-intelligence-enabled">
+        Enable semantic indexing for this browser
+      </label>
+      <label>
+        <input type="checkbox" id="background-provider-enabled">
+        Use the configured AI provider for richer source-grounded ideas
+      </label>
+      <p>
+        Local endpoints stay on your machine. Remote BYOK runs only after its
+        destination-specific provider consent and this background opt-in.
+      </p>
+      <progress id="background-intelligence-progress" max="100" value="0"
+                hidden></progress>
+      <div class="derived-storage-actions">
+        <button type="button" id="background-intelligence-run" disabled>
+          Process queued books
+        </button>
+      </div>
+    </section>
     <section class="trash-section" aria-labelledby="trash-section-title">
       <div class="trash-section-head">
         <strong id="trash-section-title">Trash</strong>
@@ -1311,7 +1367,10 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
         <option value="5">5 of 5</option>
       </select>
     </div>
-    <div class="work-processing-state" id="work-processing-state">Checking local processing…</div>
+    <div class="work-processing-controls">
+      <div class="work-processing-state" id="work-processing-state">Checking local processing…</div>
+      <button type="button" id="work-processing-cancel-btn" hidden>Cancel processing</button>
+    </div>
     <div>
       <strong style="font-size:12px">Available formats</strong>
       <div class="work-formats" id="work-formats"></div>
@@ -1323,6 +1382,10 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div>
       <strong style="font-size:12px">Key concepts</strong>
       <div class="work-concepts" id="work-concepts"></div>
+    </div>
+    <div id="work-connections-section" hidden>
+      <strong style="font-size:12px">Ideas across your library</strong>
+      <div class="work-connections" id="work-connections"></div>
     </div>
     <div class="work-enrichment">
       <span id="work-enrichment-boundary">
@@ -1587,7 +1650,16 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   var aiImageRequests = new Map();
   var standaloneDbPromise = null;
   var STANDALONE_DB_NAME = 'naklios-books-library-v1';
+  var STANDALONE_DB_VERSION = 2;
   var STANDALONE_DB_STORE = 'files';
+  var STANDALONE_DB_HANDLES = 'handles';
+  var STANDALONE_FOLDER_HANDLE_KEY = 'active-folder';
+  var STANDALONE_FOLDER_PREFERENCE_KEY = 'books.standaloneBackend.v1';
+  var STANDALONE_FOLDER_SIDECAR = '.books';
+  var STANDALONE_FOLDER_BOOK_RE = /\.(epub|pdf|mobi|azw3|fb2|txt|md|html|htm)$/i;
+  var standaloneFolderHandle = null;
+  var standaloneFolderLastObservation = [];
+  var standaloneFolderObservationFresh = false;
 
   function normaliseStandalonePath(path, allowEmpty) {
     var value = String(path || '').replace(/\\/g, '/');
@@ -1609,11 +1681,14 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     }
     if (standaloneDbPromise) return standaloneDbPromise;
     standaloneDbPromise = new Promise(function (resolve, reject) {
-      var request = indexedDB.open(STANDALONE_DB_NAME, 1);
+      var request = indexedDB.open(STANDALONE_DB_NAME, STANDALONE_DB_VERSION);
       request.onupgradeneeded = function () {
         var db = request.result;
         if (!db.objectStoreNames.contains(STANDALONE_DB_STORE)) {
           db.createObjectStore(STANDALONE_DB_STORE);
+        }
+        if (!db.objectStoreNames.contains(STANDALONE_DB_HANDLES)) {
+          db.createObjectStore(STANDALONE_DB_HANDLES);
         }
       };
       request.onsuccess = function () {
@@ -1633,12 +1708,12 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     return standaloneDbPromise;
   }
 
-  function standaloneRequest(mode, operation) {
+  function standaloneRequest(mode, operation, storeName) {
     return openStandaloneDb().then(function (db) {
       return new Promise(function (resolve, reject) {
         var settled = false;
         var result;
-        var tx = db.transaction(STANDALONE_DB_STORE, mode);
+        var tx = db.transaction(storeName || STANDALONE_DB_STORE, mode);
         var request;
         function fail(error) {
           if (settled) return;
@@ -1646,7 +1721,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
           reject(error || new Error('Browser storage operation failed'));
         }
         try {
-          request = operation(tx.objectStore(STANDALONE_DB_STORE));
+          request = operation(tx.objectStore(storeName || STANDALONE_DB_STORE));
         } catch (error) {
           try { tx.abort(); } catch (_) {}
           fail(error);
@@ -1729,8 +1804,335 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       .then(function (count) { return count > 0; });
   }
 
-  function standaloneUseBackend(backend) {
-    return Promise.resolve(backend === 'browser');
+  function emitStandaloneCapabilities() {
+    capListeners.forEach(function (cb) {
+      try { cb(capabilities); } catch (_) {}
+    });
+  }
+
+  function rememberStandaloneFolder(handle) {
+    return standaloneRequest(
+      'readwrite',
+      function (store) { return store.put(handle, STANDALONE_FOLDER_HANDLE_KEY); },
+      STANDALONE_DB_HANDLES,
+    );
+  }
+
+  function recalledStandaloneFolder() {
+    return standaloneRequest(
+      'readonly',
+      function (store) { return store.get(STANDALONE_FOLDER_HANDLE_KEY); },
+      STANDALONE_DB_HANDLES,
+    );
+  }
+
+  function standaloneFolderSegments(path, allowEmpty) {
+    var normalized = normaliseStandalonePath(path || '', !!allowEmpty);
+    return normalized ? normalized.split('/') : [];
+  }
+
+  async function standaloneFolderDirectory(root, segments, create) {
+    var handle = root;
+    for (var i = 0; i < segments.length; i++) {
+      handle = await handle.getDirectoryHandle(segments[i], { create:!!create });
+    }
+    return handle;
+  }
+
+  async function standaloneFolderRoute(path, create) {
+    if (!standaloneFolderHandle) throw new Error('Folder library is disconnected');
+    var key = normaliseStandalonePath(path, false);
+    var source = key.startsWith('library/');
+    var relative = source ? key.slice('library/'.length) : key;
+    if (!relative) throw new Error('Folder-library file path is required');
+    var root = standaloneFolderHandle;
+    if (!source) {
+      root = await root.getDirectoryHandle(
+        STANDALONE_FOLDER_SIDECAR,
+        { create:!!create },
+      );
+    }
+    return {
+      root:root,
+      relative:relative,
+      segments:standaloneFolderSegments(relative, false),
+      source:source,
+    };
+  }
+
+  async function standaloneFolderFileHandle(path, create) {
+    var route = await standaloneFolderRoute(path, create);
+    var filename = route.segments[route.segments.length - 1];
+    var parent = await standaloneFolderDirectory(
+      route.root,
+      route.segments.slice(0, -1),
+      create,
+    );
+    return parent.getFileHandle(filename, { create:!!create });
+  }
+
+  async function standaloneFolderRead(path) {
+    var handle = await standaloneFolderFileHandle(path, false);
+    return (await handle.getFile()).text();
+  }
+
+  async function standaloneFolderReadBinary(path) {
+    var handle = await standaloneFolderFileHandle(path, false);
+    return (await handle.getFile()).arrayBuffer();
+  }
+
+  async function standaloneFolderWrite(path, data) {
+    var handle = await standaloneFolderFileHandle(path, true);
+    var writable = await handle.createWritable();
+    try {
+      await writable.write(data);
+    } finally {
+      await writable.close();
+    }
+    return true;
+  }
+
+  async function standaloneFolderAppend(path, line) {
+    var existing = '';
+    try { existing = await standaloneFolderRead(path); } catch (_) {}
+    return standaloneFolderWrite(path, existing + String(line || ''));
+  }
+
+  function standaloneFolderSkipped(name, kind, atRoot) {
+    if (atRoot && name === STANDALONE_FOLDER_SIDECAR) return true;
+    if (name === 'node_modules' || name === '.git' || name === '.hg' || name === '.svn') {
+      return true;
+    }
+    return kind === 'directory' && name.startsWith('.');
+  }
+
+  async function standaloneFolderWalkSources(handle, prefix, output, observed) {
+    for await (var entry of handle.values()) {
+      var path = prefix ? prefix + '/' + entry.name : entry.name;
+      if (standaloneFolderSkipped(entry.name, entry.kind, !prefix)) continue;
+      if (entry.kind === 'directory') {
+        await standaloneFolderWalkSources(entry, path, output, observed);
+        continue;
+      }
+      if (!STANDALONE_FOLDER_BOOK_RE.test(entry.name)) continue;
+      var file = await entry.getFile();
+      output.push('library/' + path);
+      observed.push({
+        relativePath:path,
+        byteLength:file.size,
+        lastModified:file.lastModified,
+        format:(entry.name.split('.').pop() || '').toLowerCase(),
+        mediaType:file.type || null,
+      });
+    }
+  }
+
+  async function standaloneFolderWalkMetadata(handle, prefix, output) {
+    for await (var entry of handle.values()) {
+      var path = prefix ? prefix + '/' + entry.name : entry.name;
+      if (entry.kind === 'directory') {
+        await standaloneFolderWalkMetadata(entry, path, output);
+      } else {
+        output.push(path);
+      }
+    }
+  }
+
+  async function standaloneFolderList(prefix) {
+    var safePrefix = normaliseStandalonePath(prefix || '', true);
+    if (!standaloneFolderHandle) throw new Error('Folder library is disconnected');
+    if (!safePrefix || safePrefix === 'library' || safePrefix === 'library/') {
+      try {
+        var cachedInventory = JSON.parse(
+          await standaloneFolderRead('inventory/current.json'),
+        );
+        if (
+          cachedInventory
+          && cachedInventory.recordType === 'books.folder-inventory'
+          && Array.isArray(cachedInventory.files)
+        ) {
+          standaloneFolderLastObservation = cachedInventory.files.map(function (record) {
+            return {
+              relativePath:record.relativePath,
+              byteLength:record.byteLength,
+              lastModified:record.lastModified,
+              format:record.format,
+              mediaType:record.mediaType || null,
+            };
+          });
+          standaloneFolderObservationFresh = false;
+          return standaloneFolderLastObservation.map(function (record) {
+            return 'library/' + record.relativePath;
+          });
+        }
+      } catch (_) {}
+      return standaloneRefreshFolder();
+    }
+
+    var sidecar;
+    try {
+      sidecar = await standaloneFolderHandle.getDirectoryHandle(
+        STANDALONE_FOLDER_SIDECAR,
+      );
+    } catch (_) {
+      return [];
+    }
+    var segments = standaloneFolderSegments(safePrefix.replace(/\/$/, ''), true);
+    var directory = sidecar;
+    try {
+      directory = await standaloneFolderDirectory(sidecar, segments, false);
+    } catch (_) {
+      return [];
+    }
+    var output = [];
+    await standaloneFolderWalkMetadata(directory, segments.join('/'), output);
+    return output.sort();
+  }
+
+  async function standaloneRefreshFolder() {
+    if (!standaloneFolderHandle) throw new Error('Folder library is disconnected');
+      var sourceOutput = [];
+      var observed = [];
+      await standaloneFolderWalkSources(
+        standaloneFolderHandle,
+        '',
+        sourceOutput,
+        observed,
+      );
+      sourceOutput.sort();
+      observed.sort(function (left, right) {
+        return left.relativePath.localeCompare(right.relativePath);
+      });
+      standaloneFolderLastObservation = observed;
+      standaloneFolderObservationFresh = true;
+      return sourceOutput;
+  }
+
+  async function standaloneFolderDelete(path) {
+    var route = await standaloneFolderRoute(path, false);
+    var filename = route.segments[route.segments.length - 1];
+    var parent = await standaloneFolderDirectory(
+      route.root,
+      route.segments.slice(0, -1),
+      false,
+    );
+    await parent.removeEntry(filename);
+    return true;
+  }
+
+  async function standaloneFolderExists(path) {
+    try {
+      await standaloneFolderFileHandle(path, false);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function ensureStandaloneFolderManifest() {
+    if (!standaloneFolderHandle) throw new Error('Folder library is disconnected');
+    var sidecar = await standaloneFolderHandle.getDirectoryHandle(
+      STANDALONE_FOLDER_SIDECAR,
+      { create:true },
+    );
+    try {
+      var existing = await sidecar.getFileHandle('library.json');
+      var parsed = JSON.parse(await (await existing.getFile()).text());
+      if (parsed && parsed.recordType === 'books.folder-library' && parsed.libraryId) {
+        return parsed;
+      }
+      throw new Error('The existing .books/library.json is not a Books folder manifest');
+    } catch (error) {
+      if (error && error.name !== 'NotFoundError') throw error;
+    }
+    var timestamp = new Date().toISOString();
+    var manifest = {
+      schemaVersion:1,
+      recordType:'books.folder-library',
+      libraryId:globalThis.crypto && globalThis.crypto.randomUUID
+        ? globalThis.crypto.randomUUID()
+        : 'folder-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2),
+      rootName:standaloneFolderHandle.name || 'Books',
+      sidecarDirectory:STANDALONE_FOLDER_SIDECAR,
+      sourcePolicy:'read-in-place',
+      canonicalMetadata:'sidecar',
+      createdAt:timestamp,
+      updatedAt:timestamp,
+    };
+    var handle = await sidecar.getFileHandle('library.json', { create:true });
+    var writable = await handle.createWritable();
+    try {
+      await writable.write(JSON.stringify(manifest, null, 2));
+    } finally {
+      await writable.close();
+    }
+    return manifest;
+  }
+
+  async function standaloneConnectFolder() {
+    if (inNakliOS) throw new Error('NakliOS manages Folder connections');
+    if (!globalThis.showDirectoryPicker) {
+      throw new Error('This browser does not support folder libraries');
+    }
+    var handle = await globalThis.showDirectoryPicker({ mode:'readwrite' });
+    standaloneFolderHandle = handle;
+    await ensureStandaloneFolderManifest();
+    await rememberStandaloneFolder(handle);
+    capabilities.fsBackends = ['browser', 'fsa'];
+    capabilities.fsBackend = 'fsa';
+    try { localStorage.setItem(STANDALONE_FOLDER_PREFERENCE_KEY, 'fsa'); } catch (_) {}
+    emitStandaloneCapabilities();
+    return { backend:'fsa', name:handle.name || 'Folder' };
+  }
+
+  async function standaloneRestoreFolder() {
+    if (inNakliOS || !standaloneFsAvailable) return false;
+    var handle;
+    try { handle = await recalledStandaloneFolder(); } catch (_) { return false; }
+    if (!handle) return false;
+    standaloneFolderHandle = handle;
+    capabilities.fsBackends = ['browser', 'fsa'];
+    var permission = 'prompt';
+    try { permission = await handle.queryPermission({ mode:'readwrite' }); } catch (_) {}
+    var preference = 'browser';
+    try { preference = localStorage.getItem(STANDALONE_FOLDER_PREFERENCE_KEY) || 'browser'; } catch (_) {}
+    if (permission === 'granted' && preference === 'fsa') {
+      capabilities.fsBackend = 'fsa';
+    }
+    emitStandaloneCapabilities();
+    return true;
+  }
+
+  function standaloneFolderObservation() {
+    var observation = {
+      fresh:standaloneFolderObservationFresh,
+      records:standaloneFolderLastObservation.map(function (record) {
+        return Object.assign({}, record);
+      }),
+    };
+    standaloneFolderObservationFresh = false;
+    return observation;
+  }
+
+  async function standaloneUseBackend(backend) {
+    if (backend === 'browser') {
+      capabilities.fsBackend = 'browser';
+      try { localStorage.setItem(STANDALONE_FOLDER_PREFERENCE_KEY, 'browser'); } catch (_) {}
+      emitStandaloneCapabilities();
+      return true;
+    }
+    if (backend !== 'fsa' || !standaloneFolderHandle) return false;
+    var permission = await standaloneFolderHandle.queryPermission({ mode:'readwrite' });
+    if (permission !== 'granted') {
+      permission = await standaloneFolderHandle.requestPermission({ mode:'readwrite' });
+    }
+    if (permission !== 'granted') throw new Error('Folder access was not granted');
+    await ensureStandaloneFolderManifest();
+    capabilities.fsBackend = 'fsa';
+    capabilities.fsBackends = ['browser', 'fsa'];
+    try { localStorage.setItem(STANDALONE_FOLDER_PREFERENCE_KEY, 'fsa'); } catch (_) {}
+    emitStandaloneCapabilities();
+    return true;
   }
 
   function send(type, data) {
@@ -1993,30 +2395,70 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     requestCapabilities: function () { send('naklios:capabilities-request'); },
     fs: {
       read: function (path) {
-        return inNakliOS ? rpc('naklios:fs:read', { path:path }) : standaloneRead(path);
+        return inNakliOS
+          ? rpc('naklios:fs:read', { path:path })
+          : capabilities.fsBackend === 'fsa'
+            ? standaloneFolderRead(path)
+            : standaloneRead(path);
       },
       readBinary: function (path) {
-        return inNakliOS ? rpc('naklios:fs:readBinary', { path:path }) : standaloneReadBinary(path);
+        return inNakliOS
+          ? rpc('naklios:fs:readBinary', { path:path })
+          : capabilities.fsBackend === 'fsa'
+            ? standaloneFolderReadBinary(path)
+            : standaloneReadBinary(path);
       },
       write: function (path, data) {
-        return inNakliOS ? rpc('naklios:fs:write', { path:path, data:data }) : standaloneWrite(path, data);
+        return inNakliOS
+          ? rpc('naklios:fs:write', { path:path, data:data })
+          : capabilities.fsBackend === 'fsa'
+            ? standaloneFolderWrite(path, data)
+            : standaloneWrite(path, data);
       },
       append: function (path, line) {
-        return inNakliOS ? rpc('naklios:fs:append', { path:path, line:line }) : standaloneAppend(path, line);
+        return inNakliOS
+          ? rpc('naklios:fs:append', { path:path, line:line })
+          : capabilities.fsBackend === 'fsa'
+            ? standaloneFolderAppend(path, line)
+            : standaloneAppend(path, line);
       },
       list: function (prefix) {
-        return inNakliOS ? rpc('naklios:fs:list', { prefix:prefix || '' }) : standaloneList(prefix);
+        return inNakliOS
+          ? rpc('naklios:fs:list', { prefix:prefix || '' })
+          : capabilities.fsBackend === 'fsa'
+            ? standaloneFolderList(prefix)
+            : standaloneList(prefix);
       },
       delete: function (path) {
-        return inNakliOS ? rpc('naklios:fs:delete', { path:path }) : standaloneDelete(path);
+        return inNakliOS
+          ? rpc('naklios:fs:delete', { path:path })
+          : capabilities.fsBackend === 'fsa'
+            ? standaloneFolderDelete(path)
+            : standaloneDelete(path);
       },
       exists: function (path) {
-        return inNakliOS ? rpc('naklios:fs:exists', { path:path }) : standaloneExists(path);
+        return inNakliOS
+          ? rpc('naklios:fs:exists', { path:path })
+          : capabilities.fsBackend === 'fsa'
+            ? standaloneFolderExists(path)
+            : standaloneExists(path);
       },
       useBackend: function (backend) {
         return inNakliOS
           ? rpc('naklios:fs:selectBackend', { backend:backend })
           : standaloneUseBackend(backend);
+      },
+      connectFolder: function () {
+        return standaloneConnectFolder();
+      },
+      restoreFolder: function () {
+        return standaloneRestoreFolder();
+      },
+      folderObservation: function () {
+        return inNakliOS ? { fresh:false, records:[] } : standaloneFolderObservation();
+      },
+      refreshFolder: function () {
+        return inNakliOS ? Promise.resolve([]) : standaloneRefreshFolder();
       },
     },
     ai: {
@@ -2049,6 +2491,7 @@ import {
   mergePortableAnnotationRecords,
   mergeWorkManifests,
   reconcileLegacyAnnotations,
+  recoverRenamedAssetIdentity,
   reanchorPortableAnnotations,
   SEMANTIC_CATALOG_PATH,
   SEMANTIC_VIEWS_PATH,
@@ -2076,6 +2519,7 @@ import {
 } from './semantic-library.js';
 import {
   buildLexicalIndex,
+  claimProcessingRun,
   extractDeterministicSemantics,
   makeProcessingRun,
   normalizePassageText,
@@ -2085,6 +2529,9 @@ import {
   searchLexicalIndex,
   segmentSections,
   semanticRecordsPath,
+  releaseProcessingRun,
+  requestProcessingCancellation,
+  invalidateProcessingStages,
   updateProcessingStage,
   workLexicalIndexPath,
 } from './semantic-processing.js';
@@ -2109,6 +2556,28 @@ import {
   BrowserLocalAi,
   DEFAULT_LOCAL_AI_MODEL_KEY,
 } from './local-ai-sidecar.js';
+import {
+  BrowserSemanticEncoder,
+  DEFAULT_SEMANTIC_EMBEDDING_MODEL,
+} from './semantic-embedding-sidecar.js';
+import {
+  reconcileFolderInventory,
+  renameCandidates,
+} from './folder-library.js';
+import {
+  applyIdeaRelationClassifications,
+  buildLibraryIdeaGraph,
+  ideaEmbeddingText,
+  ideaEmbeddingsPath,
+  ideaEmbeddingVectorPath,
+  ideaRecordsPath,
+  ideaVectorMap,
+  IDEA_RELATION_TYPES,
+  LIBRARY_IDEA_GRAPH_PATH,
+  makeIdeaEmbeddingBundle,
+  makeSourceGroundedIdeas,
+  searchIdeaRecords,
+} from './idea-graph.js';
 
 const VENDOR_FOLIATE = './vendor/foliate-js@1.0.1/';
 const VENDOR_PDFJS   = './vendor/pdfjs-dist@5.7.284/';
@@ -2123,6 +2592,10 @@ const AI_PROVIDER_CONSENT_KEY = 'books.aiConsent.v1';
 const AI_PROVIDER_SESSION_KEY = 'books.aiKey.session.v1';
 const AI_LOCAL_MODEL_KEY = 'books.localAiModel.v1';
 const AI_RUNS_PREFIX = 'semantic/ai-runs/';
+const BACKGROUND_INTELLIGENCE_KEY = 'books.backgroundIntelligence.v1';
+const BACKGROUND_PROVIDER_KEY = 'books.backgroundProvider.v1';
+const FOLDER_INVENTORY_CURRENT_PATH = 'inventory/current.json';
+const FOLDER_INVENTORY_GENERATIONS_PREFIX = 'inventory/generations/';
 function loadBrowserLocalModelKey() {
   try {
     return localStorage.getItem(AI_LOCAL_MODEL_KEY)
@@ -2134,6 +2607,11 @@ function loadBrowserLocalModelKey() {
 const browserLocalAi = new BrowserLocalAi(globalThis, {
   modelKey:loadBrowserLocalModelKey(),
 });
+const semanticEncoder = new BrowserSemanticEncoder(globalThis);
+let backgroundIntelligenceOn =
+  localStorage.getItem(BACKGROUND_INTELLIGENCE_KEY) === 'true';
+let backgroundProviderOn =
+  localStorage.getItem(BACKGROUND_PROVIDER_KEY) === 'true';
 const ENGINE_BY_EXT = {
   epub:'foliate', mobi:'foliate', azw3:'foliate', fb2:'foliate',
   pdf:'pdf',
@@ -2182,6 +2660,16 @@ const libraryStorageAccounting = document.getElementById('library-storage-accoun
 const processingStateLabel = document.getElementById('processing-state-label');
 const processingToggleBtn = document.getElementById('processing-toggle-btn');
 const derivedClearBtn = document.getElementById('derived-clear-btn');
+const backgroundIntelligenceStatus =
+  document.getElementById('background-intelligence-status');
+const backgroundIntelligenceEnabled =
+  document.getElementById('background-intelligence-enabled');
+const backgroundProviderEnabled =
+  document.getElementById('background-provider-enabled');
+const backgroundIntelligenceProgress =
+  document.getElementById('background-intelligence-progress');
+const backgroundIntelligenceRun =
+  document.getElementById('background-intelligence-run');
 const portableLibraryImportInput = document.getElementById('portable-library-import-input');
 const trashCount = document.getElementById('trash-count');
 const trashList = document.getElementById('trash-list');
@@ -2208,11 +2696,14 @@ const workTagsInput = document.getElementById('work-tags-input');
 const workShelvesInput = document.getElementById('work-shelves-input');
 const workRatingInput = document.getElementById('work-rating-input');
 const workProcessingState = document.getElementById('work-processing-state');
+const workProcessingCancelBtn = document.getElementById('work-processing-cancel-btn');
 const workFormats = document.getElementById('work-formats');
 const workGrouping = document.getElementById('work-grouping');
 const workGroupingSummary = document.getElementById('work-grouping-summary');
 const workSplitBtn = document.getElementById('work-split-btn');
 const workConcepts = document.getElementById('work-concepts');
+const workConnectionsSection = document.getElementById('work-connections-section');
+const workConnections = document.getElementById('work-connections');
 const workEnrichmentBoundary = document.getElementById('work-enrichment-boundary');
 const workEnrichBtn = document.getElementById('work-enrich-btn');
 const conceptCurationDialog = document.getElementById('concept-curation-dialog');
@@ -2304,6 +2795,7 @@ let activeBookId = null;
 let activeSourceFilename = null;
 let activeReaderMode = 'faithful';
 let activeNativePassageRecord = null;
+let readerNavigationTail = Promise.resolve();
 let activeAnnotationRecord = null;
 let pendingHighlightTarget = null;
 let libraryAnnotationRows = [];
@@ -2311,17 +2803,25 @@ let bookOpenInProgress = false;
 let libraryCache = [];
 let semanticCatalog = null;
 let semanticManifests = new Map();
+const semanticManifestMutationTails = new Map();
 let semanticProcessingTimer = null;
 let semanticProcessingTail = Promise.resolve();
+let semanticResourceHoldReason = null;
+const SEMANTIC_BROWSER_EXECUTOR_ID = 'browser:' + (
+  globalThis.crypto?.randomUUID?.()
+  || Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)
+);
 const PROCESSING_PAUSED_KEY = 'books.semanticProcessingPaused.v1';
 let semanticProcessingPaused =
   localStorage.getItem(PROCESSING_PAUSED_KEY) === 'true';
 let semanticSearchTimer = null;
 let semanticSearchRun = 0;
 let semanticSearchResults = new Map();
+let semanticLibraryQuery = '';
 let workDetailsWorkId = null;
 let workDetailsFilename = null;
 let workDetailsSemanticRecord = null;
+let workConnectionTargets = new Map();
 let activeConceptId = null;
 let activeConceptWorkId = null;
 let activeConceptFilename = null;
@@ -2804,6 +3304,22 @@ async function readJsonRecord(path) {
   }
 }
 
+async function readIdeaVectorMap(embeddingRecord) {
+  if (!embeddingRecord?.rows) return new Map();
+  if (embeddingRecord.rows.every((row) => Array.isArray(row?.vector))) {
+    return ideaVectorMap(embeddingRecord);
+  }
+  const vectorPath = embeddingRecord.vectorPath
+    || ideaEmbeddingVectorPath(embeddingRecord.workId);
+  try {
+    const binary = await naklios.fs.readBinary(vectorPath);
+    return ideaVectorMap(embeddingRecord, toArrayBuffer(binary));
+  } catch (error) {
+    console.warn('Books: ignored unreadable idea-vector shard', vectorPath, error);
+    return new Map();
+  }
+}
+
 async function readSemanticManifests() {
   let entries = [];
   try {
@@ -2916,6 +3432,43 @@ async function persistSemanticManifest(manifest) {
   return manifest;
 }
 
+async function mutateSemanticManifest(workId, mutate) {
+  const previous = semanticManifestMutationTails.get(workId)
+    || Promise.resolve();
+  let task;
+  task = previous
+    .catch(() => {})
+    .then(async () => {
+      const stored = await readJsonRecord(semanticManifestPath(workId));
+      const current = stored?.workId === workId
+        ? stored
+        : semanticManifests.get(workId);
+      if (!current) throw new Error('The work manifest is unavailable.');
+      const result = mutate(current);
+      const manifest = result?.manifest || current;
+      if (result?.changed) {
+        await naklios.fs.write(
+          semanticManifestPath(workId),
+          JSON.stringify(manifest, null, 2),
+        );
+      }
+      semanticManifests.set(workId, manifest);
+      return {
+        ...(result || {}),
+        manifest,
+        changed:result?.changed === true,
+      };
+    });
+  semanticManifestMutationTails.set(workId, task);
+  try {
+    return await task;
+  } finally {
+    if (semanticManifestMutationTails.get(workId) === task) {
+      semanticManifestMutationTails.delete(workId);
+    }
+  }
+}
+
 async function syncSemanticMetadata(filename, sidecar) {
   const work = workForFilename(semanticCatalog, filename);
   const current = work && semanticManifests.get(work.workId);
@@ -2945,6 +3498,9 @@ function commaSeparatedValues(value) {
 
 function processingSummary(run) {
   if (!run?.stages) return 'Queued for local processing.';
+  if (run.cancelRequested) {
+    return 'Processing cancelled. Existing passages and indexes remain available.';
+  }
   const labels = {
     fingerprint: 'Fingerprint',
     passages: 'Passages',
@@ -2965,6 +3521,69 @@ function processingSummary(run) {
   }).join(' · ');
 }
 
+async function renderWorkIdeaConnections(manifest, ideaRecord, graph) {
+  workConnectionTargets = new Map();
+  const links = (graph?.links || []).filter((link) =>
+    link.leftWorkId === manifest.workId
+    || link.rightWorkId === manifest.workId,
+  ).slice(0, 16);
+  if (!links.length || !ideaRecord?.ideas) {
+    workConnectionsSection.hidden = true;
+    workConnections.innerHTML = '';
+    return;
+  }
+  const otherWorkIds = Array.from(new Set(links.map((link) =>
+    link.leftWorkId === manifest.workId
+      ? link.rightWorkId : link.leftWorkId,
+  )));
+  const otherIdeaRecords = await Promise.all(otherWorkIds.map(async (workId) => [
+    workId,
+    await readJsonRecord(ideaRecordsPath(workId)),
+  ]));
+  if (!workDetailsDialog.open || workDetailsWorkId !== manifest.workId) return;
+  const ideas = new Map(ideaRecord.ideas.map((idea) => [idea.ideaId, idea]));
+  for (const [, record] of otherIdeaRecords) {
+    for (const idea of record?.ideas || []) ideas.set(idea.ideaId, idea);
+  }
+  const rows = links.flatMap((link, index) => {
+    const currentIsLeft = link.leftWorkId === manifest.workId;
+    const currentIdea = ideas.get(
+      currentIsLeft ? link.leftIdeaId : link.rightIdeaId,
+    );
+    const otherIdea = ideas.get(
+      currentIsLeft ? link.rightIdeaId : link.leftIdeaId,
+    );
+    const otherWorkId = currentIsLeft ? link.rightWorkId : link.leftWorkId;
+    const otherWork = semanticCatalog?.works?.find((work) =>
+      work.workId === otherWorkId);
+    if (!currentIdea || !otherIdea || !otherWork) return [];
+    const key = manifest.workId + ':' + link.linkId + ':' + index;
+    workConnectionTargets.set(key, {
+      workId:otherWorkId,
+      ideaId:otherIdea.ideaId,
+    });
+    return [{
+      key,
+      currentIdea,
+      otherIdea,
+      otherWork,
+      relation:String(link.relation || 'related_to').replaceAll('_', ' '),
+      score:Math.round((Number(link.score) || 0) * 100),
+    }];
+  });
+  workConnectionsSection.hidden = !rows.length;
+  workConnections.innerHTML = rows.map((row) =>
+    '<button class="work-connection" type="button" data-work-connection="' +
+      escapeHtml(row.key) + '">' +
+      '<strong>' + escapeHtml(row.otherWork.title) + '</strong>' +
+      '<span>' + escapeHtml(
+        row.currentIdea.label + ' · ' + row.relation + ' · ' +
+        row.otherIdea.label + ' · ' + row.score + '%',
+      ) + '</span>' +
+    '</button>'
+  ).join('');
+}
+
 async function openWorkDetails(filename) {
   const entry = libraryCache.find((candidate) => candidate.filename === filename);
   const manifest = entry?.work && semanticManifests.get(entry.work.workId);
@@ -2982,6 +3601,7 @@ async function openWorkDetails(filename) {
   workRatingInput.value = manifest.userMetadata?.rating == null
     ? '' : String(manifest.userMetadata.rating);
   workProcessingState.textContent = 'Checking local processing…';
+  workProcessingCancelBtn.hidden = true;
   const availableAssets = manifest.assets.filter(
     (asset) => asset.availability === 'available',
   );
@@ -2999,15 +3619,24 @@ async function openWorkDetails(filename) {
       'Splitting preserves each original and moves format-grounded reading data back.')
     : '';
   workConcepts.innerHTML = '<span class="semantic-search-state">Concepts are generated locally.</span>';
+  workConnectionsSection.hidden = true;
+  workConnections.innerHTML = '';
   workDetailsDialog.showModal();
 
-  const [run, semantics] = await Promise.all([
+  const [run, semantics, ideaRecord, ideaGraph] = await Promise.all([
     readJsonRecord(processingRunPath(manifest.workId)),
     readJsonRecord(semanticRecordsPath(manifest.workId)),
+    readJsonRecord(ideaRecordsPath(manifest.workId)),
+    readJsonRecord(LIBRARY_IDEA_GRAPH_PATH),
   ]);
   if (!workDetailsDialog.open || workDetailsWorkId !== manifest.workId) return;
   workDetailsSemanticRecord = semantics;
   workProcessingState.textContent = processingSummary(run);
+  workProcessingCancelBtn.hidden = !run;
+  workProcessingCancelBtn.dataset.cancelled = String(run?.cancelRequested === true);
+  workProcessingCancelBtn.textContent = run?.cancelRequested
+    ? 'Resume processing'
+    : 'Cancel processing';
   const concepts = curateSemanticConcepts(
     semantics?.concepts,
     manifest,
@@ -3049,7 +3678,62 @@ async function openWorkDetails(filename) {
   workEnrichBtn.textContent = enrichmentReady
     ? (modelCount ? 'Refresh enrichment' : 'Enrich concepts & scenes')
     : 'Configure semantic provider';
+  await renderWorkIdeaConnections(manifest, ideaRecord, ideaGraph);
 }
+
+workConnections.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-work-connection]');
+  const target = button
+    && workConnectionTargets.get(button.dataset.workConnection);
+  if (!target) return;
+  const entry = libraryCache.find((candidate) =>
+    candidate.work?.workId === target.workId);
+  const [ideas, passages] = await Promise.all([
+    readJsonRecord(ideaRecordsPath(target.workId)),
+    readJsonRecord(passagesPath(target.workId)),
+  ]);
+  const idea = ideas?.ideas?.find((candidate) =>
+    candidate.ideaId === target.ideaId);
+  const passageId = idea?.evidence?.[0]?.passageId;
+  const passage = passages?.passages?.find((candidate) =>
+    candidate.passageId === passageId);
+  if (!entry || !idea || !passage) {
+    showToast('That related source passage is unavailable.', { error:true });
+    return;
+  }
+  const key = 'connection:' + target.ideaId;
+  semanticSearchResults.set(key, {
+    key,
+    filename:entry.filename,
+    work:entry.work,
+    passage,
+    passageCount:passages.passages.length,
+    score:1,
+    idea,
+  });
+  workDetailsDialog.close();
+  await openSemanticSearchResult(key);
+});
+
+workProcessingCancelBtn.addEventListener('click', async () => {
+  if (!workDetailsWorkId) return;
+  const run = await readJsonRecord(processingRunPath(workDetailsWorkId));
+  if (!run) return;
+  const resume = run.cancelRequested === true;
+  const next = requestProcessingCancellation(run, !resume);
+  await writeProcessingRun(next);
+  workProcessingState.textContent = processingSummary(next);
+  workProcessingCancelBtn.dataset.cancelled = String(!resume);
+  workProcessingCancelBtn.textContent = resume
+    ? 'Cancel processing'
+    : 'Resume processing';
+  if (resume) scheduleSemanticProcessing();
+  showToast(
+    resume
+      ? 'Resumed processing for this book.'
+      : 'Processing will stop safely after its current stage.',
+  );
+});
 
 workDetailsDialog.addEventListener('close', () => {
   // Enrichment and concept curation intentionally close and immediately
@@ -3059,6 +3743,7 @@ workDetailsDialog.addEventListener('close', () => {
   workDetailsWorkId = null;
   workDetailsFilename = null;
   workDetailsSemanticRecord = null;
+  workConnectionTargets = new Map();
 });
 
 function openConceptCuration(conceptId) {
@@ -3385,6 +4070,19 @@ async function runWorkSemanticEnrichment() {
         promptVersion:SEMANTIC_ENRICHMENT_PROMPT_VERSION,
       },
     ));
+    processingRun = updateProcessingStage(
+      processingRun,
+      'embeddings',
+      backgroundIntelligenceOn ? 'pending' : 'waiting-for-consent',
+      { reason:'source-grounded-ideas-changed' },
+    );
+    processingRun = await writeProcessingRun(updateProcessingStage(
+      processingRun,
+      'libraryLinks',
+      'blocked-by-embeddings',
+      { reason:'source-grounded-ideas-changed' },
+    ));
+    if (backgroundIntelligenceOn) scheduleSemanticProcessing();
     if (workDetailsDialog.open && workDetailsWorkId === workId) {
       workDetailsDialog.close();
       await openWorkDetails(
@@ -3440,23 +4138,22 @@ workDetailsForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const current = workDetailsWorkId && semanticManifests.get(workDetailsWorkId);
   if (!current) return;
-  const update = updateWorkDetails(current, {
+  const values = {
     title: workTitleInput.value,
     authors: commaSeparatedValues(workAuthorsInput.value),
     tags: commaSeparatedValues(workTagsInput.value),
     shelves: commaSeparatedValues(workShelvesInput.value),
     rating: workRatingInput.value,
-  });
-  if (!update.changed) {
-    workDetailsDialog.close();
-    return;
-  }
+  };
   try {
-    await naklios.fs.write(
-      semanticManifestPath(update.manifest.workId),
-      JSON.stringify(update.manifest, null, 2),
+    const update = await mutateSemanticManifest(
+      current.workId,
+      (latest) => updateWorkDetails(latest, values),
     );
-    semanticManifests.set(update.manifest.workId, update.manifest);
+    if (!update.changed) {
+      workDetailsDialog.close();
+      return;
+    }
     const rebuilt = rebuildCatalog(Array.from(semanticManifests.values()), semanticCatalog);
     semanticCatalog = rebuilt.catalog;
     if (rebuilt.changed) {
@@ -3502,6 +4199,34 @@ function processingStillOwnsBackend(backendId) {
 async function writeProcessingRun(run) {
   await naklios.fs.write(processingRunPath(run.workId), JSON.stringify(run, null, 2));
   return run;
+}
+
+async function renewBrowserProcessingClaim(run, backendId) {
+  if (
+    semanticProcessingPaused
+    || !processingStillOwnsBackend(backendId)
+  ) return { run, continue:false, reason:'paused-or-backend-changed' };
+  const stored = await readJsonRecord(processingRunPath(run.workId));
+  const latest = makeProcessingRun({
+    workId:run.workId,
+    assetId:run.assetId,
+    previous:stored || run,
+    executorClass:'browser',
+  });
+  if (latest.cancelRequested) {
+    return { run:latest, continue:false, reason:'cancel-requested' };
+  }
+  const claim = claimProcessingRun(latest, {
+    executorId:SEMANTIC_BROWSER_EXECUTOR_ID,
+    executorClass:'browser',
+    leaseMs:15 * 60 * 1000,
+  });
+  if (!claim.claimed) return { run:latest, continue:false, reason:claim.reason };
+  return {
+    run:await writeProcessingRun(claim.run),
+    continue:true,
+    reason:claim.reason,
+  };
 }
 
 function textSectionsFromSource(text, format) {
@@ -3691,6 +4416,140 @@ async function extractSectionsForAsset(asset, binary) {
   throw new Error('No semantic parser is available for .' + format);
 }
 
+function resolveBackgroundSemanticProvider(capability = 'extractConcepts') {
+  if (!backgroundIntelligenceOn || !backgroundProviderOn) return null;
+  try {
+    return resolveAiProvider(capability);
+  } catch (_) {
+    return null;
+  }
+}
+
+async function enrichSemanticRecordInBackground({
+  manifest,
+  passageRecord,
+  semanticRecord,
+  run,
+  backendId,
+}) {
+  if (
+    !backgroundIntelligenceOn
+    || !backgroundProviderOn
+    || run.stages.modelSemantics.status === 'complete'
+    || (
+      run.stages.modelSemantics.status === 'failed'
+      && Number(run.stages.modelSemantics.attempts) >= 3
+    )
+  ) {
+    return { semanticRecord, run };
+  }
+  const providerRoute = resolveBackgroundSemanticProvider();
+  if (!providerRoute) {
+    if (run.stages.modelSemantics.status !== 'waiting-for-provider') {
+      run = await writeProcessingRun(updateProcessingStage(
+        run,
+        'modelSemantics',
+        'waiting-for-provider',
+        { reason:'no-background-provider-ready' },
+      ));
+    }
+    return { semanticRecord, run };
+  }
+
+  const runId = newAiRunId();
+  let prompt = null;
+  try {
+    run = await writeProcessingRun(updateProcessingStage(
+      run,
+      'modelSemantics',
+      'running',
+      { runId, executor:'browser-background' },
+    ));
+    prompt = buildSemanticEnrichmentMessages({
+      workTitle:manifest.title,
+      passages:passageRecord.passages,
+      deterministicSemantics:semanticRecord,
+    });
+    const completion = await runAiMessages(
+      providerRoute,
+      prompt.messages,
+      { maxTokens:1800 },
+    );
+    const enrichment = parseSemanticEnrichment({
+      text:completion.text,
+      workId:manifest.workId,
+      passages:passageRecord.passages,
+      provider:providerRoute.provider,
+      runId,
+    });
+    const merged = {
+      ...mergeModelSemanticRecords(semanticRecord, enrichment),
+      sourceFingerprint:run.sourceFingerprint,
+      updatedAt:new Date().toISOString(),
+    };
+    const promptHash = await hashAiConfiguration({
+      promptVersion:SEMANTIC_ENRICHMENT_PROMPT_VERSION,
+      system:prompt.messages[0].content,
+      passageIds:prompt.sourceRefs.map((source) => source.passageId),
+    });
+    await persistAiRun(makeAiRunRecord({
+      runId,
+      capability:'extractConcepts',
+      provider:providerRoute.provider,
+      consentClass:providerRoute.consentClass,
+      promptVersion:SEMANTIC_ENRICHMENT_PROMPT_VERSION,
+      promptHash,
+      sourceRefs:prompt.sourceRefs,
+      output:{
+        conceptIds:enrichment.concepts.map((item) => item.conceptId),
+        entityIds:enrichment.entities.map((item) => item.entityId),
+        sceneIds:enrichment.scenes.map((item) => item.sceneId),
+        capabilities:['extractConcepts', 'extractEntities', 'extractScenes'],
+      },
+      validation:{
+        grounded:true,
+        reason:'all-records-have-valid-passage-evidence',
+      },
+      status:'complete',
+    }));
+    if (!processingStillOwnsBackend(backendId)) return { semanticRecord, run };
+    await naklios.fs.write(
+      semanticRecordsPath(manifest.workId),
+      JSON.stringify(merged, null, 2),
+    );
+    run = await writeProcessingRun(updateProcessingStage(
+      run,
+      'modelSemantics',
+      'complete',
+      {
+        runId,
+        conceptCount:enrichment.concepts.length,
+        entityCount:enrichment.entities.length,
+        sceneCount:enrichment.scenes.length,
+        promptVersion:SEMANTIC_ENRICHMENT_PROMPT_VERSION,
+      },
+    ));
+    return { semanticRecord:merged, run };
+  } catch (error) {
+    run = await writeProcessingRun(updateProcessingStage(
+      run,
+      'modelSemantics',
+      'failed',
+      {
+        runId,
+        error:String(error?.message || error),
+        retryable:true,
+      },
+    )).catch(() => run);
+    console.warn(
+      'Books: background idea extraction failed for',
+      manifest.workId,
+      error,
+    );
+    return { semanticRecord, run };
+  }
+}
+
 async function processSemanticWork(manifest, backendId) {
   const asset = manifest.assets.find((candidate) => candidate.availability === 'available');
   if (!asset || !processingStillOwnsBackend(backendId)) return;
@@ -3700,34 +4559,75 @@ async function processSemanticWork(manifest, backendId) {
     workId: manifest.workId,
     assetId: asset.assetId,
     previous: previousRun,
+    executorClass:'browser',
   });
   let currentStage = 'fingerprint';
   let binary = null;
 
   try {
+    const initialClaim = await renewBrowserProcessingClaim(run, backendId);
+    run = initialClaim.run;
+    if (!initialClaim.continue) return;
     if (asset.fingerprintStatus !== 'complete') {
       run = await writeProcessingRun(
         updateProcessingStage(run, currentStage, 'running'),
       );
       binary = toArrayBuffer(await naklios.fs.readBinary(asset.sourcePath));
       const fingerprint = await sha256Fingerprint(binary);
-      const update = updateAssetFingerprint(manifest, asset.assetId, {
-        fingerprint,
-        byteLength: binary.byteLength,
-      });
-      if (update.changed && processingStillOwnsBackend(backendId)) {
-        manifest = update.manifest;
-        semanticManifests.set(manifest.workId, manifest);
-        await naklios.fs.write(
-          semanticManifestPath(manifest.workId),
-          JSON.stringify(manifest, null, 2),
+      if (
+        run.sourceFingerprint
+        && run.sourceFingerprint !== fingerprint
+      ) {
+        run = invalidateProcessingStages(run, [
+          'passages',
+          'lexicalIndex',
+          'deterministicSemantics',
+          'modelSemantics',
+          'embeddings',
+          'libraryLinks',
+        ], 'source-fingerprint-changed');
+      }
+      if (processingStillOwnsBackend(backendId)) {
+        const update = await mutateSemanticManifest(
+          manifest.workId,
+          (latest) => updateAssetFingerprint(latest, asset.assetId, {
+            fingerprint,
+            byteLength:binary.byteLength,
+          }),
         );
+        manifest = update.manifest;
+      }
+      await persistStandaloneFolderFingerprint(
+        asset.sourceFilename,
+        fingerprint,
+        binary.byteLength,
+      );
+      if (await recoverStandaloneFolderRename(
+        manifest,
+        manifest.assets.find((candidate) => candidate.assetId === asset.assetId)
+          || asset,
+        fingerprint,
+        binary.byteLength,
+      )) {
+        run = null;
+        scheduleSemanticProcessing();
+        return;
       }
       run = await writeProcessingRun(updateProcessingStage(
         run,
         currentStage,
         'complete',
-        { fingerprint, byteLength: binary.byteLength },
+        {
+          fingerprint,
+          sourceFingerprint:fingerprint,
+          byteLength:binary.byteLength,
+          artifact:{
+            kind:'source-fingerprint',
+            sourcePath:asset.sourcePath,
+            fingerprint,
+            byteLength:binary.byteLength,
+          },
+        },
       ));
     } else if (run.stages.fingerprint.status !== 'complete') {
       run = await writeProcessingRun(updateProcessingStage(
@@ -3736,11 +4636,17 @@ async function processSemanticWork(manifest, backendId) {
         'complete',
         {
           fingerprint: asset.fingerprint,
+          sourceFingerprint:asset.fingerprint,
           byteLength: asset.byteLength,
         },
       ));
     }
 
+    {
+      const control = await renewBrowserProcessingClaim(run, backendId);
+      run = control.run;
+      if (!control.continue) return;
+    }
     currentStage = 'passages';
     let passageRecord = await readJsonRecord(passagesPath(manifest.workId));
     if (
@@ -3749,6 +4655,13 @@ async function processSemanticWork(manifest, backendId) {
       || passageRecord.assetId !== asset.assetId
       || passageRecord.extractorVersion !== PASSAGE_EXTRACTOR_VERSION
     ) {
+      run = invalidateProcessingStages(run, [
+        'lexicalIndex',
+        'deterministicSemantics',
+        'modelSemantics',
+        'embeddings',
+        'libraryLinks',
+      ], 'passages-rebuilt');
       run = await writeProcessingRun(
         updateProcessingStage(run, currentStage, 'running'),
       );
@@ -3781,6 +4694,14 @@ async function processSemanticWork(manifest, backendId) {
         {
           passageCount:passages.length,
           extractorVersion:PASSAGE_EXTRACTOR_VERSION,
+          artifact:{
+            kind:'passages',
+            path:passagesPath(manifest.workId),
+            version:PASSAGE_EXTRACTOR_VERSION,
+            sourceFingerprint:manifest.assets.find(
+              (candidate) => candidate.assetId === asset.assetId,
+            )?.fingerprint || run.sourceFingerprint || null,
+          },
         },
       ));
     }
@@ -3802,6 +4723,11 @@ async function processSemanticWork(manifest, backendId) {
       }
     }
 
+    {
+      const control = await renewBrowserProcessingClaim(run, backendId);
+      run = control.run;
+      if (!control.continue) return;
+    }
     currentStage = 'lexicalIndex';
     let lexicalIndex = await readJsonRecord(workLexicalIndexPath(manifest.workId));
     if (
@@ -3810,6 +4736,12 @@ async function processSemanticWork(manifest, backendId) {
       || lexicalIndex.indexVersion !== 'lexical-v1'
       || lexicalIndex.assetId !== asset.assetId
     ) {
+      run = invalidateProcessingStages(run, [
+        'deterministicSemantics',
+        'modelSemantics',
+        'embeddings',
+        'libraryLinks',
+      ], 'lexical-index-rebuilt');
       run = await writeProcessingRun(
         updateProcessingStage(run, currentStage, 'running'),
       );
@@ -3835,45 +4767,191 @@ async function processSemanticWork(manifest, backendId) {
         {
           termCount: Object.keys(lexicalIndex.postings).length,
           indexVersion: 'lexical-v1',
+          artifact:{
+            kind:'lexical-index',
+            path:workLexicalIndexPath(manifest.workId),
+            version:'lexical-v1',
+            sourceFingerprint:run.sourceFingerprint,
+          },
         },
       ));
     }
 
+    {
+      const control = await renewBrowserProcessingClaim(run, backendId);
+      run = control.run;
+      if (!control.continue) return;
+    }
     currentStage = 'deterministicSemantics';
-    const existingSemantics = await readJsonRecord(semanticRecordsPath(manifest.workId));
+    let semanticRecord = await readJsonRecord(semanticRecordsPath(manifest.workId));
     if (
       run.stages.deterministicSemantics.status !== 'complete'
-      || !existingSemantics
-      || existingSemantics.extractorVersion !== 'deterministic-semantics-v1'
-      || existingSemantics.assetId !== asset.assetId
+      || !semanticRecord
+      || semanticRecord.extractorVersion !== 'deterministic-semantics-v1'
+      || semanticRecord.assetId !== asset.assetId
     ) {
+      run = invalidateProcessingStages(run, [
+        'modelSemantics',
+        'embeddings',
+        'libraryLinks',
+      ], 'deterministic-semantics-rebuilt');
       run = await writeProcessingRun(
         updateProcessingStage(run, currentStage, 'running'),
       );
-      const semantics = {
+      semanticRecord = {
         ...extractDeterministicSemantics({
           workId: manifest.workId,
           passages: passageRecord.passages,
           lexicalIndex,
         }),
         assetId: asset.assetId,
+        sourceFingerprint:run.sourceFingerprint,
         updatedAt: new Date().toISOString(),
       };
       if (!processingStillOwnsBackend(backendId)) return;
       await naklios.fs.write(
         semanticRecordsPath(manifest.workId),
-        JSON.stringify(semantics, null, 2),
+        JSON.stringify(semanticRecord, null, 2),
       );
-      await writeProcessingRun(updateProcessingStage(
+      run = await writeProcessingRun(updateProcessingStage(
         run,
         currentStage,
         'complete',
         {
-          conceptCount: semantics.concepts.length,
-          sceneCount: semantics.scenes.length,
+          conceptCount: semanticRecord.concepts.length,
+          sceneCount: semanticRecord.scenes.length,
           extractorVersion: 'deterministic-semantics-v1',
+          artifact:{
+            kind:'semantic-records',
+            path:semanticRecordsPath(manifest.workId),
+            version:'deterministic-semantics-v1',
+            sourceFingerprint:run.sourceFingerprint,
+          },
         },
       ));
+    }
+
+    {
+      const enriched = await enrichSemanticRecordInBackground({
+        manifest,
+        passageRecord,
+        semanticRecord,
+        run,
+        backendId,
+      });
+      semanticRecord = enriched.semanticRecord;
+      run = enriched.run;
+    }
+
+    const ideaRecord = makeSourceGroundedIdeas({
+      workId:manifest.workId,
+      semanticRecord:{
+        ...semanticRecord,
+        sourceFingerprint:run.sourceFingerprint,
+      },
+      passages:passageRecord.passages,
+    });
+    await naklios.fs.write(
+      ideaRecordsPath(manifest.workId),
+      JSON.stringify(ideaRecord, null, 2),
+    );
+    const embeddingTexts = ideaRecord.ideas.map(ideaEmbeddingText);
+    const embeddingInputFingerprint = await sha256Fingerprint(
+      new TextEncoder().encode(embeddingTexts.join('\u001f')),
+    );
+
+    currentStage = 'embeddings';
+    if (!backgroundIntelligenceOn) {
+      if (run.stages.embeddings.status !== 'waiting-for-consent') {
+        run = await writeProcessingRun(updateProcessingStage(
+          run,
+          currentStage,
+          'waiting-for-consent',
+          {
+            ideaCount:ideaRecord.ideas.length,
+            model:DEFAULT_SEMANTIC_EMBEDDING_MODEL.model,
+          },
+        ));
+      }
+    } else {
+      const existingEmbeddings = await readJsonRecord(
+        ideaEmbeddingsPath(manifest.workId),
+      );
+      const currentIdeaIds = ideaRecord.ideas.map((idea) => idea.ideaId);
+      const existingIdeaIds = (existingEmbeddings?.rows || [])
+        .map((row) => row.ideaId);
+      const existingVectorsPresent = Boolean(
+        (
+          existingEmbeddings?.rows?.length
+          && existingEmbeddings.rows.every((row) => Array.isArray(row?.vector))
+        )
+        || (
+          existingEmbeddings?.vectorPath
+          && await naklios.fs.exists(existingEmbeddings.vectorPath)
+        )
+      );
+      const embeddingCurrent = (
+        run.stages.embeddings.status === 'complete'
+        && existingVectorsPresent
+        && existingEmbeddings?.model === DEFAULT_SEMANTIC_EMBEDDING_MODEL.model
+        && existingEmbeddings?.sourceFingerprint === run.sourceFingerprint
+        && existingEmbeddings?.inputFingerprint === embeddingInputFingerprint
+        && JSON.stringify(existingIdeaIds) === JSON.stringify(currentIdeaIds)
+      );
+      if (!embeddingCurrent) {
+        const control = await renewBrowserProcessingClaim(run, backendId);
+        run = control.run;
+        if (!control.continue) return;
+        run = await writeProcessingRun(updateProcessingStage(
+          run,
+          currentStage,
+          'running',
+          {
+            ideaCount:ideaRecord.ideas.length,
+            model:DEFAULT_SEMANTIC_EMBEDDING_MODEL.model,
+          },
+        ));
+        await semanticEncoder.load();
+        const vectors = embeddingTexts.length
+          ? await semanticEncoder.embed(embeddingTexts)
+          : [];
+        const embeddingBundle = makeIdeaEmbeddingBundle({
+          workId:manifest.workId,
+          ideaRecords:ideaRecord,
+          vectors,
+          model:DEFAULT_SEMANTIC_EMBEDDING_MODEL.model,
+          dimensions:DEFAULT_SEMANTIC_EMBEDDING_MODEL.dimensions,
+          sourceFingerprint:run.sourceFingerprint,
+          inputFingerprint:embeddingInputFingerprint,
+        });
+        const embeddingRecord = embeddingBundle.record;
+        await naklios.fs.write(
+          embeddingRecord.vectorPath,
+          embeddingBundle.binary,
+        );
+        await naklios.fs.write(
+          ideaEmbeddingsPath(manifest.workId),
+          JSON.stringify(embeddingRecord),
+        );
+        run = await writeProcessingRun(updateProcessingStage(
+          run,
+          currentStage,
+          'complete',
+          {
+            ideaCount:ideaRecord.ideas.length,
+            model:embeddingRecord.model,
+            dimensions:embeddingRecord.dimensions,
+            artifact:{
+              kind:'idea-embeddings',
+              path:ideaEmbeddingsPath(manifest.workId),
+              version:embeddingRecord.indexVersion,
+              model:embeddingRecord.model,
+              dimensions:embeddingRecord.dimensions,
+              sourceFingerprint:run.sourceFingerprint,
+            },
+          },
+        ));
+      }
     }
     const activeWork = workForFilename(semanticCatalog, activeSourceFilename);
     if (activeWork?.workId === manifest.workId && reader.classList.contains('is-open')) {
@@ -3882,12 +4960,158 @@ async function processSemanticWork(manifest, backendId) {
   } catch (error) {
     if (!processingStillOwnsBackend(backendId)) return;
     const status = error?.code === 'ocr-required' ? 'waiting-for-ocr' : 'failed';
-    await writeProcessingRun(updateProcessingStage(run, currentStage, status, {
+    run = await writeProcessingRun(updateProcessingStage(run, currentStage, status, {
       error: String(error?.message || error),
       code: error?.code || 'processing-failed',
     }));
     console.warn('Books: background processing stopped for', manifest.workId, error);
+  } finally {
+    if (
+      processingStillOwnsBackend(backendId)
+      && run?.lease?.executorId === SEMANTIC_BROWSER_EXECUTOR_ID
+    ) {
+      try {
+        run = await writeProcessingRun(
+          releaseProcessingRun(run, SEMANTIC_BROWSER_EXECUTOR_ID),
+        );
+      } catch (_) {}
+    }
   }
+}
+
+async function classifyLibraryIdeaGraph(graph, ideas) {
+  const providerRoute = resolveBackgroundSemanticProvider(
+    'classifyIdeaRelations',
+  );
+  if (!providerRoute) return graph;
+  const ideaById = new Map(ideas.map((idea) => [idea.ideaId, idea]));
+  const candidates = (graph.links || [])
+    .filter((link) => link.relation === 'related_to' || link.relation === 'extends')
+    .slice(0, 96);
+  if (!candidates.length) return graph;
+  let classifiedGraph = graph;
+  const batchSize = 16;
+  for (let offset = 0; offset < candidates.length; offset += batchSize) {
+    const batch = candidates.slice(offset, offset + batchSize);
+    const payload = batch.map((link) => {
+      const left = ideaById.get(link.leftIdeaId);
+      const right = ideaById.get(link.rightIdeaId);
+      return {
+        linkId:link.linkId,
+        left:{
+          label:left?.label,
+          statement:left?.statement,
+          kind:left?.kind,
+        },
+        right:{
+          label:right?.label,
+          statement:right?.statement,
+          kind:right?.kind,
+        },
+      };
+    });
+    try {
+      const completion = await runAiMessages(providerRoute, [{
+        role:'system',
+        content:
+          'Classify each directed relationship from left idea to right idea. ' +
+          'Use only these relations: ' + IDEA_RELATION_TYPES.join(', ') + '. ' +
+          'Return JSON only as {"relations":[{"linkId":string,' +
+          '"relation":string,"confidence":number,"rationale":string}]}. ' +
+          'Use related_to when the evidence is insufficient. Do not create IDs.',
+      }, {
+        role:'user',
+        content:JSON.stringify({ pairs:payload }),
+      }], { maxTokens:1200 });
+      const parsed = JSON.parse(
+        String(completion.text || '')
+          .replace(/^```(?:json)?\s*/i, '')
+          .replace(/\s*```$/i, ''),
+      );
+      const applied = applyIdeaRelationClassifications(
+        classifiedGraph,
+        parsed.relations || [],
+        {
+          provider:providerRoute.provider?.providerClass
+            || providerRoute.kind,
+          model:providerRoute.provider?.model || completion.model,
+        },
+      );
+      classifiedGraph = applied.graph;
+    } catch (error) {
+      console.warn('Books: idea relation classification kept embedding links', error);
+      break;
+    }
+  }
+  return classifiedGraph;
+}
+
+async function rebuildLibraryIdeaGraph(backendId) {
+  if (
+    !backgroundIntelligenceOn
+    || !processingStillOwnsBackend(backendId)
+  ) return null;
+  const ideas = [];
+  const vectors = new Map();
+  const activeRuns = [];
+  for (const manifest of semanticManifests.values()) {
+    if (manifest.recordState === 'merged') continue;
+    const [ideaRecord, embeddingRecord, processingRun] = await Promise.all([
+      readJsonRecord(ideaRecordsPath(manifest.workId)),
+      readJsonRecord(ideaEmbeddingsPath(manifest.workId)),
+      readJsonRecord(processingRunPath(manifest.workId)),
+    ]);
+    if (
+      !ideaRecord?.ideas
+      || !embeddingRecord?.rows
+      || embeddingRecord.model !== DEFAULT_SEMANTIC_EMBEDDING_MODEL.model
+    ) continue;
+    ideas.push(...ideaRecord.ideas);
+    const workVectors = await readIdeaVectorMap(embeddingRecord);
+    for (const [ideaId, vector] of workVectors) {
+      vectors.set(ideaId, vector);
+    }
+    if (processingRun) activeRuns.push(processingRun);
+  }
+  let graph = buildLibraryIdeaGraph({
+    ideas,
+    vectors,
+    model:DEFAULT_SEMANTIC_EMBEDDING_MODEL.model,
+    dimensions:DEFAULT_SEMANTIC_EMBEDDING_MODEL.dimensions,
+  });
+  graph = await classifyLibraryIdeaGraph(graph, ideas);
+  if (!processingStillOwnsBackend(backendId)) return null;
+  await naklios.fs.write(
+    LIBRARY_IDEA_GRAPH_PATH,
+    JSON.stringify(graph),
+  );
+  for (const storedRun of activeRuns) {
+    const next = updateProcessingStage(
+      makeProcessingRun({
+        workId:storedRun.workId,
+        assetId:storedRun.assetId,
+        previous:storedRun,
+      }),
+      'libraryLinks',
+      'complete',
+      {
+        graphPath:LIBRARY_IDEA_GRAPH_PATH,
+        graphVersion:'library-idea-links-v1',
+        linkCount:graph.links.filter((link) =>
+          link.leftWorkId === storedRun.workId
+          || link.rightWorkId === storedRun.workId
+        ).length,
+        artifact:{
+          kind:'library-idea-links',
+          path:LIBRARY_IDEA_GRAPH_PATH,
+          version:'library-idea-links-v1',
+          model:graph.model,
+        },
+      },
+    );
+    await writeProcessingRun(next);
+  }
+  return graph;
 }
 
 async function runSemanticProcessingQueue(backendId) {
@@ -3896,10 +5120,38 @@ async function runSemanticProcessingQueue(backendId) {
       semanticProcessingPaused
       || !processingStillOwnsBackend(backendId)
     ) return;
+    semanticResourceHoldReason = await semanticProcessingHoldReason();
+    syncProcessingControls();
+    if (semanticResourceHoldReason) {
+      semanticProcessingTimer = setTimeout(scheduleSemanticProcessing, 30_000);
+      return;
+    }
     if (manifest.recordState === 'merged') continue;
     await processSemanticWork(manifest, backendId);
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
+  semanticResourceHoldReason = await semanticProcessingHoldReason();
+  syncProcessingControls();
+  if (semanticResourceHoldReason) return;
+  await rebuildLibraryIdeaGraph(backendId);
+}
+
+async function semanticProcessingHoldReason() {
+  if (browserLocalAi.pending?.size) return 'interactive AI is active';
+  if (
+    backgroundIntelligenceOn
+    && !semanticEncoder.ready
+    && navigator.connection?.saveData
+  ) return 'Data Saver is active';
+  if (backgroundIntelligenceOn && navigator.getBattery) {
+    try {
+      const battery = await navigator.getBattery();
+      if (!battery.charging && battery.level < 0.15) {
+        return 'battery is below 15%';
+      }
+    } catch (_) {}
+  }
+  return null;
 }
 
 function scheduleSemanticProcessing() {
@@ -5174,6 +6426,9 @@ function renderHostedNoStorage() {
 function renderLibraryEmpty() {
   topbarStatus.textContent = 'Library empty · ' + backendLabel(activeBackendId());
   const backend = activeBackendId();
+  const folderAction = !naklios.capabilities.hosted && globalThis.showDirectoryPicker
+    ? '<button class="add-btn-secondary" id="add-folder-btn-empty" type="button">＋ Add folder…</button>'
+    : '';
   const sideload = backend === 'fsa'
     ? " You can also place files in <code>apps/books/library/</code> inside the mounted Folder; they'll appear when this window is focused."
     : '';
@@ -5185,10 +6440,15 @@ function renderLibraryEmpty() {
       '<h2>📖 Your library is empty</h2>' +
       '<p>Add books from your computer to start reading. Supported: <code>.epub</code>, <code>.pdf</code>, <code>.mobi</code>, <code>.azw3</code>, <code>.fb2</code>, <code>.txt</code>, <code>.md</code>, <code>.html</code>.</p>' +
       '<button class="add-btn-secondary" id="add-book-btn-empty" type="button">＋ Add book…</button>' +
+      folderAction +
       '<p style="font-size:11px; margin-top:18px;">Or drag files onto this window.' + sideload + storageNote + '</p>' +
     '</div></div>';
   const btn = document.getElementById('add-book-btn-empty');
   if (btn) btn.addEventListener('click', openLibraryFilePicker);
+  document.getElementById('add-folder-btn-empty')?.addEventListener(
+    'click',
+    () => void connectStandaloneFolder(),
+  );
 }
 
 function workCenteredLibraryEntries(entries = libraryCache) {
@@ -5525,19 +6785,38 @@ async function runSemanticLibrarySearch(query) {
     return;
   }
   container.hidden = false;
-  container.innerHTML = '<p class="semantic-search-state">Searching local passages…</p>';
+  container.innerHTML = '<p class="semantic-search-state">Searching local passages' +
+    (semanticEncoder.ready ? ' and ideas' : '') + '…</p>';
   const matches = [];
   const seenWorks = new Set();
+  const ideaRows = [];
+  const ideaVectors = new Map();
+  const passageRecords = new Map();
+  const entryByWorkId = new Map();
   for (const entry of libraryCache) {
     const workId = entry.work?.workId;
     if (!workId || seenWorks.has(workId)) continue;
     seenWorks.add(workId);
-    const [index, passageRecord] = await Promise.all([
+    entryByWorkId.set(workId, entry);
+    const [index, passageRecord, ideaRecord, embeddingRecord] = await Promise.all([
       readJsonRecord(workLexicalIndexPath(workId)),
       readJsonRecord(passagesPath(workId)),
+      semanticEncoder.ready ? readJsonRecord(ideaRecordsPath(workId)) : null,
+      semanticEncoder.ready ? readJsonRecord(ideaEmbeddingsPath(workId)) : null,
     ]);
     if (run !== semanticSearchRun) return;
     if (!index || !passageRecord?.passages) continue;
+    passageRecords.set(workId, passageRecord);
+    if (
+      ideaRecord?.ideas
+      && embeddingRecord?.model === DEFAULT_SEMANTIC_EMBEDDING_MODEL.model
+    ) {
+      ideaRows.push(...ideaRecord.ideas);
+      const workVectors = await readIdeaVectorMap(embeddingRecord);
+      for (const [ideaId, vector] of workVectors) {
+        ideaVectors.set(ideaId, vector);
+      }
+    }
     for (const result of searchLexicalIndex(index, normalized).slice(0, 4)) {
       const passage = passageRecord.passages[result.passageIndex];
       if (!passage) continue;
@@ -5548,6 +6827,34 @@ async function runSemanticLibrarySearch(query) {
         passage,
         passageCount: passageRecord.passages.length,
         score: result.score,
+      });
+    }
+  }
+  if (semanticEncoder.ready && ideaRows.length && run === semanticSearchRun) {
+    const [queryVector] = await semanticEncoder.embed([normalized]);
+    if (run !== semanticSearchRun) return;
+    for (const result of searchIdeaRecords({
+      ideas:ideaRows,
+      vectors:ideaVectors,
+      queryVector,
+      query:normalized,
+      limit:20,
+    })) {
+      const entry = entryByWorkId.get(result.idea.workId);
+      const passageRecord = passageRecords.get(result.idea.workId);
+      const passageId = result.idea.evidence?.[0]?.passageId;
+      const passage = passageRecord?.passages?.find(
+        (candidate) => candidate.passageId === passageId,
+      );
+      if (!entry || !passage) continue;
+      matches.push({
+        key:'idea:' + result.idea.ideaId,
+        filename:entry.filename,
+        work:entry.work,
+        passage,
+        passageCount:passageRecord.passages.length,
+        score:result.score,
+        idea:result.idea,
       });
     }
   }
@@ -5565,7 +6872,11 @@ async function runSemanticLibrarySearch(query) {
     '<button class="semantic-result" type="button" data-semantic-result="' +
       escapeHtml(match.key) + '">' +
       '<strong>' + escapeHtml(match.work?.title || match.filename) + '</strong>' +
-      '<span>' + escapeHtml(match.passage.structure?.label || 'Passage') + '</span>' +
+      '<span>' + escapeHtml(
+        match.idea
+          ? 'Idea · ' + match.idea.label
+          : (match.passage.structure?.label || 'Passage'),
+      ) + '</span>' +
       '<p>' + escapeHtml(passageExcerptForQuery(match.passage, normalized)) + '</p>' +
     '</button>'
   ).join('');
@@ -6011,6 +7322,9 @@ async function permanentlyDeleteTrashRecord(record) {
         passagesPath(record.workId),
         workLexicalIndexPath(record.workId),
         semanticRecordsPath(record.workId),
+        ideaRecordsPath(record.workId),
+        ideaEmbeddingsPath(record.workId),
+        ideaEmbeddingVectorPath(record.workId),
         processingRunPath(record.workId),
       ]) {
         await deletePathIfPresent(path);
@@ -6245,6 +7559,7 @@ async function openLibraryTools() {
   libraryStorageAccounting.innerHTML =
     '<span class="semantic-search-state">Measuring local records…</span>';
   syncProcessingControls();
+  syncBackgroundIntelligenceControls();
   libraryToolsDialog.showModal();
   await Promise.all([
     validateActiveLibrary().catch((error) => {
@@ -6305,9 +7620,15 @@ async function storageAccountingSnapshot() {
       ...(await listedDataPaths('notes/')),
     ]),
     passages:new Set(workIds.map(passagesPath)),
-    indexes:new Set(workIds.map(workLexicalIndexPath)),
+    indexes:new Set([
+      ...workIds.map(workLexicalIndexPath),
+      ...workIds.map(ideaEmbeddingsPath),
+      ...workIds.map(ideaEmbeddingVectorPath),
+      LIBRARY_IDEA_GRAPH_PATH,
+    ]),
     semantics:new Set([
       ...workIds.map(semanticRecordsPath),
+      ...workIds.map(ideaRecordsPath),
       ...workIds.map(processingRunPath),
       ...(await listedDataPaths(AI_RUNS_PREFIX)),
     ]),
@@ -6342,10 +7663,90 @@ async function storageAccountingSnapshot() {
 function syncProcessingControls() {
   processingStateLabel.textContent = semanticProcessingPaused
     ? 'Background processing paused'
-    : 'Background processing active';
+    : semanticResourceHoldReason
+      ? 'Waiting · ' + semanticResourceHoldReason
+      : 'Background processing active';
   processingToggleBtn.textContent = semanticProcessingPaused
     ? 'Resume processing' : 'Pause processing';
 }
+
+function syncBackgroundIntelligenceControls(
+  snapshot = semanticEncoder.snapshot(),
+) {
+  backgroundIntelligenceEnabled.checked = backgroundIntelligenceOn;
+  backgroundProviderEnabled.checked = backgroundProviderOn;
+  backgroundProviderEnabled.disabled = !backgroundIntelligenceOn;
+  backgroundIntelligenceEnabled.disabled = !snapshot.supported || snapshot.loading;
+  backgroundIntelligenceRun.disabled =
+    !backgroundIntelligenceOn || snapshot.loading || semanticProcessingPaused;
+  backgroundIntelligenceProgress.hidden = !snapshot.loading;
+  backgroundIntelligenceProgress.value = snapshot.progress || 0;
+  backgroundIntelligenceStatus.textContent = !backgroundIntelligenceOn
+    ? 'Off'
+    : snapshot.ready
+      ? 'Ready · ' + snapshot.model.label
+      : snapshot.loading
+        ? snapshot.status
+        : snapshot.error || 'Enabled · model loads when processing starts';
+}
+
+async function loadBackgroundSemanticModel({ notify = false } = {}) {
+  if (!backgroundIntelligenceOn) return false;
+  try {
+    await semanticEncoder.load();
+    if (notify) {
+      showToast(DEFAULT_SEMANTIC_EMBEDDING_MODEL.label + ' is ready locally.');
+    }
+    scheduleSemanticProcessing();
+    return true;
+  } catch (error) {
+    if (notify) {
+      showToast(
+        "Couldn't load the compact semantic model: " +
+          String(error?.message || error),
+        { error:true, duration:6500 },
+      );
+    }
+    return false;
+  }
+}
+
+backgroundIntelligenceEnabled.addEventListener('change', () => {
+  backgroundIntelligenceOn = backgroundIntelligenceEnabled.checked;
+  localStorage.setItem(
+    BACKGROUND_INTELLIGENCE_KEY,
+    String(backgroundIntelligenceOn),
+  );
+  if (backgroundIntelligenceOn) {
+    void loadBackgroundSemanticModel({ notify:true });
+  } else {
+    semanticEncoder.dispose();
+    syncBackgroundIntelligenceControls();
+  }
+});
+
+backgroundProviderEnabled.addEventListener('change', () => {
+  backgroundProviderOn = backgroundProviderEnabled.checked;
+  localStorage.setItem(
+    BACKGROUND_PROVIDER_KEY,
+    String(backgroundProviderOn),
+  );
+  syncBackgroundIntelligenceControls();
+  if (backgroundProviderOn) scheduleSemanticProcessing();
+});
+
+backgroundIntelligenceRun.addEventListener('click', () => {
+  if (semanticProcessingPaused) {
+    semanticProcessingPaused = false;
+    localStorage.setItem(PROCESSING_PAUSED_KEY, 'false');
+  }
+  void loadBackgroundSemanticModel({ notify:false });
+  scheduleSemanticProcessing();
+  syncProcessingControls();
+  syncBackgroundIntelligenceControls();
+});
+
+semanticEncoder.subscribe(syncBackgroundIntelligenceControls);
 
 async function refreshStorageAccounting() {
   syncProcessingControls();
@@ -6402,8 +7803,8 @@ derivedClearBtn.addEventListener('click', async () => {
   if (libraryToolsDialog.open) libraryToolsDialog.close();
   const confirmed = await askForConfirmation({
     title:'Clear local derived data?',
-    message:'Passages, lexical indexes, generated semantic records, AI run ' +
-      'history, processing checkpoints, and cover thumbnails will be removed. ' +
+    message:'Passages, lexical and idea indexes, generated semantic records, ' +
+      'idea relationships, AI run history, processing checkpoints, and cover thumbnails will be removed. ' +
       'Original books, work metadata, reading positions, notes, bookmarks, ' +
       'highlights, Trash, and provider settings are preserved.',
     confirmLabel:'Clear derived data',
@@ -6910,6 +8311,8 @@ function updateRemoteConsentSurface() {
     aiRemoteConsentLabel.textContent =
       'I approve sending retrieved book passages to ' + destination +
       ' for source-grounded answers and on-demand concept/scene enrichment. ' +
+      'Background idea extraction and relation classification also require ' +
+      'their separate Library tools opt-in. ' +
       'This approval is destination-specific and revocable.';
   }
 }
@@ -7055,6 +8458,7 @@ aiProviderForm.addEventListener('submit', (event) => {
           'extractConcepts',
           'extractEntities',
           'extractScenes',
+          'classifyIdeaRelations',
         ])),
       );
     } else {
@@ -7564,13 +8968,17 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
         '<button class="library-header-action" id="library-ask-btn" type="button">Ask library</button>' +
         '<button class="library-header-action" id="library-tools-btn" type="button">Library tools</button>' +
         '<button class="library-header-action" id="annotations-browser-btn" type="button">Annotations</button>' +
+        (!naklios.capabilities.hosted && globalThis.showDirectoryPicker
+          ? '<button class="library-header-action" id="add-folder-btn" type="button">＋ Add folder…</button>'
+          : '') +
         '<button class="add-btn compact" id="add-book-btn" type="button">＋ Add book…</button>' +
       '</div>' +
     '</div>' +
     '<label class="semantic-search">' +
       '<span class="sr-only">Search inside every indexed book</span>' +
       '<input id="semantic-search-input" type="search" autocomplete="off" ' +
-        'placeholder="Search inside every book…">' +
+        'placeholder="Search inside every book…" value="' +
+        escapeHtml(semanticLibraryQuery) + '">' +
     '</label>' +
     '<section class="semantic-search-results" id="semantic-search-results" ' +
       'aria-live="polite" aria-label="Library passage search results" hidden></section>' +
@@ -7579,6 +8987,10 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   renderLibraryRows();
   const addBtn = document.getElementById('add-book-btn');
   if (addBtn) addBtn.addEventListener('click', openLibraryFilePicker);
+  document.getElementById('add-folder-btn')?.addEventListener(
+    'click',
+    () => void connectStandaloneFolder(),
+  );
   const libraryAskBtn = document.getElementById('library-ask-btn');
   if (libraryAskBtn) libraryAskBtn.addEventListener('click', () => {
     openLibraryAsk('library');
@@ -7623,9 +9035,10 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
     renderLibraryRows();
   });
   semanticInput.addEventListener('input', () => {
+    semanticLibraryQuery = semanticInput.value;
     clearTimeout(semanticSearchTimer);
     semanticSearchTimer = setTimeout(
-      () => void runSemanticLibrarySearch(semanticInput.value),
+      () => void runSemanticLibrarySearch(semanticLibraryQuery),
       180,
     );
   });
@@ -7662,6 +9075,13 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
     ) || null;
     if (orphanRecoveryTarget) orphanRecoveryInput.click();
   });
+  if (semanticLibraryQuery.trim().length >= 2) {
+    clearTimeout(semanticSearchTimer);
+    semanticSearchTimer = setTimeout(
+      () => void runSemanticLibrarySearch(semanticLibraryQuery),
+      0,
+    );
+  }
 }
 
 // ============================================================
@@ -8305,8 +9725,8 @@ async function openBookFromFile(file, persistInfo) {
     // Wire navigation controls now that the engine is live
     prevBtn.hidden = false;
     nextBtn.hidden = false;
-    prevBtn.onclick = () => activeEngine && activeEngine.prev();
-    nextBtn.onclick = () => activeEngine && activeEngine.next();
+    prevBtn.onclick = () => { void queueReaderNavigation('prev'); };
+    nextBtn.onclick = () => { void queueReaderNavigation('next'); };
 
     // Populate TOC (sidebar Contents section). null/empty hides the section.
     let toc = null;
@@ -8431,8 +9851,8 @@ async function switchToNativeMode() {
     readerSearchBtn.hidden = false;
     prevBtn.hidden = false;
     nextBtn.hidden = false;
-    prevBtn.onclick = () => activeEngine?.prev?.();
-    nextBtn.onclick = () => activeEngine?.next?.();
+    prevBtn.onclick = () => { void queueReaderNavigation('prev'); };
+    nextBtn.onclick = () => { void queueReaderNavigation('next'); };
     renderTOC(await activeEngine.getTOC());
     readerStatus.textContent = describePosition('native', activeEngine.getPosition());
     writeSidecarDebounced(activeBookId, activeSidecar);
@@ -8942,11 +10362,14 @@ document.querySelectorAll('[data-close-dialog]').forEach((button) => {
 
 function updateStorageButton() {
   if (!naklios.capabilities.hosted) {
+    const active = activeBackendId();
     [storageBtn, readerStorageBtn].forEach((button) => {
       button.hidden = !naklios.capabilities.fs;
-      button.disabled = true;
-      button.textContent = 'Browser';
-      button.title = 'This library is stored in this browser on this device.';
+      button.disabled = !naklios.capabilities.fs;
+      button.textContent = backendLabel(active) + ' ▾';
+      button.title = active === 'fsa'
+        ? 'Books is reading this folder in place. Choose Browser or another folder.'
+        : 'Choose Browser storage or open a durable folder library.';
     });
     return;
   }
@@ -8964,24 +10387,53 @@ function updateStorageButton() {
 function showStorageDialog() {
   const active = activeBackendId();
   const choices = connectedBackends();
-  storageDialogList.innerHTML = choices.length
-    ? choices.map((id) =>
-        '<button class="books-dialog-choice" type="button" data-backend="' + id + '">' +
-          '<strong>' + backendLabel(id) + (id === active ? ' · Current' : '') + '</strong>' +
-          '<small>' + (
-            id === 'browser'
-              ? 'Stored in this browser on this device'
-              : id === 'crate'
-                ? 'Encrypted, multi-device storage'
-                : 'Mounted local folder'
-          ) + '</small>' +
-        '</button>'
-      ).join('')
-    : '<button class="books-dialog-choice" type="button" data-open-settings>' +
+  const choicesMarkup = choices.map((id) =>
+    '<button class="books-dialog-choice" type="button" data-backend="' + id + '">' +
+      '<strong>' + backendLabel(id) + (id === active ? ' · Current' : '') + '</strong>' +
+      '<small>' + (
+        id === 'browser'
+          ? 'Stored in this browser on this device'
+          : id === 'crate'
+            ? 'Encrypted, multi-device storage'
+            : 'Read books in place; metadata lives in the folder sidecar'
+      ) + '</small>' +
+    '</button>'
+  ).join('');
+  const connectMarkup = !naklios.capabilities.hosted && globalThis.showDirectoryPicker
+    ? '<button class="books-dialog-choice" type="button" data-connect-folder>' +
+        '<strong>＋ Open a folder library…</strong>' +
+        '<small>Recursively discover books and keep durable metadata beside them</small>' +
+      '</button>'
+    : '';
+  const settingsMarkup = naklios.capabilities.hosted && !choices.length
+    ? '<button class="books-dialog-choice" type="button" data-open-settings>' +
         '<strong>Open NakliOS Storage settings…</strong>' +
         '<small>Connect a Folder or encrypted Crate, then return here.</small>' +
-      '</button>';
+      '</button>'
+    : '';
+  storageDialogList.innerHTML = choicesMarkup + connectMarkup + settingsMarkup;
   storageDialog.showModal();
+}
+
+async function connectStandaloneFolder() {
+  try {
+    await flushPendingWrites();
+    const connected = await naklios.fs.connectFolder();
+    if (reader.classList.contains('is-open')) teardownReaderView();
+    if (storageDialog.open) storageDialog.close();
+    libraryFilter = '';
+    libraryViewSelection = 'all';
+    clearCoverObjectUrls();
+    updateStorageButton();
+    await listLibrary();
+    showToast('Opened “' + connected.name + '” as a durable folder library.');
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    showToast("Couldn't open folder: " + String(error?.message || error), {
+      error:true,
+      duration:6000,
+    });
+  }
 }
 
 async function switchLibraryBackend(target) {
@@ -9014,6 +10466,10 @@ async function switchLibraryBackend(target) {
 storageBtn.addEventListener('click', showStorageDialog);
 readerStorageBtn.addEventListener('click', showStorageDialog);
 storageDialogList.addEventListener('click', (event) => {
+  if (event.target.closest('[data-connect-folder]')) {
+    void connectStandaloneFolder();
+    return;
+  }
   if (event.target.closest('[data-open-settings]')) {
     storageDialog.close();
     naklios.openSettings('storage');
@@ -9373,6 +10829,7 @@ function teardownReaderView() {
   readerModeBtn.textContent = 'Native';
   readerModeBtn.setAttribute('aria-pressed', 'false');
   if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
+  readerNavigationTail = Promise.resolve();
   updateReaderAiButton();
   activeSidecar = null;
   activeBookId = null;
@@ -9393,6 +10850,17 @@ function teardownReaderView() {
   topbar.style.display = '';
   root.style.display = '';
   naklios.title('Books');
+}
+
+function queueReaderNavigation(method) {
+  const engine = activeEngine;
+  readerNavigationTail = readerNavigationTail
+    .catch(() => {})
+    .then(async () => {
+      if (!engine || engine !== activeEngine) return;
+      await engine[method]?.();
+    });
+  return readerNavigationTail;
 }
 
 async function exitReaderView() {
@@ -9449,12 +10917,236 @@ function stripListPrefix(entries, prefix) {
     .filter(Boolean);
 }
 
-async function listLibrary() {
+async function persistStandaloneFolderInventory() {
+  if (naklios.capabilities.hosted || activeBackendId() !== 'fsa') return null;
+  const observation = naklios.fs.folderObservation?.();
+  if (!observation?.fresh || !Array.isArray(observation.records)) return null;
+  const observed = observation.records;
+  const previous = await readJsonRecord(FOLDER_INVENTORY_CURRENT_PATH);
+  const result = reconcileFolderInventory({ previous, observed });
+  const generationPath = FOLDER_INVENTORY_GENERATIONS_PREFIX
+    + String(result.inventory.generation).padStart(8, '0') + '.json';
+  const serialized = JSON.stringify(result.inventory, null, 2);
+  await naklios.fs.write(generationPath, serialized);
+  await naklios.fs.write(FOLDER_INVENTORY_CURRENT_PATH, serialized);
+  return result;
+}
+
+async function invalidateChangedStandaloneFolderAssets(reconciliation) {
+  if (
+    naklios.capabilities.hosted
+    || activeBackendId() !== 'fsa'
+    || !reconciliation?.diff?.changed?.length
+  ) return;
+  const records = new Map(
+    (reconciliation.inventory?.files || []).map((record) => [
+      record.relativePath,
+      record,
+    ]),
+  );
+  for (const filename of reconciliation.diff.changed) {
+    const work = workForFilename(semanticCatalog, filename);
+    const stored = work && semanticManifests.get(work.workId);
+    const record = records.get(filename);
+    if (!stored || !record) continue;
+    const manifest = structuredClone(stored);
+    const asset = manifest.assets.find((candidate) =>
+      candidate.sourceFilename === filename
+      && candidate.availability === 'available');
+    if (!asset) continue;
+    asset.byteLength = record.byteLength;
+    asset.fingerprint = null;
+    asset.fingerprintStatus = 'pending';
+    asset.updatedAt = new Date().toISOString();
+    manifest.updatedAt = asset.updatedAt;
+    await naklios.fs.write(
+      semanticManifestPath(manifest.workId),
+      JSON.stringify(manifest, null, 2),
+    );
+    semanticManifests.set(manifest.workId, manifest);
+  }
+}
+
+async function persistStandaloneFolderFingerprint(
+  relativePath,
+  fingerprint,
+  byteLength,
+) {
+  if (naklios.capabilities.hosted || activeBackendId() !== 'fsa') return null;
+  const inventory = await readJsonRecord(FOLDER_INVENTORY_CURRENT_PATH);
+  const record = inventory?.files?.find((candidate) =>
+    candidate.relativePath === relativePath);
+  if (!record) return inventory;
+  if (
+    record.fingerprint === fingerprint
+    && record.fingerprintStatus === 'complete'
+    && Number(record.byteLength) === Number(byteLength)
+  ) return inventory;
+  record.fingerprint = fingerprint;
+  record.fingerprintStatus = 'complete';
+  record.byteLength = Number(byteLength) || 0;
+  record.fingerprintedAt = new Date().toISOString();
+  inventory.updatedAt = record.fingerprintedAt;
+  const serialized = JSON.stringify(inventory, null, 2);
+  const generationPath = FOLDER_INVENTORY_GENERATIONS_PREFIX
+    + String(inventory.generation).padStart(8, '0') + '.json';
+  await naklios.fs.write(generationPath, serialized);
+  await naklios.fs.write(FOLDER_INVENTORY_CURRENT_PATH, serialized);
+  return inventory;
+}
+
+async function recoverStandaloneFolderRename(
+  discoveredManifest,
+  discoveredAsset,
+  fingerprint,
+  byteLength,
+) {
+  if (naklios.capabilities.hosted || activeBackendId() !== 'fsa') return false;
+  const inventory = await readJsonRecord(FOLDER_INVENTORY_CURRENT_PATH);
+  const candidates = renameCandidates({ inventory }).filter((candidate) =>
+    candidate.currentPath === discoveredAsset.sourceFilename
+    && candidate.fingerprint === fingerprint);
+  if (candidates.length !== 1) return false;
+  const previousPath = candidates[0].previousPath;
+  const matches = [];
+  for (const manifest of semanticManifests.values()) {
+    if (
+      manifest.workId === discoveredManifest.workId
+      || manifest.recordState === 'merged'
+    ) continue;
+    for (const asset of manifest.assets || []) {
+      if (
+        asset.sourceFilename === previousPath
+        && asset.availability === 'missing'
+        && asset.fingerprint === fingerprint
+      ) {
+        matches.push({ manifest, asset });
+      }
+    }
+  }
+  if (matches.length !== 1) return false;
+  const recovered = recoverRenamedAssetIdentity(
+    matches[0].manifest,
+    discoveredManifest,
+    {
+      previousAssetId:matches[0].asset.assetId,
+      currentFilename:discoveredAsset.sourceFilename,
+      fingerprint,
+      byteLength,
+    },
+  );
+  const [primaryAnnotations, duplicateAnnotations] = await Promise.all([
+    readJsonRecord(semanticAnnotationsPath(recovered.primary.workId)),
+    readJsonRecord(semanticAnnotationsPath(recovered.tombstone.workId)),
+  ]);
+  const mergedAnnotations = mergePortableAnnotationRecords(
+    primaryAnnotations,
+    duplicateAnnotations,
+    recovered.primary.workId,
+  ).record;
+
+  await naklios.fs.write(
+    semanticManifestPath(recovered.primary.workId),
+    JSON.stringify(recovered.primary, null, 2),
+  );
+  if (primaryAnnotations || duplicateAnnotations) {
+    await naklios.fs.write(
+      semanticAnnotationsPath(recovered.primary.workId),
+      JSON.stringify(mergedAnnotations, null, 2),
+    );
+  }
+  await naklios.fs.write(
+    semanticManifestPath(recovered.tombstone.workId),
+    JSON.stringify(recovered.tombstone, null, 2),
+  );
+
+  const legacySidecarPath = recovered.primary.legacy?.sidecarPath;
+  if (legacySidecarPath) {
+    const sidecar = await readJsonRecord(legacySidecarPath);
+    if (sidecar) {
+      sidecar.sourceFilename = discoveredAsset.sourceFilename;
+      await naklios.fs.write(
+        legacySidecarPath,
+        JSON.stringify(sidecar, null, 2),
+      );
+    }
+  }
+
+  semanticManifests.set(recovered.primary.workId, recovered.primary);
+  semanticManifests.set(recovered.tombstone.workId, recovered.tombstone);
+  const rebuilt = rebuildCatalog(
+    Array.from(semanticManifests.values()),
+    semanticCatalog,
+  );
+  semanticCatalog = rebuilt.catalog;
+  if (rebuilt.changed) {
+    await naklios.fs.write(
+      SEMANTIC_CATALOG_PATH,
+      JSON.stringify(semanticCatalog, null, 2),
+    );
+  }
+  await deletePathIfPresent(processingRunPath(recovered.tombstone.workId));
+  return true;
+}
+
+let standaloneFolderRefreshTimer = null;
+let standaloneFolderRefreshTail = Promise.resolve();
+
+function scheduleStandaloneFolderRefresh() {
+  if (
+    naklios.capabilities.hosted
+    || activeBackendId() !== 'fsa'
+    || reader.classList.contains('is-open')
+  ) return;
+  clearTimeout(standaloneFolderRefreshTimer);
+  const backendId = activeBackendId();
+  standaloneFolderRefreshTimer = setTimeout(() => {
+    standaloneFolderRefreshTail = standaloneFolderRefreshTail
+      .catch(() => {})
+      .then(async () => {
+        if (
+          backendId !== activeBackendId()
+          || reader.classList.contains('is-open')
+        ) return;
+        topbarStatus.textContent = 'Checking folder for changes…';
+        await naklios.fs.refreshFolder();
+        const result = await persistStandaloneFolderInventory();
+        if (!result || backendId !== activeBackendId()) return;
+        const counts = result.inventory.counts;
+        const changed = counts.added || counts.changed || counts.missing;
+        if (changed && !reader.classList.contains('is-open')) {
+          await listLibrary({
+            skipFolderRefresh:true,
+            folderReconciliation:result,
+          });
+        } else {
+          topbarStatus.textContent = 'Folder up to date · ' + counts.total + ' books';
+        }
+      })
+      .catch((error) => {
+        console.warn('Books: background folder refresh failed', error);
+        if (backendId === activeBackendId()) {
+          topbarStatus.textContent = 'Folder refresh paused · reconnect to try again';
+        }
+      });
+  }, 650);
+}
+
+async function listLibrary({
+  skipFolderRefresh = false,
+  folderReconciliation:providedFolderReconciliation = null,
+} = {}) {
   try {
     const [libRaw, noteRaw] = await Promise.all([
       naklios.fs.list('library/'),
       naklios.fs.list('notes/').catch(() => []),
     ]);
+    const folderReconciliation = providedFolderReconciliation
+      || await persistStandaloneFolderInventory()
+        .catch((error) => {
+          console.warn('Books: folder inventory could not be persisted', error);
+          return null;
+        });
     const libEntries = stripListPrefix(libRaw, 'library');
     const noteEntries = stripListPrefix(noteRaw, 'notes');
 
@@ -9481,6 +11173,7 @@ async function listLibrary() {
 
     try {
       await ensureSemanticFoundation(books, sidecarRows.map((entry) => entry.sidecar));
+      await invalidateChangedStandaloneFolderAssets(folderReconciliation);
     } catch (error) {
       // The v1.4 scan remains the reading fallback if catalog migration or
       // repair cannot be persisted on this backend.
@@ -9512,6 +11205,13 @@ async function listLibrary() {
       sidecar: sidecarByFilename.get(filename) || null,
       work: workForFilename(semanticCatalog, filename),
     }));
+    if (folderReconciliation) {
+      const counts = folderReconciliation.inventory.counts;
+      topbarStatus.textContent = counts.added || counts.changed || counts.missing
+        ? 'Folder refreshed · ' + counts.added + ' new · '
+          + counts.changed + ' changed · ' + counts.missing + ' missing'
+        : 'Folder up to date · ' + counts.total + ' books';
+    }
     scheduleSemanticProcessing();
 
     // Sort: lastOpened desc (sidecar'd first), then alphabetical for the rest
@@ -9532,6 +11232,14 @@ async function listLibrary() {
       renderLibraryEmpty();
     }
     else renderLibrary(decorated);
+    if (
+      !skipFolderRefresh
+      && !folderReconciliation
+      && !naklios.capabilities.hosted
+      && activeBackendId() === 'fsa'
+    ) {
+      scheduleStandaloneFolderRefresh();
+    }
   } catch (err) {
     console.error('Books: library listing failed', err);
     orphanSidecars = [];
@@ -9566,7 +11274,17 @@ function boot() {
   if (!naklios.capabilities.hosted) {
     updateStorageButton();
     updateReaderAiButton();
-    if (naklios.capabilities.fs) void listLibrary();
+    if (naklios.capabilities.fs) {
+      void listLibrary();
+      void naklios.fs.restoreFolder().then((restored) => {
+        if (!restored) return;
+        updateStorageButton();
+        if (
+          activeBackendId() === 'fsa'
+          && !reader.classList.contains('is-open')
+        ) void listLibrary();
+      });
+    }
     else renderStandaloneStorageUnavailable();
   } else {
     let decided = false;
@@ -9610,7 +11328,15 @@ function boot() {
   window.addEventListener('beforeunload', flushPendingWritesSync);
   window.addEventListener('beforeunload', clearCoverObjectUrls);
   window.addEventListener('beforeunload', () => browserLocalAi.dispose());
+  window.addEventListener('beforeunload', () => semanticEncoder.dispose());
   naklios.beforeClose(flushPendingWritesSync);
+
+  if (backgroundIntelligenceOn) {
+    void semanticEncoder.hasCachedModel().then((cached) => {
+      if (cached) void loadBackgroundSemanticModel({ notify:false });
+      else syncBackgroundIntelligenceControls();
+    });
+  }
 
   // Keyboard navigation in the reader view.
   // Skipped while focus is in an input/textarea/contentEditable so typing notes
@@ -9636,10 +11362,10 @@ function boot() {
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     if (e.key === 'ArrowRight' || e.code === 'Space' || e.key === ' ') {
       e.preventDefault();
-      if (activeEngine && activeEngine.next) await activeEngine.next();
+      await queueReaderNavigation('next');
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      if (activeEngine && activeEngine.prev) await activeEngine.prev();
+      await queueReaderNavigation('prev');
     } else if (e.key === 'Escape') {
       e.preventDefault();
       await exitReaderView();

@@ -1,7 +1,20 @@
-export const PROCESSING_SCHEMA_VERSION = 1;
+export const PROCESSING_SCHEMA_VERSION = 2;
+export const PROCESSING_PIPELINE_VERSION = 'library-intelligence-v1';
 export const PASSAGE_EXTRACTOR_VERSION = 'passages-v2';
 export const LEXICAL_INDEX_VERSION = 'lexical-v1';
 export const DETERMINISTIC_SEMANTICS_VERSION = 'deterministic-semantics-v1';
+export const IDEA_EMBEDDING_INDEX_VERSION = 'idea-embeddings-v2';
+export const LIBRARY_IDEA_LINK_VERSION = 'library-idea-links-v1';
+
+const DEFAULT_PROCESSING_STAGES = {
+  fingerprint: { status:'pending' },
+  passages: { status:'pending' },
+  lexicalIndex: { status:'pending' },
+  deterministicSemantics: { status:'pending' },
+  modelSemantics: { status:'waiting-for-provider' },
+  embeddings: { status:'waiting-for-model' },
+  libraryLinks: { status:'blocked-by-embeddings' },
+};
 
 const STOP_WORDS = new Set([
   'about', 'after', 'again', 'against', 'also', 'among', 'because', 'been',
@@ -283,24 +296,137 @@ export function makeProcessingRun({
   workId,
   assetId,
   previous = null,
+  priority = 'background',
+  executorClass = null,
   now = () => new Date().toISOString(),
 }) {
   const createdAt = previous?.createdAt || now();
+  const stages = cloneJson(DEFAULT_PROCESSING_STAGES);
+  for (const [stage, value] of Object.entries(previous?.stages || {})) {
+    stages[stage] = cloneJson(value);
+  }
   return {
     schemaVersion: PROCESSING_SCHEMA_VERSION,
     recordType: 'books.processing-run',
+    pipelineVersion:PROCESSING_PIPELINE_VERSION,
     workId,
     assetId,
-    stages: cloneJson(previous?.stages || {
-      fingerprint: { status: 'pending' },
-      passages: { status: 'pending' },
-      lexicalIndex: { status: 'pending' },
-      deterministicSemantics: { status: 'pending' },
-      modelSemantics: { status: 'waiting-for-provider' },
-    }),
+    priority:previous?.priority || priority,
+    executorClass:previous?.executorClass || executorClass,
+    sourceFingerprint:previous?.sourceFingerprint || null,
+    lease:cloneJson(previous?.lease || null),
+    cancelRequested:previous?.cancelRequested === true,
+    checkpoint:cloneJson(previous?.checkpoint || null),
+    artifacts:cloneJson(previous?.artifacts || {}),
+    stages,
     createdAt,
     updatedAt: previous?.updatedAt || createdAt,
   };
+}
+
+export function processingLeaseActive(run, at = Date.now()) {
+  const expiresAt = Date.parse(run?.lease?.expiresAt || '');
+  return Number.isFinite(expiresAt) && expiresAt > Number(at);
+}
+
+export function claimProcessingRun(
+  run,
+  {
+    executorId,
+    executorClass = 'browser',
+    leaseMs = 60_000,
+  } = {},
+  now = () => new Date().toISOString(),
+) {
+  if (!run || !executorId) return { run, claimed:false, reason:'invalid-claim' };
+  const timestamp = now();
+  const nowMs = Date.parse(timestamp);
+  const active = processingLeaseActive(run, nowMs);
+  if (active && run.lease.executorId !== executorId) {
+    return { run, claimed:false, reason:'leased' };
+  }
+  const next = cloneJson(run);
+  next.executorClass = executorClass;
+  next.lease = {
+    executorId:String(executorId),
+    executorClass:String(executorClass),
+    claimedAt:active && run.lease.executorId === executorId
+      ? run.lease.claimedAt : timestamp,
+    renewedAt:timestamp,
+    expiresAt:new Date(nowMs + Math.max(5_000, Number(leaseMs) || 60_000))
+      .toISOString(),
+  };
+  next.updatedAt = timestamp;
+  return { run:next, claimed:true, reason:active ? 'renewed' : 'claimed' };
+}
+
+export function releaseProcessingRun(
+  run,
+  executorId,
+  now = () => new Date().toISOString(),
+) {
+  if (!run?.lease || run.lease.executorId !== executorId) return run;
+  const next = cloneJson(run);
+  next.lease = null;
+  next.updatedAt = now();
+  return next;
+}
+
+export function requestProcessingCancellation(
+  run,
+  requested = true,
+  now = () => new Date().toISOString(),
+) {
+  const next = cloneJson(run);
+  next.cancelRequested = requested === true;
+  next.updatedAt = now();
+  return next;
+}
+
+export function updateProcessingCheckpoint(
+  run,
+  checkpoint,
+  now = () => new Date().toISOString(),
+) {
+  const next = cloneJson(run);
+  next.checkpoint = checkpoint ? cloneJson(checkpoint) : null;
+  next.updatedAt = now();
+  return next;
+}
+
+export function invalidateProcessingStages(
+  run,
+  stages,
+  reason = 'input-changed',
+  now = () => new Date().toISOString(),
+) {
+  const next = cloneJson(run);
+  const resetStatus = {
+    fingerprint:'pending',
+    passages:'pending',
+    lexicalIndex:'pending',
+    deterministicSemantics:'pending',
+    modelSemantics:'waiting-for-provider',
+    embeddings:'waiting-for-model',
+    libraryLinks:'blocked-by-embeddings',
+  };
+  const timestamp = now();
+  for (const stage of stages || []) {
+    if (!(stage in resetStatus)) continue;
+    const attempts = Number(next.stages?.[stage]?.attempts) || 0;
+    next.stages[stage] = {
+      status:resetStatus[stage],
+      attempts,
+      invalidatedReason:String(reason),
+      updatedAt:timestamp,
+    };
+    if (next.artifacts) delete next.artifacts[stage];
+  }
+  if (next.checkpoint && (stages || []).includes(next.checkpoint.stage)) {
+    next.checkpoint = null;
+  }
+  next.updatedAt = timestamp;
+  return next;
 }
 
 export function updateProcessingStage(
@@ -311,12 +437,29 @@ export function updateProcessingStage(
   now = () => new Date().toISOString(),
 ) {
   const next = cloneJson(run);
+  const previous = next.stages[stage] || {};
+  const attempts = status === 'running'
+    ? (Number(previous.attempts) || 0) + 1
+    : (Number(previous.attempts) || 0);
   next.stages[stage] = {
-    ...(next.stages[stage] || {}),
+    ...previous,
     ...cloneJson(details),
     status,
+    attempts,
     updatedAt: now(),
   };
+  if (details?.artifact) {
+    next.artifacts = {
+      ...(next.artifacts || {}),
+      [stage]:cloneJson(details.artifact),
+    };
+  }
+  if (details?.sourceFingerprint) {
+    next.sourceFingerprint = String(details.sourceFingerprint);
+  }
+  if (status === 'complete' && next.checkpoint?.stage === stage) {
+    next.checkpoint = null;
+  }
   next.updatedAt = next.stages[stage].updatedAt;
   return next;
 }

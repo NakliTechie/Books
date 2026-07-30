@@ -568,6 +568,65 @@ export function updateAssetFingerprint(
   return { manifest: next, changed: true };
 }
 
+export function recoverRenamedAssetIdentity(
+  previousManifest,
+  discoveredManifest,
+  {
+    previousAssetId,
+    currentFilename,
+    fingerprint,
+    byteLength,
+  } = {},
+  now = () => new Date().toISOString(),
+) {
+  const primary = normalizeManifest(previousManifest);
+  const duplicate = normalizeManifest(discoveredManifest);
+  if (
+    !primary
+    || !duplicate
+    || primary.workId === duplicate.workId
+    || !previousAssetId
+    || !currentFilename
+    || !fingerprint
+  ) {
+    throw new Error('Rename recovery requires two valid works and a strong fingerprint.');
+  }
+  const asset = primary.assets.find((candidate) =>
+    candidate.assetId === previousAssetId);
+  if (
+    !asset
+    || asset.availability !== 'missing'
+    || asset.fingerprint !== fingerprint
+  ) {
+    throw new Error('The previous asset does not match the renamed source fingerprint.');
+  }
+  const timestamp = isoNow(now);
+  const previousFilename = asset.sourceFilename;
+  asset.sourceFilename = String(currentFilename);
+  asset.sourcePath = 'library/' + String(currentFilename);
+  asset.format = extensionOf(currentFilename) || asset.format;
+  asset.byteLength = Number.isFinite(Number(byteLength))
+    ? Number(byteLength) : asset.byteLength;
+  asset.fingerprintStatus = 'complete';
+  asset.availability = 'available';
+  asset.updatedAt = timestamp;
+  primary.legacy = {
+    ...(primary.legacy || {}),
+    sourceFilenames:unionStrings(
+      primary.legacy?.sourceFilenames,
+      [previousFilename, currentFilename],
+    ),
+  };
+  primary.updatedAt = timestamp;
+
+  duplicate.recordState = 'merged';
+  duplicate.mergedInto = primary.workId;
+  duplicate.mergedAt = timestamp;
+  duplicate.mergeReason = 'strong-fingerprint-rename-recovery';
+  duplicate.updatedAt = timestamp;
+  return { primary, tombstone:duplicate };
+}
+
 export function markAssetTrashed(
   manifest,
   assetId,

@@ -33,7 +33,9 @@
   const runButton = document.getElementById('harness-run');
   const status = document.getElementById('harness-status');
   const encoder = new TextEncoder();
-  const scaleMode = new URLSearchParams(location.search).get('scale') === '1';
+  const harnessParams = new URLSearchParams(location.search);
+  const scaleMode = harnessParams.get('scale') === '1';
+  const localAiMode = harnessParams.get('local-ai') === '1';
 
   function concatBytes(chunks) {
     const output = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
@@ -300,7 +302,7 @@
   const capabilities = () => ({
     type: 'naklios:capabilities',
     fs: true,
-    ai: true,
+    ai: !localAiMode,
     aiModel: 'harness-grounded',
     aiModelLabel: 'Harness grounded AI',
     aiProvider: 'browser',
@@ -671,17 +673,13 @@
       await waitFor(() => {
         const catalog = jsonFromStore('catalog/catalog.json');
         const summary = catalog?.works?.find((work) => work.workId === sampleWorkId);
+        const row = app.querySelector('.row[data-filename="Sample.md"]');
         return summary?.title === 'Sample Field Notes'
           && summary.tags.includes('local-first')
           && summary.shelves.includes('Fieldwork')
-          && summary.rating === 5;
-      }, 'portable work metadata write');
-      if (
-        !app.querySelector('.row[data-filename="Sample.md"]')
-          ?.textContent.includes('Sample Field Notes')
-      ) {
-        throw new Error('Saved portable metadata did not refresh the work row');
-      }
+          && summary.rating === 5
+          && row?.textContent.includes('Sample Field Notes');
+      }, 'portable work metadata write and row refresh');
       app.querySelector(
         '.row[data-filename="Sample.md"] [data-action="details"]'
       ).click();

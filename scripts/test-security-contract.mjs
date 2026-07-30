@@ -7,6 +7,7 @@ const read = (relative) =>
 const index = read('index.html');
 const ai = read('semantic-ai.js');
 const localAi = read('local-ai-sidecar.js');
+const embeddingBinary = read('embedding-binary.js');
 const library = read('semantic-library.js');
 const headers = read('_headers');
 
@@ -60,6 +61,16 @@ assert.match(
   localAi,
   /new this\.scope\.Worker\(this\.workerUrl, \{ type:'module' \}\)/,
   'local generation runs outside the UI thread in a dedicated module worker',
+);
+assert.match(
+  localAi,
+  /enable_thinking:false/,
+  'the local reader model does not stream private reasoning into answers',
+);
+assert.match(
+  embeddingBinary,
+  /bytes\.byteLength !== expectedBytes/,
+  'binary semantic shards reject truncated or trailing data',
 );
 
 assert.match(

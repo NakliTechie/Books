@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
 import {
   buildLexicalIndex,
+  claimProcessingRun,
+  invalidateProcessingStages,
   extractDeterministicSemantics,
   makeProcessingRun,
   normalizePassageText,
   PASSAGE_EXTRACTOR_VERSION,
   passagesPath,
   processingRunPath,
+  processingLeaseActive,
+  releaseProcessingRun,
+  requestProcessingCancellation,
   searchLexicalIndex,
   segmentSections,
   semanticRecordsPath,
@@ -89,6 +94,50 @@ const run = makeProcessingRun({
   now,
 });
 assert.equal(run.stages.passages.status, 'pending');
+assert.equal(run.stages.embeddings.status, 'waiting-for-model');
+const claim = claimProcessingRun(run, {
+  executorId:'browser-fixture',
+  executorClass:'browser',
+  leaseMs:30_000,
+}, () => '2026-07-30T10:00:10.000Z');
+assert.equal(claim.claimed, true);
+assert.equal(processingLeaseActive(claim.run, Date.parse('2026-07-30T10:00:20.000Z')), true);
+const blockedClaim = claimProcessingRun(claim.run, {
+  executorId:'native-fixture',
+  executorClass:'native',
+}, () => '2026-07-30T10:00:20.000Z');
+assert.equal(blockedClaim.claimed, false);
+assert.equal(blockedClaim.reason, 'leased');
+assert.equal(
+  releaseProcessingRun(claim.run, 'browser-fixture', () => '2026-07-30T10:00:21.000Z')
+    .lease,
+  null,
+);
+assert.equal(requestProcessingCancellation(run).cancelRequested, true);
+const invalidated = invalidateProcessingStages(
+  {
+    ...run,
+    checkpoint:{ stage:'embeddings', offset:2 },
+    artifacts:{
+      passages:{ path:'passages.json' },
+      embeddings:{ path:'vectors.f32' },
+    },
+    stages:{
+      ...run.stages,
+      passages:{ status:'complete', attempts:1 },
+      embeddings:{ status:'complete', attempts:1 },
+      libraryLinks:{ status:'complete', attempts:1 },
+    },
+  },
+  ['embeddings', 'libraryLinks'],
+  'semantic-input-changed',
+  () => '2026-07-30T00:04:00.000Z',
+);
+assert.equal(invalidated.stages.passages.status, 'complete');
+assert.equal(invalidated.stages.embeddings.status, 'waiting-for-model');
+assert.equal(invalidated.stages.libraryLinks.status, 'blocked-by-embeddings');
+assert.equal(invalidated.artifacts.embeddings, undefined);
+assert.equal(invalidated.checkpoint, null);
 const completed = updateProcessingStage(
   run,
   'passages',

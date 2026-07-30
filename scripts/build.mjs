@@ -12,7 +12,11 @@ await Promise.all([
   cp(resolve(projectRoot, 'semantic-library.js'), resolve(outputDir, 'semantic-library.js')),
   cp(resolve(projectRoot, 'semantic-processing.js'), resolve(outputDir, 'semantic-processing.js')),
   cp(resolve(projectRoot, 'semantic-ai.js'), resolve(outputDir, 'semantic-ai.js')),
+  cp(resolve(projectRoot, 'folder-library.js'), resolve(outputDir, 'folder-library.js')),
   cp(resolve(projectRoot, 'local-ai-sidecar.js'), resolve(outputDir, 'local-ai-sidecar.js')),
+  cp(resolve(projectRoot, 'semantic-embedding-sidecar.js'), resolve(outputDir, 'semantic-embedding-sidecar.js')),
+  cp(resolve(projectRoot, 'idea-graph.js'), resolve(outputDir, 'idea-graph.js')),
+  cp(resolve(projectRoot, 'embedding-binary.js'), resolve(outputDir, 'embedding-binary.js')),
   cp(resolve(projectRoot, '_headers'), resolve(outputDir, '_headers')),
   cp(resolve(projectRoot, 'vendor'), resolve(outputDir, 'vendor'), { recursive: true }),
 ]);
