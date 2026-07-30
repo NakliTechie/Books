@@ -434,11 +434,89 @@
           && app.getElementById('reader-status').textContent.includes('Search result'),
         'semantic result faithful-reader navigation',
       );
+      const readerMode = app.getElementById('reader-mode-btn');
+      if (readerMode.hidden) {
+        throw new Error('Native mode was unavailable after passage processing');
+      }
+      readerMode.click();
+      const nativePassage = await waitFor(
+        () => readerMode.getAttribute('aria-pressed') === 'true'
+          && app.querySelector('.native-passage[data-passage-id]'),
+        'Books-native passage rendering',
+      );
+      if (!nativePassage.textContent.includes('quiet test book')) {
+        throw new Error('Native mode did not preserve authored passage text');
+      }
+      const selectedParagraph = Array.from(
+        nativePassage.querySelectorAll('p')
+      ).find((paragraph) => paragraph.textContent.includes('quiet test book'));
+      const selectedText = selectedParagraph.firstChild;
+      const selectedStart = selectedText.data.indexOf('quiet test book');
+      const selectedRange = app.createRange();
+      selectedRange.setStart(selectedText, selectedStart);
+      selectedRange.setEnd(selectedText, selectedStart + 'quiet test book'.length);
+      const appSelection = app.defaultView.getSelection();
+      appSelection.removeAllRanges();
+      appSelection.addRange(selectedRange);
+      app.getElementById('add-highlight-btn').click();
+      await waitFor(
+        () => app.getElementById('highlight-dialog').open,
+        'native highlight dialog',
+      );
+      app.getElementById('highlight-note').value = 'Portable highlight';
+      app.getElementById('highlight-color').value = 'green';
+      app.getElementById('highlight-form').requestSubmit();
+      const portableHighlight = await waitFor(() => {
+        const record = jsonFromStore('annotations/' + sampleWorkId + '.json');
+        return record?.annotations?.find(
+          (annotation) => annotation.kind === 'highlight'
+            && annotation.target?.exact === 'quiet test book'
+            && annotation.body === 'Portable highlight'
+        );
+      }, 'portable native highlight write');
+      await waitFor(
+        () => app.querySelector(
+          'mark[data-annotation-id="' + portableHighlight.annotationId + '"]'
+        ),
+        'native inline highlight rendering',
+      );
+      app.querySelector('.native-source-link').click();
+      await waitFor(
+        () => readerMode.getAttribute('aria-pressed') === 'false'
+          && !app.querySelector('.native-reader')
+          && app.getElementById('reader-status').textContent.includes('Authored source'),
+        'native passage route to faithful source',
+      );
+      app.getElementById('back-btn').click();
+      const sampleRowAfterHighlight = await waitFor(
+        () => !app.getElementById('reader').classList.contains('is-open')
+          && app.querySelector('.row[data-filename="Sample.md"]'),
+        'Sample work after highlight',
+      );
+      sampleRowAfterHighlight.click();
+      await waitFor(
+        () => app.getElementById('reader').classList.contains('is-open')
+          && !app.getElementById('reader-mode-btn').hidden,
+        'highlighted work reopen',
+      );
+      app.getElementById('reader-mode-btn').click();
+      await waitFor(
+        () => app.querySelector(
+          'mark[data-annotation-id="' + portableHighlight.annotationId + '"]'
+        ),
+        'portable highlight restoration',
+      );
+      app.getElementById('reader-mode-btn').click();
+      await waitFor(
+        () => app.getElementById('reader-mode-btn').getAttribute('aria-pressed') === 'false',
+        'return from restored native highlight',
+      );
       app.getElementById('back-btn').click();
       const detailsButton = await waitFor(
-        () => app.querySelector(
-          '.row[data-filename="Sample.md"] [data-action="details"]'
-        ),
+        () => !app.getElementById('reader').classList.contains('is-open')
+          && app.querySelector(
+            '.row[data-filename="Sample.md"] [data-action="details"]'
+          ),
         'portable work details button',
       );
       detailsButton.click();
@@ -461,9 +539,23 @@
       ) {
         throw new Error('Saved portable metadata did not refresh the work row');
       }
+      app.getElementById('annotations-browser-btn').click();
+      await waitFor(
+        () => app.getElementById('annotations-browser-dialog').open
+          && app.getElementById('annotations-browser-list')
+            .textContent.includes('quiet test book'),
+        'library-wide annotation browser',
+      );
+      const annotationSearch = app.getElementById('annotations-browser-search');
+      annotationSearch.value = 'quiet test';
+      annotationSearch.dispatchEvent(new Event('input', { bubbles:true }));
+      if (!app.querySelector('[data-library-annotation]')) {
+        throw new Error('Library annotation search lost its grounded highlight');
+      }
+      app.getElementById('annotations-browser-dialog').close();
 
       setStatus(
-        'PASS · EPUB, migration, passages, semantic search, work details, and recovery work',
+        'PASS · EPUB, migration, native highlights, annotation memory, and recovery work',
         'pass',
       );
     } catch (error) {

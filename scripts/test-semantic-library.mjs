@@ -1,17 +1,21 @@
 import assert from 'node:assert/strict';
 import {
+  addPortableAnnotation,
   SEMANTIC_CATALOG_PATH,
   SEMANTIC_ANNOTATIONS_PREFIX,
   SEMANTIC_SCHEMA_VERSION,
   SEMANTIC_WORKS_PREFIX,
   legacyBookIdFor,
   reconcileLegacyAnnotations,
+  reanchorPortableAnnotations,
   reconcileSemanticLibrary,
   rebuildCatalog,
   semanticAnnotationsPath,
   semanticManifestPath,
   sha256Fingerprint,
+  tombstonePortableAnnotation,
   updateAssetFingerprint,
+  updatePortableAnnotation,
   updateWorkDetails,
   updateWorkMetadata,
   workForFilename,
@@ -210,6 +214,78 @@ const annotationSecond = reconcileLegacyAnnotations({
 assert.equal(annotationSecond.changed, false, 'annotation migration is idempotent');
 assert.equal(id, annotationIdAfterFirstMigration, 'annotation retry allocates no new IDs');
 assert.deepEqual(annotationSecond.record, annotationFirst.record);
+
+const selected = addPortableAnnotation(annotationFirst.record, {
+  workId: first.manifests[0].workId,
+  kind: 'highlight',
+  label: 'A useful sentence',
+  color: 'yellow',
+  target: {
+    passageId: 'passage_test',
+    exact: 'It is a truth universally acknowledged',
+    normalizedRange: { start: 0, end: 38 },
+    engine: { kind: 'native-passage', passageId: 'passage_test' },
+  },
+}, now, createId);
+assert.equal(selected.annotation.kind, 'highlight');
+assert.equal(selected.record.annotations.length, annotationFirst.record.annotations.length + 1);
+assert.equal(selected.record.revision, annotationFirst.record.revision + 1);
+const editedAnnotation = updatePortableAnnotation(
+  selected.record,
+  selected.annotation.annotationId,
+  { body: 'Opening claim', color: 'green', conceptIds: ['concept_claim'] },
+  now,
+);
+assert.equal(editedAnnotation.changed, true);
+assert.equal(
+  editedAnnotation.record.annotations.find(
+    (item) => item.annotationId === selected.annotation.annotationId,
+  ).body,
+  'Opening claim',
+);
+const deletedAnnotation = tombstonePortableAnnotation(
+  editedAnnotation.record,
+  selected.annotation.annotationId,
+  now,
+);
+assert.equal(deletedAnnotation.changed, true);
+assert.ok(
+  deletedAnnotation.record.annotations.find(
+    (item) => item.annotationId === selected.annotation.annotationId,
+  ).deletedAt,
+  'annotation deletion is a recoverable tombstone',
+);
+const movedPassages = [{
+  passageId:'passage_new',
+  text:'Later extraction still contains It is a truth universally acknowledged in context.',
+  anchor:{ quoteHash:'sha256:new' },
+}];
+const reanchored = reanchorPortableAnnotations(selected.record, movedPassages, now);
+assert.equal(reanchored.changed, true);
+assert.equal(
+  reanchored.record.annotations.find(
+    (item) => item.annotationId === selected.annotation.annotationId,
+  ).target.passageId,
+  'passage_new',
+);
+assert.equal(
+  reanchored.record.annotations.find(
+    (item) => item.annotationId === selected.annotation.annotationId,
+  ).anchorState,
+  'resolved',
+);
+const ambiguous = reanchorPortableAnnotations(selected.record, [
+  ...movedPassages,
+  { ...movedPassages[0], passageId:'passage_also' },
+], now);
+assert.equal(
+  ambiguous.record.annotations.find(
+    (item) => item.annotationId === selected.annotation.annotationId,
+  ).anchorState,
+  'unresolved',
+  'ambiguous matches surface repair instead of silently rebinding',
+);
+assert.deepEqual(ambiguous.unresolved, [selected.annotation.annotationId]);
 
 const noteChanged = reconcileLegacyAnnotations({
   manifest: first.manifests[0],

@@ -299,6 +299,14 @@ body { display: flex; flex-direction: column; }
 .reader-header .sidebar-toggle.is-active { background: var(--brand); color: var(--panel); border-color: var(--brand); }
 .reader-prefs-btn { font-size:13px; padding:6px 9px; }
 .reader-ai-btn { font-size:12px; padding:6px 9px; }
+.reader-mode-btn {
+  background:transparent; color:var(--ink); border:1px solid var(--line);
+  padding:6px 9px; border-radius:6px; cursor:pointer; font:12px/1 inherit;
+}
+.reader-mode-btn:hover { background:var(--row); border-color:var(--brand); }
+.reader-mode-btn[aria-pressed="true"] {
+  background:var(--brand); color:var(--panel); border-color:var(--brand);
+}
 
 .reader-body {
   flex: 1 1 auto;
@@ -365,6 +373,67 @@ body { display: flex; flex-direction: column; }
 }
 .reader-content { position: absolute; inset: 0; overflow: hidden; }
 .reader-content > * { position: absolute; inset: 0; }
+.pdf-page { position:relative; margin:8px auto; }
+.pdf-page canvas { position:absolute; inset:0; z-index:0; }
+.pdf-highlight-layer { position:absolute; inset:0; z-index:1; pointer-events:none; }
+.pdf-highlight-overlay {
+  position:absolute; border-radius:2px; background:rgba(240,201,75,.42);
+  mix-blend-mode:multiply;
+}
+.pdf-highlight-overlay[data-annotation-color="green"] { background:rgba(117,184,138,.4); }
+.pdf-highlight-overlay[data-annotation-color="blue"] { background:rgba(114,174,230,.4); }
+.pdf-highlight-overlay[data-annotation-color="pink"] { background:rgba(220,130,168,.4); }
+.pdf-text-layer {
+  position:absolute; inset:0; z-index:2; overflow:hidden;
+  color:transparent; user-select:text; line-height:1;
+}
+.pdf-text-layer span {
+  position:absolute; color:transparent; white-space:pre;
+  transform-origin:0 0; cursor:text;
+}
+.pdf-text-layer span::selection { background:rgba(184,92,58,.34); color:transparent; }
+.native-reader {
+  overflow:auto; background:var(--panel); color:var(--ink);
+  scroll-behavior:smooth;
+}
+.native-document {
+  max-width:720px; margin:0 auto; padding:42px 26px 100px;
+  font-family:Georgia,"Iowan Old Style","Palatino Linotype",serif;
+}
+.native-work-heading { margin:0 0 34px; font-size:30px; line-height:1.15; }
+.native-section-heading {
+  margin:38px 0 16px; font:650 20px/1.25 system-ui,sans-serif;
+}
+.native-passage {
+  position:relative; margin:0 0 18px; scroll-margin-top:24px;
+  border-left:2px solid transparent; padding-left:14px;
+}
+.native-passage:target,.native-passage.is-current { border-left-color:var(--brand); }
+.native-passage p { margin:0 0 0.9em; }
+.native-source-link {
+  display:block; margin:5px 0 0 auto; border:0; background:transparent;
+  color:var(--muted); cursor:pointer; font:10px/1.2 system-ui,sans-serif;
+}
+.native-source-link:hover { color:var(--brand); text-decoration:underline; }
+.native-location {
+  position:sticky; bottom:12px; float:right; margin:20px 12px 0;
+  border:1px solid var(--line); border-radius:999px; padding:5px 9px;
+  background:color-mix(in srgb,var(--panel) 92%,transparent);
+  color:var(--muted); font:10px/1 system-ui,sans-serif;
+}
+.reader-content mark[data-annotation-id] {
+  color:inherit; border-radius:2px; padding:0 1px;
+  background:color-mix(in srgb,#f0c94b 56%,transparent);
+}
+.reader-content mark[data-annotation-color="green"] {
+  background:color-mix(in srgb,#75b88a 48%,transparent);
+}
+.reader-content mark[data-annotation-color="blue"] {
+  background:color-mix(in srgb,#72aee6 48%,transparent);
+}
+.reader-content mark[data-annotation-color="pink"] {
+  background:color-mix(in srgb,#dc82a8 48%,transparent);
+}
 
 /* Sidebar — slides in from right, overlays the engine view */
 .sidebar {
@@ -429,6 +498,28 @@ body { display: flex; flex-direction: column; }
   flex: 0 0 auto;
 }
 .bookmarks li .bm-btn:hover { color: var(--brand); background: rgba(0,0,0,0.04); }
+.highlight-add {
+  width:100%; margin-top:8px; padding:9px 12px;
+  background:transparent; color:var(--ink); border:1px solid var(--line);
+  border-radius:6px; cursor:pointer; font:12px inherit;
+}
+.highlight-add:hover:not(:disabled) { background:var(--row); border-color:var(--brand); }
+.highlight-add:disabled { opacity:.48; cursor:default; }
+.annotation-list { list-style:none; margin:12px 0 0; padding:0; display:grid; gap:6px; }
+.annotation-list li {
+  border:1px solid var(--line); border-radius:7px; padding:8px;
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 8px;
+}
+.annotation-list button.annotation-jump {
+  border:0; padding:0; background:transparent; color:var(--ink);
+  cursor:pointer; text-align:left; font:11px/1.4 inherit;
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+}
+.annotation-list small { color:var(--muted); font-size:9px; }
+.annotation-list .annotation-remove {
+  grid-column:2; grid-row:1 / span 2; border:0; background:transparent;
+  color:var(--muted); cursor:pointer;
+}
 .note-area {
   width: 100%;
   min-height: 200px;
@@ -498,6 +589,17 @@ body { display: flex; flex-direction: column; }
   margin:0; color:var(--ink); font:12px/1.5 Georgia,"Iowan Old Style",serif;
 }
 .semantic-search-state { margin:0; color:var(--muted); font-size:11px; }
+.annotation-browser-list {
+  max-height:52vh; overflow:auto; display:grid; gap:7px; margin-top:10px;
+}
+.annotation-browser-row {
+  width:100%; text-align:left; display:grid; gap:4px; padding:9px 10px;
+  border:1px solid var(--line); border-radius:7px; background:var(--row);
+  color:var(--ink); cursor:pointer; font:inherit;
+}
+.annotation-browser-row strong { font-size:11px; }
+.annotation-browser-row span { color:var(--muted); font-size:10px; }
+.annotation-browser-row p { margin:0; color:var(--ink); font:11px/1.45 inherit; }
 .add-btn {
   background: var(--brand); color: var(--panel);
   border: none; border-radius: 6px;
@@ -506,6 +608,12 @@ body { display: flex; flex-direction: column; }
 }
 .add-btn:hover { opacity: 0.92; }
 .add-btn.compact { padding: 7px 12px; font-size: 12px; }
+.library-header-actions { display:flex; align-items:center; gap:7px; }
+.library-header-action {
+  border:1px solid var(--line); border-radius:6px; padding:7px 10px;
+  background:var(--panel); color:var(--ink); cursor:pointer; font:12px inherit;
+}
+.library-header-action:hover { border-color:var(--brand); background:var(--row); }
 .add-btn-secondary {
   background: transparent; color: var(--ink);
   border: 1px solid var(--line);
@@ -681,6 +789,8 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div class="reader-title" id="reader-title">…</div>
     <div class="status" id="reader-status"></div>
     <button class="storage-btn" id="reader-storage-btn" type="button" hidden>Storage</button>
+    <button class="reader-mode-btn" id="reader-mode-btn" type="button" hidden
+            aria-pressed="false" title="Switch between authored and Books-native reading">Native</button>
     <button class="reader-ai-btn" id="reader-ai-btn" type="button" hidden
             title="Explain or summarize the current passage with NakliOS AI">✦ AI</button>
     <button class="reader-prefs-btn" id="reader-prefs-btn" type="button" title="Reading appearance">Aa</button>
@@ -716,6 +826,10 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <div class="sidebar-section">
         <button class="add-bookmark" id="add-bookmark-btn" type="button">＋ Bookmark this spot</button>
         <ul class="bookmarks" id="bookmarks-list"></ul>
+        <button class="highlight-add" id="add-highlight-btn" type="button" disabled>
+          Highlight selected text
+        </button>
+        <ul class="annotation-list" id="annotation-list"></ul>
       </div>
       <div class="sidebar-section">
         <label class="sidebar-label" for="note-area">Note</label>
@@ -761,6 +875,47 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <button class="primary" type="submit" value="save">Save label</button>
     </div>
   </form>
+</dialog>
+
+<dialog class="books-dialog" id="highlight-dialog" aria-labelledby="highlight-title">
+  <form class="books-dialog-body" id="highlight-form">
+    <h3 id="highlight-title">Save highlight</h3>
+    <p id="highlight-quote"></p>
+    <div class="books-dialog-text-field">
+      <label for="highlight-note">Note <span aria-hidden="true">·</span> optional</label>
+      <input id="highlight-note" type="text" maxlength="1000">
+    </div>
+    <div class="books-dialog-field">
+      <label for="highlight-color">Color</label>
+      <select id="highlight-color">
+        <option value="yellow">Yellow</option>
+        <option value="green">Green</option>
+        <option value="blue">Blue</option>
+        <option value="pink">Pink</option>
+      </select>
+    </div>
+    <div class="books-dialog-actions">
+      <button type="button" data-close-dialog="highlight-dialog">Cancel</button>
+      <button class="primary" type="submit">Save highlight</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="books-dialog work-details-dialog" id="annotations-browser-dialog"
+        aria-labelledby="annotations-browser-title">
+  <div class="books-dialog-body">
+    <h3 id="annotations-browser-title">Library annotations</h3>
+    <p>Portable highlights, notes, and bookmarks in the current storage library.</p>
+    <div class="books-dialog-text-field">
+      <label for="annotations-browser-search">Search annotations</label>
+      <input id="annotations-browser-search" type="search" autocomplete="off">
+    </div>
+    <div class="annotation-browser-list" id="annotations-browser-list"></div>
+    <div class="books-dialog-actions">
+      <button type="button" id="annotations-export-btn">Export Markdown</button>
+      <button type="button" data-close-dialog="annotations-browser-dialog">Close</button>
+    </div>
+  </div>
 </dialog>
 
 <dialog class="books-dialog work-details-dialog" id="work-details-dialog"
@@ -1358,7 +1513,9 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 'use strict';
 
 import {
+  addPortableAnnotation,
   reconcileLegacyAnnotations,
+  reanchorPortableAnnotations,
   SEMANTIC_CATALOG_PATH,
   SEMANTIC_WORKS_PREFIX,
   reconcileSemanticLibrary,
@@ -1366,6 +1523,7 @@ import {
   semanticManifestPath,
   semanticAnnotationsPath,
   sha256Fingerprint,
+  tombstonePortableAnnotation,
   updateAssetFingerprint,
   updateWorkDetails,
   updateWorkMetadata,
@@ -1412,11 +1570,23 @@ const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebar-toggle');
 const bookmarksList = document.getElementById('bookmarks-list');
 const addBookmarkBtn = document.getElementById('add-bookmark-btn');
+const addHighlightBtn = document.getElementById('add-highlight-btn');
+const annotationList = document.getElementById('annotation-list');
+const highlightDialog = document.getElementById('highlight-dialog');
+const highlightForm = document.getElementById('highlight-form');
+const highlightQuote = document.getElementById('highlight-quote');
+const highlightNote = document.getElementById('highlight-note');
+const highlightColor = document.getElementById('highlight-color');
+const annotationsBrowserDialog = document.getElementById('annotations-browser-dialog');
+const annotationsBrowserSearch = document.getElementById('annotations-browser-search');
+const annotationsBrowserList = document.getElementById('annotations-browser-list');
+const annotationsExportBtn = document.getElementById('annotations-export-btn');
 const noteArea = document.getElementById('note-area');
 const tocSection = document.getElementById('toc-section');
 const tocList = document.getElementById('toc-list');
 const storageBtn = document.getElementById('storage-btn');
 const readerStorageBtn = document.getElementById('reader-storage-btn');
+const readerModeBtn = document.getElementById('reader-mode-btn');
 const storageDialog = document.getElementById('storage-dialog');
 const storageDialogList = document.getElementById('storage-dialog-list');
 const confirmDialog = document.getElementById('confirm-dialog');
@@ -1469,6 +1639,11 @@ let activeEngine = null;
 let activeSidecar = null;    // sidecar object for the currently-open book; null if not persisted
 let activeBookId = null;
 let activeSourceFilename = null;
+let activeReaderMode = 'faithful';
+let activeNativePassageRecord = null;
+let activeAnnotationRecord = null;
+let pendingHighlightTarget = null;
+let libraryAnnotationRows = [];
 let bookOpenInProgress = false;
 let libraryCache = [];
 let semanticCatalog = null;
@@ -1873,6 +2048,8 @@ function makeInitialSidecar({ bookId, sourceFilename, engineKey }) {
     format: extOf(sourceFilename),
     engine: engineKey,
     position: null,
+    nativePosition: null,
+    preferredMode: 'faithful',
     lastOpened: null,
     note: '',
     bookmarks: [],
@@ -2385,6 +2562,23 @@ async function processSemanticWork(manifest, backendId) {
         { passageCount: passages.length, extractorVersion: 'passages-v1' },
       ));
     }
+    const annotationsPath = semanticAnnotationsPath(manifest.workId);
+    const annotations = await readJsonRecord(annotationsPath);
+    const reanchored = reanchorPortableAnnotations(
+      annotations,
+      passageRecord.passages,
+    );
+    if (reanchored.changed && processingStillOwnsBackend(backendId)) {
+      await naklios.fs.write(
+        annotationsPath,
+        JSON.stringify(reanchored.record, null, 2),
+      );
+      if (activeAnnotationRecord?.workId === manifest.workId) {
+        activeAnnotationRecord = reanchored.record;
+        renderAnnotationList();
+        activeEngine?.renderAnnotations?.(activeAnnotationRecord.annotations || []);
+      }
+    }
 
     currentStage = 'lexicalIndex';
     let lexicalIndex = await readJsonRecord(workLexicalIndexPath(manifest.workId));
@@ -2459,6 +2653,10 @@ async function processSemanticWork(manifest, backendId) {
         },
       ));
     }
+    const activeWork = workForFilename(semanticCatalog, activeSourceFilename);
+    if (activeWork?.workId === manifest.workId && reader.classList.contains('is-open')) {
+      await updateReaderModeAvailability();
+    }
   } catch (error) {
     if (!processingStillOwnsBackend(backendId)) return;
     const status = error?.code === 'ocr-required' ? 'waiting-for-ocr' : 'failed';
@@ -2502,14 +2700,33 @@ class FoliateEngine {
     this._loaded = null;
     this._searchRequest = 0;
     this._searchTail = Promise.resolve();
+    this._annotationRows = [];
+    this._overlayer = null;
   }
   async load(file) {
     await import(VENDOR_FOLIATE + 'view.js');
+    this._overlayer = (await import(VENDOR_FOLIATE + 'overlayer.js')).Overlayer;
     this.view = document.createElement('foliate-view');
     Object.assign(this.view.style, { display: 'block', width: '100%', height: '100%' });
     this.container.appendChild(this.view);
     this.view.addEventListener('relocate', () => {
       if (this._cb) this._cb(this.getPosition());
+    });
+    this.view.addEventListener('draw-annotation', (event) => {
+      const { draw, annotation } = event.detail;
+      draw(this._overlayer.highlight, {
+        color: {
+          yellow:'#f0c94b',
+          green:'#75b88a',
+          blue:'#72aee6',
+          pink:'#dc82a8',
+        }[annotation.color] || '#f0c94b',
+      });
+    });
+    this.view.addEventListener('create-overlay', () => {
+      for (const annotation of this._annotationRows) {
+        void this.view?.addAnnotation(annotation).catch(() => {});
+      }
     });
     await this.view.open(file);
     // open() parses the book but doesn't start the paginator. init() does —
@@ -2572,6 +2789,56 @@ class FoliateEngine {
       .replace(/\s+/g, ' ')
       .trim();
     return { text:text.slice(0, maxChars), scope:'current page' };
+  }
+  getSelectionTarget() {
+    const contents = this.view?.renderer?.getContents?.() || [];
+    for (const { doc, index } of contents) {
+      const selection = doc?.getSelection?.();
+      if (!selection?.rangeCount || selection.isCollapsed || !selection.toString().trim()) continue;
+      const range = selection.getRangeAt(0);
+      const prefixRange = doc.createRange();
+      prefixRange.selectNodeContents(doc.body);
+      prefixRange.setEnd(range.startContainer, range.startOffset);
+      const bodyText = doc.body?.innerText || doc.body?.textContent || '';
+      const start = prefixRange.toString().length;
+      const exact = selection.toString();
+      return {
+        passageId:null,
+        exact,
+        prefix:bodyText.slice(Math.max(0, start - 48), start),
+        suffix:bodyText.slice(start + exact.length, start + exact.length + 48),
+        normalizedRange:{ start, end:start + exact.length },
+        engine:{
+          kind:'foliate-cfi',
+          cfi:this.view.getCFI(index, range),
+          sectionIndex:index,
+        },
+      };
+    }
+    return null;
+  }
+  renderAnnotations(annotations) {
+    if (!this.view) return;
+    for (const annotation of this._annotationRows) {
+      try { this.view.deleteAnnotation(annotation); } catch (_) {}
+    }
+    this._annotationRows = (annotations || []).flatMap((annotation) => {
+      const cfi = annotation.target?.engine?.kind === 'foliate-cfi'
+        ? annotation.target.engine.cfi : null;
+      if (annotation.deletedAt || annotation.kind !== 'highlight' || !cfi) return [];
+      return [{
+        value:cfi,
+        color:annotation.color || 'yellow',
+        annotationId:annotation.annotationId,
+      }];
+    });
+    for (const annotation of this._annotationRows) {
+      void this.view.addAnnotation(annotation).catch(() => {});
+    }
+  }
+  async jumpToAnnotation(annotation) {
+    const cfi = annotation?.target?.engine?.cfi;
+    if (cfi && this.view) await this.view.showAnnotation({ value:cfi });
   }
   async search(query) {
     if (!this.view || !query) return [];
@@ -2657,6 +2924,7 @@ class FoliateEngine {
   onRelocate(cb) { this._cb = cb; }
   destroy() {
     if (this.view) { try { this.container.removeChild(this.view); } catch (_) {} this.view = null; }
+    this._annotationRows = [];
     this._cb = null;
   }
 }
@@ -2672,9 +2940,12 @@ class PdfEngine {
     this.scrollY = 0;
     this._cb = null;
     this._scrollT = null;
+    this._annotationRows = [];
+    this.pdfjs = null;
   }
   async load(file) {
     const pdfjs = await import(VENDOR_PDFJS + 'build/pdf.min.mjs');
+    this.pdfjs = pdfjs;
     pdfjs.GlobalWorkerOptions.workerSrc = VENDOR_PDFJS + 'build/pdf.worker.min.mjs';
     const data = await file.arrayBuffer();
     this.pdfDoc = await pdfjs.getDocument({
@@ -2709,16 +2980,50 @@ class PdfEngine {
     canvas.width = vp.width;
     canvas.height = vp.height;
     canvas.dataset.pageNum = String(num);
+    const cssWidth = vp.width / dpr;
+    const cssHeight = vp.height / dpr;
     Object.assign(canvas.style, {
-      display: 'block', margin: '8px auto',
-      width: (vp.width / dpr) + 'px', height: (vp.height / dpr) + 'px',
+      display: 'block',
+      width: cssWidth + 'px', height: cssHeight + 'px',
       boxShadow: '0 2px 12px rgba(0,0,0,0.25)', background: '#fff',
     });
-    this.viewer.appendChild(canvas);
+    const pageWrap = document.createElement('div');
+    pageWrap.className = 'pdf-page';
+    pageWrap.dataset.pageNum = String(num);
+    Object.assign(pageWrap.style, {
+      width:cssWidth + 'px',
+      height:cssHeight + 'px',
+    });
+    const highlightLayer = document.createElement('div');
+    highlightLayer.className = 'pdf-highlight-layer';
+    const textLayer = document.createElement('div');
+    textLayer.className = 'pdf-text-layer';
+    textLayer.dataset.pageNum = String(num);
+    pageWrap.append(canvas, highlightLayer, textLayer);
+    this.viewer.appendChild(pageWrap);
     await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    const content = await page.getTextContent();
+    for (let itemIndex = 0; itemIndex < content.items.length; itemIndex++) {
+      const item = content.items[itemIndex];
+      if (!item?.str) continue;
+      const tx = this.pdfjs.Util.transform(vp.transform, item.transform);
+      const angle = Math.atan2(tx[1], tx[0]);
+      const fontHeight = Math.hypot(tx[2], tx[3]);
+      const span = document.createElement('span');
+      span.textContent = item.str + (item.hasEOL ? '\n' : ' ');
+      span.dataset.itemIndex = String(itemIndex);
+      Object.assign(span.style, {
+        left:(tx[4] / dpr) + 'px',
+        top:((tx[5] - fontHeight) / dpr) + 'px',
+        fontSize:(fontHeight / dpr) + 'px',
+        fontFamily:'sans-serif',
+        transform:angle ? 'rotate(' + angle + 'rad)' : 'none',
+      });
+      textLayer.appendChild(span);
+    }
   }
   _onScroll() {
-    const canvases = this.viewer.querySelectorAll('canvas[data-page-num]');
+    const canvases = this.viewer.querySelectorAll('.pdf-page[data-page-num]');
     const top = this.viewer.scrollTop;
     for (let i = 0; i < canvases.length; i++) {
       const c = canvases[i];
@@ -2740,7 +3045,7 @@ class PdfEngine {
     if (!this.viewer || !position) return;
     const page = Math.max(1, Math.min(this.numPages || 1, position.page || 1));
     const scrollY = Math.max(0, Math.min(1, position.scrollY || 0));
-    const canvas = this.viewer.querySelector('canvas[data-page-num="' + page + '"]');
+    const canvas = this.viewer.querySelector('.pdf-page[data-page-num="' + page + '"]');
     if (!canvas) return;
     this.viewer.scrollTop = canvas.offsetTop + (scrollY * canvas.offsetHeight);
   }
@@ -2774,6 +3079,81 @@ class PdfEngine {
       text:text.slice(0, maxChars),
       scope:`page ${this.currentPage || 1}`,
     };
+  }
+  getSelectionTarget() {
+    const selection = window.getSelection?.();
+    if (!selection?.rangeCount || selection.isCollapsed || !selection.toString().trim()) return null;
+    const range = selection.getRangeAt(0);
+    const startLayer = (range.startContainer.nodeType === 1
+      ? range.startContainer
+      : range.startContainer.parentElement)?.closest?.('.pdf-text-layer');
+    const endLayer = (range.endContainer.nodeType === 1
+      ? range.endContainer
+      : range.endContainer.parentElement)?.closest?.('.pdf-text-layer');
+    if (!startLayer || startLayer !== endLayer || !this.viewer.contains(startLayer)) return null;
+    const pageWrap = startLayer.closest('.pdf-page');
+    const pageRect = pageWrap.getBoundingClientRect();
+    const prefixRange = document.createRange();
+    prefixRange.selectNodeContents(startLayer);
+    prefixRange.setEnd(range.startContainer, range.startOffset);
+    const start = prefixRange.toString().length;
+    const exact = selection.toString();
+    const rects = Array.from(range.getClientRects()).filter(
+      (rect) => rect.width > 0 && rect.height > 0,
+    ).map((rect) => ({
+      x:(rect.left - pageRect.left) / pageRect.width,
+      y:(rect.top - pageRect.top) / pageRect.height,
+      width:rect.width / pageRect.width,
+      height:rect.height / pageRect.height,
+    }));
+    return {
+      passageId:null,
+      exact,
+      prefix:startLayer.textContent.slice(Math.max(0, start - 48), start),
+      suffix:startLayer.textContent.slice(start + exact.length, start + exact.length + 48),
+      normalizedRange:{ start, end:start + exact.length },
+      engine:{
+        kind:'pdf-text',
+        page:Number(startLayer.dataset.pageNum),
+        start,
+        end:start + exact.length,
+        rects,
+      },
+    };
+  }
+  renderAnnotations(annotations) {
+    this._annotationRows = (annotations || []).filter((annotation) => (
+      !annotation.deletedAt
+      && annotation.kind === 'highlight'
+      && annotation.target?.engine?.kind === 'pdf-text'
+    ));
+    for (const layer of this.viewer?.querySelectorAll('.pdf-highlight-layer') || []) {
+      layer.replaceChildren();
+    }
+    for (const annotation of this._annotationRows) {
+      const target = annotation.target.engine;
+      const layer = this.viewer?.querySelector(
+        '.pdf-page[data-page-num="' + target.page + '"] .pdf-highlight-layer'
+      );
+      if (!layer) continue;
+      for (const rect of target.rects || []) {
+        const overlay = document.createElement('span');
+        overlay.className = 'pdf-highlight-overlay';
+        overlay.dataset.annotationId = annotation.annotationId;
+        overlay.dataset.annotationColor = annotation.color || 'yellow';
+        Object.assign(overlay.style, {
+          left:(rect.x * 100) + '%',
+          top:(rect.y * 100) + '%',
+          width:(rect.width * 100) + '%',
+          height:(rect.height * 100) + '%',
+        });
+        layer.appendChild(overlay);
+      }
+    }
+  }
+  async jumpToAnnotation(annotation) {
+    const page = annotation?.target?.engine?.page;
+    if (page) await this.jumpTo({ page, scrollY:0 });
   }
   async search(query) {
     if (!this.pdfDoc || !query) return [];
@@ -2847,6 +3227,8 @@ class PdfEngine {
   destroy() {
     if (this.pdfDoc) { try { this.pdfDoc.destroy(); } catch (_) {} this.pdfDoc = null; }
     if (this.viewer) { try { this.container.removeChild(this.viewer); } catch (_) {} this.viewer = null; }
+    this._annotationRows = [];
+    this.pdfjs = null;
     this._cb = null;
   }
 }
@@ -2864,6 +3246,7 @@ class TextEngine {
     this.isHtml = false;
     this._cb = null;
     this._scrollT = null;
+    this._annotationRows = [];
   }
   async load(file) {
     const ext = extOf(file.name);
@@ -2933,6 +3316,72 @@ class TextEngine {
       text:text.slice(start, start + maxChars).trim(),
       scope:this.isHtml ? 'current HTML passage' : 'current passage',
     };
+  }
+  getSelectionTarget() {
+    const selection = window.getSelection?.();
+    if (
+      !this.pre
+      || !selection?.rangeCount
+      || selection.isCollapsed
+      || !selection.toString().trim()
+      || !this.pre.contains(selection.anchorNode)
+      || !this.pre.contains(selection.focusNode)
+    ) return null;
+    const range = selection.getRangeAt(0);
+    const prefixRange = document.createRange();
+    prefixRange.selectNodeContents(this.pre);
+    prefixRange.setEnd(range.startContainer, range.startOffset);
+    const start = prefixRange.toString().length;
+    const exact = selection.toString();
+    return {
+      passageId:null,
+      exact,
+      prefix:this.text.slice(Math.max(0, start - 48), start),
+      suffix:this.text.slice(start + exact.length, start + exact.length + 48),
+      normalizedRange:{ start, end:start + exact.length },
+      engine:{ kind:'text-offset', start, end:start + exact.length },
+    };
+  }
+  renderAnnotations(annotations) {
+    this._annotationRows = (annotations || []).filter((annotation) => (
+      !annotation.deletedAt
+      && annotation.kind === 'highlight'
+      && annotation.target?.engine?.kind === 'text-offset'
+    ));
+    if (!this.pre) return;
+    const rows = this._annotationRows
+      .map((annotation) => ({
+        annotation,
+        start:Number(annotation.target.engine.start),
+        end:Number(annotation.target.engine.end),
+      }))
+      .filter((row) => Number.isFinite(row.start) && row.end > row.start)
+      .sort((left, right) => left.start - right.start);
+    const nodes = [];
+    let cursor = 0;
+    for (const row of rows) {
+      if (row.start < cursor || row.start >= this.text.length) continue;
+      nodes.push(document.createTextNode(this.text.slice(cursor, row.start)));
+      const mark = document.createElement('mark');
+      mark.dataset.annotationId = row.annotation.annotationId;
+      mark.dataset.annotationColor = row.annotation.color || 'yellow';
+      mark.textContent = this.text.slice(row.start, Math.min(this.text.length, row.end));
+      nodes.push(mark);
+      cursor = row.end;
+    }
+    nodes.push(document.createTextNode(this.text.slice(cursor)));
+    this.pre.replaceChildren(...nodes);
+  }
+  async jumpToAnnotation(annotation) {
+    const mark = this.pre?.querySelector(
+      'mark[data-annotation-id="' + CSS.escape(annotation?.annotationId || '') + '"]'
+    );
+    if (mark) mark.scrollIntoView({ block:'center', behavior:'smooth' });
+    else if (annotation?.target?.engine?.start != null) {
+      await this.jumpTo({
+        fraction:Number(annotation.target.engine.start) / Math.max(1, this.text.length),
+      });
+    }
   }
   async search(query) {
     if (!query) return [];
@@ -3039,7 +3488,310 @@ class TextEngine {
   destroy() {
     this.clearSearch();
     if (this.viewer) { try { this.container.removeChild(this.viewer); } catch (_) {} this.viewer = null; }
+    this._annotationRows = [];
     this._cb = null;
+  }
+}
+
+class NativeEngine {
+  static engineKey = 'native';
+  constructor(container, passageRecord, manifest) {
+    this.container = container;
+    this.record = passageRecord;
+    this.manifest = manifest;
+    this.viewer = null;
+    this.article = null;
+    this._cb = null;
+    this._sourceCb = null;
+    this._scrollT = null;
+    this.currentPassageId = passageRecord?.passages?.[0]?.passageId || null;
+  }
+  async load() {
+    this.viewer = document.createElement('div');
+    this.viewer.className = 'native-reader';
+    this.article = document.createElement('article');
+    this.article.className = 'native-document';
+    const heading = document.createElement('h1');
+    heading.className = 'native-work-heading';
+    heading.textContent = this.manifest?.title || 'Book';
+    this.article.appendChild(heading);
+    let previousLabel = null;
+    for (const passage of this.record.passages || []) {
+      const label = passage.structure?.label || null;
+      if (label && label !== previousLabel) {
+        const sectionHeading = document.createElement('h2');
+        sectionHeading.className = 'native-section-heading';
+        sectionHeading.textContent = label;
+        sectionHeading.id = 'native-section-' + passage.structure.sectionIndex;
+        this.article.appendChild(sectionHeading);
+        previousLabel = label;
+      }
+      const section = document.createElement('section');
+      section.className = 'native-passage';
+      section.id = passage.passageId;
+      section.dataset.passageId = passage.passageId;
+      section.dataset.passageOrder = String(passage.order);
+      const passageContent = document.createElement('div');
+      passageContent.dataset.passageContent = '';
+      for (const paragraphText of String(passage.text).split(/\n{2,}/)) {
+        const paragraph = document.createElement('p');
+        paragraph.textContent = paragraphText;
+        passageContent.appendChild(paragraph);
+      }
+      section.appendChild(passageContent);
+      const source = document.createElement('button');
+      source.className = 'native-source-link';
+      source.type = 'button';
+      source.dataset.sourcePassage = passage.passageId;
+      source.textContent = 'View authored source ↗';
+      section.appendChild(source);
+      this.article.appendChild(section);
+    }
+    const location = document.createElement('div');
+    location.className = 'native-location';
+    location.textContent = 'Native · 0%';
+    this.viewer.append(this.article, location);
+    this.container.appendChild(this.viewer);
+    this.viewer.addEventListener('scroll', () => this._onScroll());
+    this.article.addEventListener('click', (event) => {
+      const source = event.target.closest('[data-source-passage]');
+      if (!source || !this._sourceCb) return;
+      const passage = this.record.passages.find(
+        (candidate) => candidate.passageId === source.dataset.sourcePassage,
+      );
+      if (passage) this._sourceCb(passage);
+    });
+  }
+  _onScroll() {
+    clearTimeout(this._scrollT);
+    this._scrollT = setTimeout(() => {
+      const passages = Array.from(this.article.querySelectorAll('.native-passage'));
+      const viewerTop = this.viewer.getBoundingClientRect().top;
+      let current = passages[0] || null;
+      for (const passage of passages) {
+        if (passage.getBoundingClientRect().top <= viewerTop + 80) current = passage;
+        else break;
+      }
+      for (const passage of passages) passage.classList.toggle('is-current', passage === current);
+      if (current) this.currentPassageId = current.dataset.passageId;
+      const total = Math.max(1, this.viewer.scrollHeight - this.viewer.clientHeight);
+      const fraction = Math.max(0, Math.min(1, this.viewer.scrollTop / total));
+      const badge = this.viewer.querySelector('.native-location');
+      if (badge) badge.textContent = 'Native · ' + Math.round(fraction * 100) + '%';
+      if (this._cb) this._cb(this.getPosition());
+    }, 120);
+  }
+  getPosition() {
+    if (!this.viewer) return { passageId:this.currentPassageId, fraction:0 };
+    const total = Math.max(1, this.viewer.scrollHeight - this.viewer.clientHeight);
+    return {
+      passageId: this.currentPassageId,
+      fraction: Math.max(0, Math.min(1, this.viewer.scrollTop / total)),
+    };
+  }
+  async jumpTo(position) {
+    if (!this.viewer || !position) return;
+    const target = position.passageId
+      ? this.article.querySelector('[data-passage-id="' +
+          CSS.escape(position.passageId) + '"]')
+      : null;
+    if (target) {
+      target.scrollIntoView({ block:'start' });
+      this.currentPassageId = position.passageId;
+      return;
+    }
+    if (Number.isFinite(position.fraction)) {
+      const total = Math.max(0, this.viewer.scrollHeight - this.viewer.clientHeight);
+      this.viewer.scrollTop = Math.max(0, Math.min(1, position.fraction)) * total;
+    }
+  }
+  async getMetadata() {
+    return {
+      title: this.manifest?.title || null,
+      author: (this.manifest?.authors || []).map((author) => author.name).join(', ') || null,
+    };
+  }
+  async getCover() { return null; }
+  async getContextText(maxChars = 12000) {
+    const selection = window.getSelection?.();
+    const selected = selection?.rangeCount
+      && this.article.contains(selection.anchorNode)
+      ? selection.toString().trim()
+      : '';
+    if (selected) return { text:selected.slice(0, maxChars), scope:'selection' };
+    const passage = this.record.passages.find(
+      (candidate) => candidate.passageId === this.currentPassageId,
+    ) || this.record.passages[0];
+    return {
+      text:String(passage?.text || '').slice(0, maxChars),
+      scope:passage?.structure?.label || 'native passage',
+    };
+  }
+  getSelectionTarget() {
+    const selection = window.getSelection?.();
+    if (!selection?.rangeCount || selection.isCollapsed || !selection.toString().trim()) return null;
+    const range = selection.getRangeAt(0);
+    const passageElement = (range.commonAncestorContainer.nodeType === 1
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement)?.closest?.('[data-passage-id]');
+    if (!passageElement || !this.article.contains(passageElement)) return null;
+    const passageContent = passageElement.querySelector('[data-passage-content]');
+    if (
+      !passageContent
+      || !passageContent.contains(range.startContainer)
+      || !passageContent.contains(range.endContainer)
+    ) return null;
+    const passage = this.record.passages.find(
+      (candidate) => candidate.passageId === passageElement.dataset.passageId,
+    );
+    if (!passage) return null;
+    const prefixRange = document.createRange();
+    prefixRange.selectNodeContents(passageContent);
+    prefixRange.setEnd(range.startContainer, range.startOffset);
+    const start = prefixRange.toString().length;
+    const exact = selection.toString();
+    return {
+      passageId: passage.passageId,
+      exact,
+      prefix: passage.text.slice(Math.max(0, start - 48), start),
+      suffix: passage.text.slice(start + exact.length, start + exact.length + 48),
+      normalizedRange: { start, end:start + exact.length },
+      engine: {
+        kind: 'native-passage',
+        passageId: passage.passageId,
+      },
+    };
+  }
+  _rangeForOffsets(root, start, end) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let offset = 0;
+    let startNode = null, endNode = null, startOffset = 0, endOffset = 0;
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      const next = offset + node.data.length;
+      if (!startNode && start >= offset && start <= next) {
+        startNode = node;
+        startOffset = start - offset;
+      }
+      if (end >= offset && end <= next) {
+        endNode = node;
+        endOffset = end - offset;
+        break;
+      }
+      offset = next;
+    }
+    if (!startNode || !endNode) return null;
+    const range = document.createRange();
+    range.setStart(startNode, startOffset);
+    range.setEnd(endNode, endOffset);
+    return range;
+  }
+  renderAnnotations(annotations) {
+    if (!this.article) return;
+    for (const mark of this.article.querySelectorAll('mark[data-annotation-id]')) {
+      mark.replaceWith(document.createTextNode(mark.textContent));
+    }
+    this.article.normalize();
+    for (const annotation of annotations || []) {
+      if (
+        annotation.deletedAt
+        || annotation.kind !== 'highlight'
+        || !annotation.target?.passageId
+        || !annotation.target?.exact
+      ) continue;
+      const passage = this.article.querySelector('[data-passage-id="' +
+        CSS.escape(annotation.target.passageId) + '"]');
+      const content = passage?.querySelector('[data-passage-content]');
+      if (!content) continue;
+      const text = content.textContent;
+      let start = Number(annotation.target.normalizedRange?.start);
+      let end = Number(annotation.target.normalizedRange?.end);
+      if (
+        !Number.isFinite(start)
+        || !Number.isFinite(end)
+        || text.slice(start, end) !== annotation.target.exact
+      ) {
+        start = text.indexOf(annotation.target.exact);
+        end = start < 0 ? -1 : start + annotation.target.exact.length;
+      }
+      if (start < 0 || end <= start) continue;
+      const range = this._rangeForOffsets(content, start, end);
+      if (!range) continue;
+      const mark = document.createElement('mark');
+      mark.dataset.annotationId = annotation.annotationId;
+      mark.dataset.annotationColor = annotation.color || 'yellow';
+      try {
+        const fragment = range.extractContents();
+        mark.appendChild(fragment);
+        range.insertNode(mark);
+      } catch (_) {}
+    }
+  }
+  async jumpToAnnotation(annotation) {
+    const passageId = annotation?.target?.passageId;
+    if (passageId) await this.jumpTo({ passageId });
+  }
+  async search(query) {
+    const needle = String(query || '').toLocaleLowerCase();
+    if (!needle) return [];
+    return (this.record.passages || []).flatMap((passage) => {
+      const index = passage.text.toLocaleLowerCase().indexOf(needle);
+      return index < 0 ? [] : [{
+        label: passage.structure?.label || 'Passage',
+        excerpt: makeSearchExcerpt(passage.text, index, query.length),
+        passageId: passage.passageId,
+      }];
+    }).slice(0, 500);
+  }
+  async jumpToSearchResult(result) {
+    await this.jumpTo({ passageId:result?.passageId });
+  }
+  clearSearch() {}
+  async next() {
+    this.viewer?.scrollBy({ top:this.viewer.clientHeight * 0.88, behavior:'smooth' });
+  }
+  async prev() {
+    this.viewer?.scrollBy({ top:-this.viewer.clientHeight * 0.88, behavior:'smooth' });
+  }
+  async getTOC() {
+    const seen = new Set();
+    return (this.record.passages || []).flatMap((passage) => {
+      const label = passage.structure?.label;
+      if (!label || seen.has(label)) return [];
+      seen.add(label);
+      return [{
+        label,
+        href:'native:' + passage.passageId,
+        subitems:null,
+      }];
+    });
+  }
+  async jumpToTocItem(item) {
+    const passageId = String(item?.href || '').replace(/^native:/, '');
+    await this.jumpTo({ passageId });
+  }
+  applyPreferences(prefs) {
+    if (!this.article || !this.viewer) return;
+    const p = normaliseReaderPrefs(prefs);
+    const palette = readerPalette(p.profile);
+    Object.assign(this.viewer.style, { background:palette.background, color:palette.color });
+    Object.assign(this.article.style, {
+      maxWidth:p.pageWidth + 'px',
+      fontSize:p.fontSize + 'px',
+      lineHeight:String(p.lineHeight),
+    });
+  }
+  onRelocate(cb) { this._cb = cb; }
+  onSource(cb) { this._sourceCb = cb; }
+  destroy() {
+    clearTimeout(this._scrollT);
+    if (this.viewer) {
+      try { this.container.removeChild(this.viewer); } catch (_) {}
+    }
+    this.viewer = null;
+    this.article = null;
+    this._cb = null;
+    this._sourceCb = null;
   }
 }
 
@@ -3350,6 +4102,134 @@ async function openSemanticSearchResult(key) {
   }
 }
 
+function renderLibraryAnnotationRows() {
+  const needle = annotationsBrowserSearch.value.trim().toLocaleLowerCase();
+  const rows = libraryAnnotationRows.filter((row) => {
+    if (!needle) return true;
+    return [
+      row.workTitle,
+      row.annotation.kind,
+      row.annotation.label,
+      row.annotation.body,
+      row.annotation.target?.exact,
+    ].filter(Boolean).join(' ').toLocaleLowerCase().includes(needle);
+  });
+  annotationsBrowserList.innerHTML = rows.length
+    ? rows.map((row) =>
+        '<button class="annotation-browser-row" type="button" data-library-annotation="' +
+          escapeHtml(row.key) + '">' +
+          '<strong>' + escapeHtml(row.workTitle) + '</strong>' +
+          '<span>' + escapeHtml(row.annotation.kind + ' · ' +
+            (row.annotation.color || 'portable')) + '</span>' +
+          '<p>' + escapeHtml(
+            row.annotation.target?.exact
+            || row.annotation.body
+            || row.annotation.label
+            || 'Annotation'
+          ) + '</p>' +
+        '</button>'
+      ).join('')
+    : '<p class="semantic-search-state">No annotations match.</p>';
+}
+
+async function openAnnotationsBrowser() {
+  libraryAnnotationRows = [];
+  annotationsBrowserSearch.value = '';
+  annotationsBrowserList.innerHTML =
+    '<p class="semantic-search-state">Loading portable annotations…</p>';
+  annotationsBrowserDialog.showModal();
+  for (const work of semanticCatalog?.works || []) {
+    const record = await readJsonRecord(semanticAnnotationsPath(work.workId));
+    const filename = work.sourceFilenames.find((name) =>
+      libraryCache.some((entry) => entry.filename === name));
+    if (!record || !filename) continue;
+    for (const annotation of record.annotations || []) {
+      if (annotation.deletedAt) continue;
+      libraryAnnotationRows.push({
+        key:work.workId + ':' + annotation.annotationId,
+        workId:work.workId,
+        workTitle:work.title,
+        filename,
+        annotation,
+      });
+    }
+  }
+  if (annotationsBrowserDialog.open) renderLibraryAnnotationRows();
+}
+
+async function openLibraryAnnotation(key) {
+  const row = libraryAnnotationRows.find((candidate) => candidate.key === key);
+  if (!row) return;
+  annotationsBrowserDialog.close();
+  await openBookFromLibrary(row.filename);
+  if (!activeEngine) return;
+  await loadActiveAnnotations();
+  if (
+    row.annotation.target?.engine?.kind === 'foliate-cfi'
+    || row.annotation.target?.engine?.kind === 'pdf-text'
+    || row.annotation.target?.engine?.kind === 'text-offset'
+  ) {
+    await activeEngine.jumpToAnnotation?.(row.annotation);
+  } else if (row.annotation.target?.passageId) {
+    const passages = await readJsonRecord(passagesPath(row.workId));
+    const passage = passages?.passages?.find(
+      (candidate) => candidate.passageId === row.annotation.target.passageId,
+    );
+    if (passage) {
+      await activeEngine.jumpTo(
+        faithfulPositionForPassage(passage, passages.passages.length),
+      );
+    }
+  }
+  readerStatus.textContent = 'Annotation · ' +
+    (row.annotation.target?.exact || row.annotation.label || row.annotation.kind)
+      .slice(0, 60);
+}
+
+function exportLibraryAnnotations() {
+  const lines = [
+    '# Books annotation export',
+    '',
+    'Exported: ' + new Date().toISOString(),
+    'Storage library: ' + backendLabel(activeBackendId()),
+    '',
+  ];
+  let previousWork = null;
+  for (const row of libraryAnnotationRows) {
+    if (row.workId !== previousWork) {
+      lines.push('## ' + row.workTitle, '');
+      previousWork = row.workId;
+    }
+    lines.push('### ' + row.annotation.kind);
+    if (row.annotation.target?.exact) {
+      lines.push('', '> ' + row.annotation.target.exact.replace(/\n/g, '\n> '));
+    }
+    if (row.annotation.body) lines.push('', row.annotation.body);
+    lines.push(
+      '',
+      '- Color: ' + (row.annotation.color || 'none'),
+      '- Created: ' + (row.annotation.createdAt || 'unknown'),
+      '- Source file: ' + row.filename,
+      '- Passage: ' + (row.annotation.target?.passageId || 'unresolved'),
+      '',
+    );
+  }
+  const blob = new Blob([lines.join('\n')], { type:'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'books-annotations-' + new Date().toISOString().slice(0, 10) + '.md';
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+annotationsBrowserSearch.addEventListener('input', renderLibraryAnnotationRows);
+annotationsBrowserList.addEventListener('click', (event) => {
+  const row = event.target.closest('[data-library-annotation]');
+  if (row) void openLibraryAnnotation(row.dataset.libraryAnnotation);
+});
+annotationsExportBtn.addEventListener('click', exportLibraryAnnotations);
+
 function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   libraryCache = decorated.slice();
   renderReaderLibrary();
@@ -3364,7 +4244,10 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
           '<option value="author"' + (librarySort === 'author' ? ' selected' : '') + '>Author</option>' +
         '</select>' +
       '</div>' +
-      '<button class="add-btn compact" id="add-book-btn" type="button">＋ Add book…</button>' +
+      '<div class="library-header-actions">' +
+        '<button class="library-header-action" id="annotations-browser-btn" type="button">Annotations</button>' +
+        '<button class="add-btn compact" id="add-book-btn" type="button">＋ Add book…</button>' +
+      '</div>' +
     '</div>' +
     '<label class="semantic-search">' +
       '<span class="sr-only">Search inside every indexed book</span>' +
@@ -3378,6 +4261,10 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   renderLibraryRows();
   const addBtn = document.getElementById('add-book-btn');
   if (addBtn) addBtn.addEventListener('click', openLibraryFilePicker);
+  const annotationsBtn = document.getElementById('annotations-browser-btn');
+  if (annotationsBtn) annotationsBtn.addEventListener('click', () => {
+    void openAnnotationsBrowser();
+  });
   const filter = document.getElementById('library-filter');
   const sort = document.getElementById('library-sort');
   const semanticInput = document.getElementById('semantic-search-input');
@@ -3874,6 +4761,12 @@ async function openBookFromFile(file, persistInfo) {
   // and load failures both surface in the same place as successful loads.
   enterReaderView(file.name);
   activeSourceFilename = (persistInfo && persistInfo.sourceFilename) || file.name;
+  activeReaderMode = 'faithful';
+  activeNativePassageRecord = null;
+  readerModeBtn.hidden = true;
+  readerModeBtn.disabled = false;
+  readerModeBtn.textContent = 'Native';
+  readerModeBtn.setAttribute('aria-pressed', 'false');
   renderReaderLibrary();
   setReaderLoading('Loading…');
   resetReaderSearch();
@@ -3987,6 +4880,7 @@ async function openBookFromFile(file, persistInfo) {
     // Sidebar toggle is useful whenever there's content in the sidebar —
     // either persistence (bookmarks + note) or a TOC.
     if (persisted || (toc && toc.length)) sidebarToggle.hidden = false;
+    await updateReaderModeAvailability();
   } catch (err) {
     if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
     readerSearchBtn.hidden = true;
@@ -3994,6 +4888,144 @@ async function openBookFromFile(file, persistInfo) {
     showReaderError('Could not render <code>' + escapeHtml(file.name) + '</code>', err);
   }
 }
+
+async function updateReaderModeAvailability() {
+  if (!activeSourceFilename || !activeBookId || !semanticCatalog) {
+    readerModeBtn.hidden = true;
+    activeNativePassageRecord = null;
+    return false;
+  }
+  const work = workForFilename(semanticCatalog, activeSourceFilename);
+  const record = work ? await readJsonRecord(passagesPath(work.workId)) : null;
+  if (
+    !record?.passages?.length
+    || !semanticManifests.get(work.workId)?.assets?.some(
+      (asset) => asset.assetId === record.assetId && asset.availability === 'available'
+    )
+  ) {
+    readerModeBtn.hidden = true;
+    activeNativePassageRecord = null;
+    return false;
+  }
+  activeNativePassageRecord = record;
+  readerModeBtn.hidden = false;
+  readerModeBtn.textContent = activeReaderMode === 'native' ? 'Faithful' : 'Native';
+  readerModeBtn.setAttribute('aria-pressed', String(activeReaderMode === 'native'));
+  return true;
+}
+
+function faithfulPositionForPassage(passage, passageCount) {
+  const anchor = passage?.anchor?.engine || {};
+  if (anchor.kind === 'pdf-page') return { page:anchor.page, scrollY:0 };
+  if (anchor.kind === 'foliate-section') {
+    return {
+      cfi:anchor.cfi,
+      sectionIndex:anchor.sectionIndex,
+      fraction:passage.order / Math.max(1, passageCount),
+    };
+  }
+  return { fraction:passage.order / Math.max(1, passageCount) };
+}
+
+async function switchToNativeMode() {
+  if (
+    activeReaderMode === 'native'
+    || !activeNativePassageRecord?.passages?.length
+    || !activeSidecar
+  ) return;
+  const work = workForFilename(semanticCatalog, activeSourceFilename);
+  const manifest = work && semanticManifests.get(work.workId);
+  if (!manifest) return;
+  readerModeBtn.disabled = true;
+  try {
+    await flushPendingWrites();
+    if (activeEngine) {
+      try { activeEngine.destroy(); } catch (_) {}
+    }
+    readerContent.innerHTML = '';
+    resetReaderSearch();
+    readerSearchbar.hidden = true;
+    activeEngine = new NativeEngine(
+      readerContent,
+      activeNativePassageRecord,
+      manifest,
+    );
+    await activeEngine.load();
+    activeEngine.applyPreferences(activeReaderPrefs);
+    activeEngine.renderAnnotations(activeAnnotationRecord?.annotations || []);
+    addHighlightBtn.disabled = false;
+    activeReaderMode = 'native';
+    activeSidecar.preferredMode = 'native';
+    if (activeSidecar.nativePosition) {
+      await activeEngine.jumpTo(activeSidecar.nativePosition);
+    }
+    activeEngine.onRelocate((position) => {
+      if (!activeSidecar || activeReaderMode !== 'native') return;
+      activeSidecar.nativePosition = position;
+      activeSidecar.lastOpened = new Date().toISOString();
+      readerStatus.textContent = 'Native · ' + Math.round((position.fraction || 0) * 100) + '%';
+      writeSidecarDebounced(activeBookId, activeSidecar);
+    });
+    activeEngine.onSource((passage) => {
+      void switchToFaithfulMode(passage);
+    });
+    readerSearchBtn.hidden = false;
+    prevBtn.hidden = false;
+    nextBtn.hidden = false;
+    prevBtn.onclick = () => activeEngine?.prev?.();
+    nextBtn.onclick = () => activeEngine?.next?.();
+    renderTOC(await activeEngine.getTOC());
+    readerStatus.textContent = describePosition('native', activeEngine.getPosition());
+    writeSidecarDebounced(activeBookId, activeSidecar);
+    updateReaderAiButton();
+    await updateReaderModeAvailability();
+  } catch (error) {
+    showToast("Couldn't open native mode: " + String(error?.message || error), {
+      error:true,
+      duration:5500,
+    });
+  } finally {
+    readerModeBtn.disabled = false;
+  }
+}
+
+async function switchToFaithfulMode(sourcePassage = null) {
+  if (activeReaderMode !== 'native' || !activeSourceFilename || !activeBookId) return;
+  const filename = activeSourceFilename;
+  const bookId = activeBookId;
+  const passageRecord = activeNativePassageRecord;
+  readerModeBtn.disabled = true;
+  try {
+    if (activeSidecar) {
+      activeSidecar.nativePosition = activeEngine?.getPosition?.() || activeSidecar.nativePosition;
+      activeSidecar.preferredMode = 'faithful';
+      writeSidecarDebounced(bookId, activeSidecar);
+      await flushPendingWrites();
+    }
+    const raw = await naklios.fs.readBinary('library/' + filename);
+    const file = new File([toArrayBuffer(raw)], filename);
+    await openBookFromFile(file, { bookId, sourceFilename:filename });
+    if (sourcePassage && activeEngine) {
+      await activeEngine.jumpTo(
+        faithfulPositionForPassage(sourcePassage, passageRecord?.passages?.length || 1),
+      );
+      readerStatus.textContent = 'Authored source · ' +
+        (sourcePassage.structure?.label || 'passage');
+    }
+  } catch (error) {
+    showToast("Couldn't return to faithful mode: " + String(error?.message || error), {
+      error:true,
+      duration:5500,
+    });
+  } finally {
+    readerModeBtn.disabled = false;
+  }
+}
+
+readerModeBtn.addEventListener('click', () => {
+  if (activeReaderMode === 'native') void switchToFaithfulMode();
+  else void switchToNativeMode();
+});
 
 function describePosition(engineKey, pos) {
   if (!pos) return '';
@@ -4405,6 +5437,161 @@ storageDialogList.addEventListener('click', (event) => {
 // Bookmarks + per-book note (A9) — sidebar
 // ============================================================
 
+function activeWorkManifest() {
+  const work = workForFilename(semanticCatalog, activeSourceFilename);
+  return work ? semanticManifests.get(work.workId) : null;
+}
+
+async function loadActiveAnnotations() {
+  const manifest = activeWorkManifest();
+  if (!manifest || !activeSidecar) {
+    activeAnnotationRecord = null;
+    renderAnnotationList();
+    return;
+  }
+  activeAnnotationRecord = await readJsonRecord(
+    semanticAnnotationsPath(manifest.workId),
+  );
+  if (!activeAnnotationRecord) {
+    activeAnnotationRecord = await syncPortableAnnotationsForManifest(
+      manifest,
+      [activeSidecar],
+    );
+  }
+  renderAnnotationList();
+  activeEngine?.renderAnnotations?.(activeAnnotationRecord?.annotations || []);
+}
+
+function renderAnnotationList() {
+  if (!annotationList) return;
+  const annotations = (activeAnnotationRecord?.annotations || []).filter(
+    (annotation) => annotation.kind === 'highlight' && !annotation.deletedAt,
+  );
+  addHighlightBtn.disabled = !activeSidecar || typeof activeEngine?.getSelectionTarget !== 'function';
+  annotationList.innerHTML = annotations.length
+    ? annotations.slice().sort((left, right) =>
+        String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')))
+      .map((annotation) =>
+        '<li data-annotation-id="' + escapeHtml(annotation.annotationId) + '">' +
+          '<button class="annotation-jump" type="button">' +
+            escapeHtml(annotation.target?.exact || annotation.label || 'Highlight') +
+          '</button>' +
+          '<small>' + escapeHtml(
+            (annotation.body ? annotation.body + ' · ' : '') +
+            (annotation.color || 'yellow')
+          ) + '</small>' +
+          '<button class="annotation-remove" type="button" data-annotation-remove ' +
+            'title="Remove highlight">×</button>' +
+        '</li>'
+      ).join('')
+    : '';
+}
+
+async function sourceGroundSelectionTarget(target) {
+  const manifest = activeWorkManifest();
+  if (!manifest) return target;
+  const result = {
+    ...target,
+    workId:manifest.workId,
+    assetId:manifest.assets.find(
+      (asset) => asset.sourceFilename === activeSourceFilename,
+    )?.assetId || null,
+  };
+  if (result.passageId || !result.exact) return result;
+  const passages = activeNativePassageRecord
+    || await readJsonRecord(passagesPath(manifest.workId));
+  const needle = normalizePassageText(result.exact);
+  const passage = passages?.passages?.find((candidate) =>
+    normalizePassageText(candidate.text).includes(needle));
+  if (passage) {
+    result.passageId = passage.passageId;
+    result.passageQuoteHash = passage.anchor?.quoteHash || null;
+  }
+  return result;
+}
+
+async function persistActiveAnnotations() {
+  if (!activeAnnotationRecord?.workId) return;
+  await naklios.fs.write(
+    semanticAnnotationsPath(activeAnnotationRecord.workId),
+    JSON.stringify(activeAnnotationRecord, null, 2),
+  );
+  renderAnnotationList();
+  activeEngine?.renderAnnotations?.(activeAnnotationRecord.annotations || []);
+}
+
+addHighlightBtn.addEventListener('click', async () => {
+  const selected = activeEngine?.getSelectionTarget?.();
+  if (!selected) {
+    showToast('Select text in the current reader first.', {
+      error:true,
+      duration:4000,
+    });
+    return;
+  }
+  pendingHighlightTarget = await sourceGroundSelectionTarget(selected);
+  highlightQuote.textContent = '“' + pendingHighlightTarget.exact.slice(0, 320) +
+    (pendingHighlightTarget.exact.length > 320 ? '…' : '') + '”';
+  highlightNote.value = '';
+  highlightColor.value = 'yellow';
+  highlightDialog.showModal();
+});
+
+highlightDialog.addEventListener('close', () => {
+  pendingHighlightTarget = null;
+});
+
+highlightForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const manifest = activeWorkManifest();
+  if (!manifest || !pendingHighlightTarget) return;
+  try {
+    const added = addPortableAnnotation(activeAnnotationRecord, {
+      workId:manifest.workId,
+      kind:'highlight',
+      label:pendingHighlightTarget.exact.slice(0, 120),
+      body:highlightNote.value.trim(),
+      color:highlightColor.value,
+      target:pendingHighlightTarget,
+    });
+    activeAnnotationRecord = added.record;
+    await persistActiveAnnotations();
+    highlightDialog.close();
+    try { window.getSelection?.().removeAllRanges(); } catch (_) {}
+    showToast('Highlight saved portably.');
+  } catch (error) {
+    showToast("Couldn't save highlight: " + String(error?.message || error), {
+      error:true,
+      duration:5000,
+    });
+  }
+});
+
+annotationList.addEventListener('click', async (event) => {
+  const row = event.target.closest('[data-annotation-id]');
+  if (!row || !activeAnnotationRecord) return;
+  const annotation = activeAnnotationRecord.annotations.find(
+    (item) => item.annotationId === row.dataset.annotationId,
+  );
+  if (!annotation) return;
+  if (event.target.closest('[data-annotation-remove]')) {
+    const removed = tombstonePortableAnnotation(
+      activeAnnotationRecord,
+      annotation.annotationId,
+    );
+    if (!removed.changed) return;
+    activeAnnotationRecord = removed.record;
+    await persistActiveAnnotations();
+    showToast('Highlight moved to recoverable annotation history.');
+    return;
+  }
+  if (typeof activeEngine?.jumpToAnnotation === 'function') {
+    await activeEngine.jumpToAnnotation(annotation);
+  } else if (annotation.target?.passageId) {
+    await activeEngine?.jumpTo?.({ passageId:annotation.target.passageId });
+  }
+});
+
 function renderBookmarks() {
   if (!activeSidecar) {
     bookmarksList.innerHTML = '<li class="bm-empty">No book open</li>';
@@ -4501,6 +5688,7 @@ function activateSidebarForCurrentBook() {
   noteArea.disabled = false;
   addBookmarkBtn.disabled = false;
   renderBookmarks();
+  void loadActiveAnnotations();
 }
 function deactivateSidebar() {
   closeSidebarPanel();
@@ -4508,7 +5696,11 @@ function deactivateSidebar() {
   noteArea.value = '';
   noteArea.disabled = true;
   addBookmarkBtn.disabled = true;
+  addHighlightBtn.disabled = true;
   bookmarksList.innerHTML = '';
+  annotationList.innerHTML = '';
+  activeAnnotationRecord = null;
+  pendingHighlightTarget = null;
 }
 
 sidebarToggle.addEventListener('click', toggleSidebarPanel);
@@ -4583,11 +5775,17 @@ function teardownReaderView() {
   readerSearchBtn.hidden = true;
   readerSearchBtn.classList.remove('is-active');
   readerSearchBtn.setAttribute('aria-expanded', 'false');
+  readerModeBtn.hidden = true;
+  readerModeBtn.disabled = false;
+  readerModeBtn.textContent = 'Native';
+  readerModeBtn.setAttribute('aria-pressed', 'false');
   if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
   updateReaderAiButton();
   activeSidecar = null;
   activeBookId = null;
   activeSourceFilename = null;
+  activeReaderMode = 'faithful';
+  activeNativePassageRecord = null;
   bookOpenInProgress = false;
   readerLibrary.setAttribute('aria-busy', 'false');
   renderReaderLibrary();

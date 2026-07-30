@@ -437,6 +437,159 @@ export function semanticAnnotationsPath(workId) {
   return SEMANTIC_ANNOTATIONS_PREFIX + workId + '.json';
 }
 
+export function addPortableAnnotation(
+  record,
+  {
+    workId,
+    kind = 'highlight',
+    label = '',
+    body = '',
+    color = 'yellow',
+    target,
+    conceptIds = [],
+  },
+  now = () => new Date().toISOString(),
+  createId = createRecordId,
+) {
+  if (!workId || !target) throw new Error('A work and target are required for an annotation.');
+  const timestamp = isoNow(now);
+  const base = (
+    record
+    && record.schemaVersion === SEMANTIC_SCHEMA_VERSION
+    && record.recordType === ANNOTATIONS_TYPE
+    && record.workId === workId
+  ) ? cloneJson(record) : {
+    schemaVersion: SEMANTIC_SCHEMA_VERSION,
+    recordType: ANNOTATIONS_TYPE,
+    workId,
+    revision: 0,
+    annotations: [],
+    positions: [],
+    preferences: [],
+    legacy: { bookIds: [] },
+  };
+  const annotation = {
+    annotationId: createId('annotation'),
+    kind,
+    label:String(label || ''),
+    body:String(body || ''),
+    color:String(color || 'yellow'),
+    target:cloneJson(target),
+    conceptIds:Array.from(new Set(conceptIds.filter(Boolean))),
+    createdAt:timestamp,
+    updatedAt:timestamp,
+    deletedAt:null,
+  };
+  base.annotations.push(annotation);
+  base.revision = Math.max(0, Number(base.revision) || 0) + 1;
+  base.updatedAt = timestamp;
+  return { record:base, annotation };
+}
+
+export function updatePortableAnnotation(
+  record,
+  annotationId,
+  changes,
+  now = () => new Date().toISOString(),
+) {
+  if (!record?.annotations) return { record, changed:false };
+  const next = cloneJson(record);
+  const annotation = next.annotations.find((item) => item.annotationId === annotationId);
+  if (!annotation) return { record, changed:false };
+  const allowed = ['label', 'body', 'color', 'conceptIds'];
+  let changed = false;
+  for (const key of allowed) {
+    if (!(key in changes)) continue;
+    const value = key === 'conceptIds'
+      ? Array.from(new Set((changes[key] || []).filter(Boolean)))
+      : String(changes[key] ?? '');
+    if (!jsonEqual(annotation[key], value)) {
+      annotation[key] = value;
+      changed = true;
+    }
+  }
+  if (!changed) return { record, changed:false };
+  annotation.updatedAt = isoNow(now);
+  next.revision = Math.max(0, Number(next.revision) || 0) + 1;
+  next.updatedAt = annotation.updatedAt;
+  return { record:next, changed:true };
+}
+
+export function tombstonePortableAnnotation(
+  record,
+  annotationId,
+  now = () => new Date().toISOString(),
+) {
+  if (!record?.annotations) return { record, changed:false };
+  const next = cloneJson(record);
+  const annotation = next.annotations.find((item) => item.annotationId === annotationId);
+  if (!annotation || annotation.deletedAt) return { record, changed:false };
+  const timestamp = isoNow(now);
+  annotation.deletedAt = timestamp;
+  annotation.updatedAt = timestamp;
+  next.revision = Math.max(0, Number(next.revision) || 0) + 1;
+  next.updatedAt = timestamp;
+  return { record:next, changed:true };
+}
+
+function normalizeAnchorText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+}
+
+export function reanchorPortableAnnotations(
+  record,
+  passages,
+  now = () => new Date().toISOString(),
+) {
+  if (!record?.annotations || !Array.isArray(passages)) {
+    return { record, changed:false, unresolved:[] };
+  }
+  const next = cloneJson(record);
+  let changed = false;
+  const unresolved = [];
+  const passageById = new Map(passages.map((passage) => [passage.passageId, passage]));
+  for (const annotation of next.annotations) {
+    if (annotation.deletedAt || annotation.kind !== 'highlight' || !annotation.target?.exact) {
+      continue;
+    }
+    const needle = normalizeAnchorText(annotation.target.exact);
+    const current = passageById.get(annotation.target.passageId);
+    if (current && normalizeAnchorText(current.text).includes(needle)) {
+      if (annotation.anchorState !== 'resolved') {
+        annotation.anchorState = 'resolved';
+        changed = true;
+      }
+      continue;
+    }
+    const candidates = passages.filter((passage) =>
+      normalizeAnchorText(passage.text).includes(needle));
+    if (candidates.length === 1) {
+      const previousPassageId = annotation.target.passageId || null;
+      annotation.target.passageId = candidates[0].passageId;
+      annotation.target.passageQuoteHash = candidates[0].anchor?.quoteHash || null;
+      annotation.anchorState = 'resolved';
+      annotation.anchorHistory = (annotation.anchorHistory || []).concat([{
+        previousPassageId,
+        passageId:candidates[0].passageId,
+        reanchoredAt:isoNow(now),
+      }]);
+      annotation.updatedAt = annotation.anchorHistory.at(-1).reanchoredAt;
+      changed = true;
+    } else {
+      if (annotation.anchorState !== 'unresolved') {
+        annotation.anchorState = 'unresolved';
+        annotation.updatedAt = isoNow(now);
+        changed = true;
+      }
+      unresolved.push(annotation.annotationId);
+    }
+  }
+  if (!changed) return { record, changed:false, unresolved };
+  next.revision = Math.max(0, Number(next.revision) || 0) + 1;
+  next.updatedAt = isoNow(now);
+  return { record:next, changed:true, unresolved };
+}
+
 function legacySourceKey(bookId, kind, sourceId) {
   return [bookId, kind, sourceId || 'default'].join(':');
 }

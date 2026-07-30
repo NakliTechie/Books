@@ -121,6 +121,41 @@ assert.match(
   /updateWorkDetails\(current[\s\S]*?portable-metadata-changed[\s\S]*?scheduleSemanticProcessing/,
   'metadata edits persist canonically and refresh affected search metadata',
 );
+assert.match(html, /id="add-highlight-btn"/,
+  'reader sidebar can create portable selection highlights');
+assert.match(html, /id="highlight-dialog"/,
+  'highlight color and note use an app-styled dialog');
+assert.match(
+  html,
+  /sourceGroundSelectionTarget[\s\S]*?addPortableAnnotation[\s\S]*?persistActiveAnnotations/,
+  'new highlights are source-grounded and written to portable annotations',
+);
+assert.match(html, /id="annotations-browser-dialog"/,
+  'portable annotations have a library-wide browser');
+assert.match(html, /function openAnnotationsBrowser\(/,
+  'library-wide annotation browsing reads per-work portable records');
+assert.match(html, /function exportLibraryAnnotations\(/,
+  'annotations export to a documented human-readable Markdown form');
+assert.match(
+  html,
+  /reanchorPortableAnnotations[\s\S]*?activeAnnotationRecord = reanchored\.record/,
+  'passage upgrades re-anchor annotations or expose unresolved state',
+);
+assert.match(
+  html,
+  /class FoliateEngine[\s\S]*?getSelectionTarget\(\)[\s\S]*?foliate-cfi[\s\S]*?renderAnnotations/,
+  'Foliate highlights retain CFI selectors and restore as overlays',
+);
+assert.match(
+  html,
+  /class PdfEngine[\s\S]*?pdf-text-layer[\s\S]*?kind:'pdf-text'[\s\S]*?pdf-highlight-overlay/,
+  'PDF highlights retain page text ranges and normalized rectangles',
+);
+assert.match(
+  html,
+  /class TextEngine[\s\S]*?kind:'text-offset'[\s\S]*?renderAnnotations/,
+  'plain-text highlights retain portable offsets and restore inline',
+);
 assert.match(html, /scrollbar-color:\s*var\(--line\)\s*transparent/, 'Books scrollbars use its active theme');
 assert.match(html, /id="reader-library"/, 'reader keeps the library visible in a sidebar');
 assert.match(html, /id="reader-library-list"/, 'reader sidebar includes the library contents');
@@ -240,8 +275,27 @@ for (const method of [
 }
 assert.equal(
   [...html.matchAll(/async getContextText\(maxChars = 12000\)/g)].length,
-  3,
+  4,
   'every reader engine provides bounded passage context',
+);
+assert.match(html, /id="reader-mode-btn"/,
+  'reader exposes an explicit Faithful and Native mode switch');
+assert.match(html, /class NativeEngine/,
+  'Books-native reading has a dedicated passage renderer');
+assert.match(
+  html,
+  /class NativeEngine[\s\S]*?dataset\.passageId[\s\S]*?View authored source/,
+  'every native passage retains a visible route to its authored source',
+);
+assert.match(
+  html,
+  /function switchToNativeMode\([\s\S]*?activeSidecar\.nativePosition/,
+  'native reading persists its position separately from faithful position',
+);
+assert.match(
+  html,
+  /function switchToFaithfulMode\(sourcePassage[\s\S]*?faithfulPositionForPassage/,
+  'native source links translate back to faithful engine anchors',
 );
 assert.match(html, /doc\?\.getSelection\?\.\(\)\?\.toString/, 'EPUB context prefers the visible selection');
 assert.match(html, /scope:`page \$\{this\.currentPage \|\| 1\}`/, 'PDF context names and extracts the current page');
@@ -317,6 +371,21 @@ assert.match(
   harness,
   /semantic-search-input[\s\S]*?data-semantic-result[\s\S]*?Search result/,
   'browser harness verifies library search navigates to the source reader',
+);
+assert.match(
+  harness,
+  /reader-mode-btn[\s\S]*?native-passage\[data-passage-id\][\s\S]*?native-source-link[\s\S]*?Authored source/,
+  'browser harness verifies Native mode and its faithful-source return route',
+);
+assert.match(
+  harness,
+  /quiet test book[\s\S]*?highlight-dialog[\s\S]*?Portable highlight[\s\S]*?portable highlight restoration/,
+  'browser harness verifies portable native highlights restore after reopening',
+);
+assert.match(
+  harness,
+  /annotations-browser-btn[\s\S]*?library-wide annotation browser[\s\S]*?quiet test/,
+  'browser harness verifies local library-wide annotation search',
 );
 assert.match(
   harness,
