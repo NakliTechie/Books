@@ -5,6 +5,10 @@ export const LEXICAL_INDEX_VERSION = 'lexical-v1';
 export const DETERMINISTIC_SEMANTICS_VERSION = 'deterministic-semantics-v1';
 export const IDEA_EMBEDDING_INDEX_VERSION = 'idea-embeddings-v2';
 export const LIBRARY_IDEA_LINK_VERSION = 'library-idea-links-v1';
+export const DEFAULT_MAX_PASSAGE_CHARS = 1400;
+export const DEFAULT_MAX_CONCEPTS = 16;
+export const DEFAULT_MAX_SCENES = 12;
+export const DEFAULT_MAX_CONCEPT_EVIDENCE = 4;
 
 const DEFAULT_PROCESSING_STAGES = {
   fingerprint: { status:'pending' },
@@ -101,7 +105,7 @@ export async function segmentSections({
   assetId,
   format,
   sections = [],
-  maxChars = 1400,
+  maxChars = DEFAULT_MAX_PASSAGE_CHARS,
 }) {
   const passages = [];
   for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
@@ -205,8 +209,8 @@ export function extractDeterministicSemantics({
   workId,
   passages,
   lexicalIndex,
-  maxConcepts = 16,
-  maxScenes = 12,
+  maxConcepts = DEFAULT_MAX_CONCEPTS,
+  maxScenes = DEFAULT_MAX_SCENES,
 }) {
   const candidates = Object.entries(lexicalIndex.termFrequency || {})
     .filter(([term]) => (
@@ -237,11 +241,13 @@ export function extractDeterministicSemantics({
     kind: 'candidate-topic',
     description: null,
     confidence: Math.min(0.85, 0.35 + Math.log10(1 + candidate.score) / 3),
-    evidence: candidate.passageIndexes.slice(0, 4).map((index) => ({
+    evidence: candidate.passageIndexes
+      .slice(0, DEFAULT_MAX_CONCEPT_EVIDENCE)
+      .map((index) => ({
       passageId: passages[index].passageId,
       quoteHash: passages[index].anchor.quoteHash,
       weight: 1,
-    })),
+      })),
     generatedBy: {
       extractor: DETERMINISTIC_SEMANTICS_VERSION,
       mode: 'deterministic-local',

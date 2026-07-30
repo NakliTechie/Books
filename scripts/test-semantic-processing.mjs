@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import {
   buildLexicalIndex,
   claimProcessingRun,
+  DEFAULT_MAX_CONCEPTS,
+  DEFAULT_MAX_CONCEPT_EVIDENCE,
+  DEFAULT_MAX_PASSAGE_CHARS,
+  DEFAULT_MAX_SCENES,
   invalidateProcessingStages,
   extractDeterministicSemantics,
   makeProcessingRun,
@@ -22,6 +26,10 @@ import {
 
 assert.equal(normalizePassageText(' One  two\r\n\r\n\r\nThree '), 'One two\n\nThree');
 assert.equal(PASSAGE_EXTRACTOR_VERSION, 'passages-v2');
+assert.equal(DEFAULT_MAX_PASSAGE_CHARS, 1400);
+assert.equal(DEFAULT_MAX_CONCEPTS, 16);
+assert.equal(DEFAULT_MAX_SCENES, 12);
+assert.equal(DEFAULT_MAX_CONCEPT_EVIDENCE, 4);
 assert.deepEqual(tokenize('Memory, private-library 2026'), [
   'memory',
   'private-library',
@@ -57,6 +65,17 @@ assert.deepEqual(passages[0].structure.unsupportedStructures, [
 ]);
 assert.match(passages[0].anchor.quoteHash, /^sha256:[a-f0-9]{64}$/);
 assert.equal(passages[0].passageId, 'passage_asset_test_0_0_35');
+const longPassages = await segmentSections({
+  workId:'work_long',
+  assetId:'asset_long',
+  format:'txt',
+  sections:[{ text:'x'.repeat(DEFAULT_MAX_PASSAGE_CHARS + 1) }],
+});
+assert.deepEqual(
+  longPassages.map((passage) => passage.text.length),
+  [DEFAULT_MAX_PASSAGE_CHARS, 1],
+  'oversized paragraphs are split at the calibrated passage budget',
+);
 
 const lexical = buildLexicalIndex({
   workId: 'work_test',
@@ -83,6 +102,10 @@ const semantics = extractDeterministicSemantics({
 assert.equal(semantics.recordType, 'books.semantic-records');
 assert.ok(semantics.concepts.some((concept) => concept.label === 'memory'));
 assert.ok(semantics.concepts.every((concept) => concept.evidence.length > 0));
+assert.ok(semantics.concepts.length <= DEFAULT_MAX_CONCEPTS);
+assert.ok(semantics.concepts.every(
+  (concept) => concept.evidence.length <= DEFAULT_MAX_CONCEPT_EVIDENCE,
+));
 assert.equal(semantics.scenes.length, 2);
 assert.equal(semantics.scenes[0].evidence[0].passageId, passages[0].passageId);
 

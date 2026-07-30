@@ -4,6 +4,11 @@ import {
   buildLibraryIdeaGraph,
   classifyIdeaRelation,
   cosineSimilarity,
+  DEFAULT_HYBRID_LEXICAL_WEIGHT,
+  DEFAULT_HYBRID_SEMANTIC_WEIGHT,
+  DEFAULT_LIBRARY_LINK_MIN_SCORE,
+  DEFAULT_LIBRARY_LINKS_PER_IDEA,
+  DEFAULT_RELATION_CLASSIFICATION_MIN_CONFIDENCE,
   ideaEmbeddingText,
   ideaEmbeddingsPath,
   ideaEmbeddingVectorPath,
@@ -13,6 +18,12 @@ import {
   makeSourceGroundedIdeas,
   searchIdeaRecords,
 } from '../idea-graph.js';
+
+assert.equal(DEFAULT_LIBRARY_LINK_MIN_SCORE, 0.68);
+assert.equal(DEFAULT_LIBRARY_LINKS_PER_IDEA, 8);
+assert.equal(DEFAULT_RELATION_CLASSIFICATION_MIN_CONFIDENCE, 0.65);
+assert.equal(DEFAULT_HYBRID_SEMANTIC_WEIGHT, 0.72);
+assert.ok(Math.abs(DEFAULT_HYBRID_LEXICAL_WEIGHT - 0.28) < 1e-12);
 
 const passages = [{
   passageId:'passage-a',
@@ -97,6 +108,10 @@ const graph = buildLibraryIdeaGraph({
   now:() => '2026-07-30T00:01:00.000Z',
 });
 assert.equal(graph.links.length, 1);
+assert.equal(
+  graph.links[0].linkId,
+  'idea-link_idea-work-b-feedback_idea_work-a_feedback',
+);
 assert.equal(graph.links[0].relation, 'same_as');
 assert.deepEqual(graph.links[0].evidence.leftPassageIds, ['passage-a']);
 const classified = applyIdeaRelationClassifications(graph, [{
@@ -115,6 +130,14 @@ assert.equal(
   classified.graph.links[0].generatedBy.relationMethod,
   'source-grounded-model-classifier',
 );
+const lowConfidence = applyIdeaRelationClassifications(graph, [{
+  linkId:graph.links[0].linkId,
+  relation:'contradicts',
+  confidence:0.64,
+  rationale:'Below the calibrated acceptance threshold.',
+}]);
+assert.equal(lowConfidence.changed, false);
+assert.equal(lowConfidence.graph.links[0].relation, 'same_as');
 
 const results = searchIdeaRecords({
   ideas,

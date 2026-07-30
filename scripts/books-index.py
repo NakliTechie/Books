@@ -32,6 +32,8 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from urllib import request
 import uuid
@@ -62,9 +64,20 @@ RELATION_TYPES = {
     "same_as", "supports", "contradicts", "extends", "example_of",
     "applies_to", "shares_mechanism", "related_to",
 }
+MAX_PASSAGE_CHARS = 1400
+MAX_CONCEPTS = 16
+MAX_SCENES = 12
+MAX_CONCEPT_EVIDENCE = 4
+LIBRARY_LINK_MIN_SCORE = 0.68
+LIBRARY_LINKS_PER_IDEA = 8
+RELATION_CLASSIFICATION_MIN_CONFIDENCE = 0.65
 
 
 class ProcessingCancelled(Exception):
+    pass
+
+
+class SourceChangedDuringScan(Exception):
     pass
 
 
@@ -142,6 +155,32 @@ def file_fingerprint(path: Path) -> str:
     return "sha256:" + digest.hexdigest()
 
 
+def stable_file_snapshot(path: Path, attempts: int = 3):
+    latest = None
+    for attempt in range(max(1, attempts)):
+        before = path.stat()
+        fingerprint = file_fingerprint(path)
+        after = path.stat()
+        latest = after
+        before_signature = (
+            before.st_size,
+            before.st_mtime_ns,
+            getattr(before, "st_ino", None),
+        )
+        after_signature = (
+            after.st_size,
+            after.st_mtime_ns,
+            getattr(after, "st_ino", None),
+        )
+        if before_signature == after_signature:
+            return after, fingerprint
+        if attempt + 1 < attempts:
+            time.sleep(0.05 * (attempt + 1))
+    raise SourceChangedDuringScan(
+        f"Source changed while it was being fingerprinted: {path}"
+    )
+
+
 def text_hash(value: str) -> str:
     return "sha256:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
 
@@ -167,7 +206,15 @@ def tokens(value: str) -> list[str]:
     return re.findall(r"[\w][\w'’-]*", normalize_text(value).lower(), flags=re.UNICODE)
 
 
-def scan_sources(root: Path, previous: dict | None) -> tuple[dict, list[Path]]:
+def path_collision_key(relative: str) -> str:
+    return unicodedata.normalize("NFC", relative).casefold()
+
+
+def scan_sources(
+    root: Path,
+    previous: dict | None,
+    scan_attempts: int = 3,
+) -> tuple[dict, list[Path]]:
     previous_by_path = {
         row.get("relativePath"): row
         for row in (previous or {}).get("files", [])
@@ -199,6 +246,25 @@ def scan_sources(root: Path, previous: dict | None) -> tuple[dict, list[Path]]:
                 and int(prior.get("byteLength") or 0) == stat.st_size
                 and int(prior.get("lastModified") or 0) == int(stat.st_mtime * 1000)
             )
+            fingerprint = prior.get("fingerprint") if unchanged else None
+            fingerprint_status = (
+                "complete"
+                if unchanged and fingerprint
+                else "pending"
+            )
+            scan_issue = None
+            if not fingerprint:
+                try:
+                    stat, fingerprint = stable_file_snapshot(
+                        source,
+                        scan_attempts,
+                    )
+                    fingerprint_status = "complete"
+                except SourceChangedDuringScan as error:
+                    stat = source.stat()
+                    fingerprint = prior.get("fingerprint") if prior else None
+                    fingerprint_status = "unstable"
+                    scan_issue = str(error)
             row = {
                 "relativePath": relative,
                 "kind": "file",
@@ -206,17 +272,12 @@ def scan_sources(root: Path, previous: dict | None) -> tuple[dict, list[Path]]:
                 "mediaType": None,
                 "byteLength": stat.st_size,
                 "lastModified": int(stat.st_mtime * 1000),
-                "fingerprint": prior.get("fingerprint") if unchanged else None,
-                "fingerprintStatus": (
-                    "complete"
-                    if unchanged and prior.get("fingerprint")
-                    else "pending"
-                ),
+                "fingerprint": fingerprint,
+                "fingerprintStatus": fingerprint_status,
                 "lastSeenGeneration": generation,
             }
-            if not row["fingerprint"]:
-                row["fingerprint"] = file_fingerprint(source)
-                row["fingerprintStatus"] = "complete"
+            if scan_issue:
+                row["scanIssue"] = scan_issue
             rows.append(row)
             paths.append(source)
 
@@ -255,6 +316,21 @@ def scan_sources(root: Path, previous: dict | None) -> tuple[dict, list[Path]]:
             row["lastModified"],
         ) not in prior_signatures
     )
+    collision_paths = {}
+    for row in rows:
+        collision_paths.setdefault(
+            path_collision_key(row["relativePath"]),
+            [],
+        ).append(row["relativePath"])
+    collisions = [
+        {
+            "collisionKey": key,
+            "paths": sorted(set(values)),
+        }
+        for key, values in collision_paths.items()
+        if len(set(values)) > 1
+    ]
+    collisions.sort(key=lambda collision: collision["collisionKey"])
     inventory = {
         "schemaVersion": 1,
         "recordType": "books.folder-inventory",
@@ -263,12 +339,17 @@ def scan_sources(root: Path, previous: dict | None) -> tuple[dict, list[Path]]:
         "completed": True,
         "files": rows,
         "missing": missing,
+        "collisions": collisions,
         "counts": {
             "total": len(rows),
             "added": added,
             "changed": changed,
             "unchanged": len(current_signatures & prior_signatures),
             "missing": len(missing),
+            "collisions": len(collisions),
+            "unstable": sum(
+                row["fingerprintStatus"] == "unstable" for row in rows
+            ),
         },
     }
     return inventory, paths
@@ -400,16 +481,19 @@ def segment_sections(work_id: str, asset_id: str, extension: str, sections: list
         chunks = []
         current = ""
         for paragraph in paragraphs:
-            if current and len(current) + len(paragraph) + 2 > 1400:
+            if (
+                current
+                and len(current) + len(paragraph) + 2 > MAX_PASSAGE_CHARS
+            ):
                 chunks.append(current)
                 current = ""
-            if len(paragraph) > 1400:
+            if len(paragraph) > MAX_PASSAGE_CHARS:
                 if current:
                     chunks.append(current)
                     current = ""
                 chunks.extend(
-                    paragraph[offset:offset + 1400]
-                    for offset in range(0, len(paragraph), 1400)
+                    paragraph[offset:offset + MAX_PASSAGE_CHARS]
+                    for offset in range(0, len(paragraph), MAX_PASSAGE_CHARS)
                 )
             else:
                 current += ("\n\n" if current else "") + paragraph
@@ -491,7 +575,7 @@ def deterministic_semantics(work_id: str, passages: list, index: dict):
         candidates.append((score, term, frequency, passage_indexes))
     candidates.sort(key=lambda row: (-row[0], row[1]))
     concepts = []
-    for score, term, _, passage_indexes in candidates[:16]:
+    for score, term, _, passage_indexes in candidates[:MAX_CONCEPTS]:
         concept_id = f"concept_{work_id}_{re.sub(r'[^\\w-]+', '_', term)}"
         concepts.append({
             "conceptId": concept_id,
@@ -504,7 +588,36 @@ def deterministic_semantics(work_id: str, passages: list, index: dict):
                 "passageId": passages[index_value]["passageId"],
                 "quoteHash": passages[index_value]["anchor"]["quoteHash"],
                 "weight": 1,
-            } for index_value in passage_indexes[:4]],
+            } for index_value in passage_indexes[:MAX_CONCEPT_EVIDENCE]],
+            "generatedBy": {
+                "extractor": SEMANTIC_VERSION,
+                "mode": "deterministic-native",
+            },
+            "userState": {"hidden": False, "labelOverride": None},
+        })
+    section_first_passages = {}
+    for passage in passages:
+        section_index = passage["structure"]["sectionIndex"]
+        if section_index not in section_first_passages:
+            section_first_passages[section_index] = passage
+    scenes = []
+    for index, passage in enumerate(
+        list(section_first_passages.values())[:MAX_SCENES]
+    ):
+        scenes.append({
+            "sceneId": f"scene_{work_id}_{index + 1}",
+            "workId": work_id,
+            "label": (
+                passage["structure"].get("label")
+                or f"Section {passage['structure']['sectionIndex'] + 1}"
+            ),
+            "kind": "section-opening",
+            "description": passage["text"][:320],
+            "evidence": [{
+                "passageId": passage["passageId"],
+                "quoteHash": passage["anchor"]["quoteHash"],
+                "weight": 1,
+            }],
             "generatedBy": {
                 "extractor": SEMANTIC_VERSION,
                 "mode": "deterministic-native",
@@ -517,7 +630,7 @@ def deterministic_semantics(work_id: str, passages: list, index: dict):
         "extractorVersion": SEMANTIC_VERSION,
         "workId": work_id,
         "concepts": concepts,
-        "scenes": [],
+        "scenes": scenes,
     }
 
 
@@ -865,7 +978,7 @@ def reconcile_manifests(sidecar: Path, inventory: dict) -> list[dict]:
             "format": row["format"],
             "byteLength": row["byteLength"],
             "fingerprint": row["fingerprint"],
-            "fingerprintStatus": "complete",
+            "fingerprintStatus": row.get("fingerprintStatus") or "pending",
             "availability": "available",
             "updatedAt": timestamp(),
         })
@@ -972,6 +1085,35 @@ def process_work(root: Path, sidecar: Path, manifest: dict, embedder: Embedder, 
         return None
     work_id = manifest["workId"]
     existing_job = read_json(sidecar / "jobs" / f"{work_id}.json", {})
+    if asset.get("fingerprintStatus") != "complete":
+        stages = {
+            "fingerprint": {
+                "status": "waiting-for-stable-source",
+                "attempts": int(
+                    existing_job.get("stages", {})
+                    .get("fingerprint", {})
+                    .get("attempts", 0)
+                ),
+                "error": "The source changed during scanning; retry on the next diff.",
+            },
+            "passages": {"status": "pending", "attempts": 0},
+            "lexicalIndex": {"status": "pending", "attempts": 0},
+            "deterministicSemantics": {"status": "pending", "attempts": 0},
+            "modelSemantics": {"status": "waiting-for-provider", "attempts": 0},
+            "embeddings": {"status": "waiting-for-model", "attempts": 0},
+            "libraryLinks": {"status": "blocked-by-embeddings", "attempts": 0},
+        }
+        atomic_json(
+            sidecar / "jobs" / f"{work_id}.json",
+            job_record(
+                manifest,
+                asset,
+                stages,
+                error=stages["fingerprint"]["error"],
+                previous=existing_job,
+            ),
+        )
+        return None
     executor_id = native_executor_id()
     existing_lease = existing_job.get("lease") or {}
     lease_expiry = parse_timestamp(existing_lease.get("expiresAt"))
@@ -1251,6 +1393,45 @@ def cosine(left: list[float], right: list[float]) -> float:
     )
 
 
+def normalize_idea_text(value) -> str:
+    normalized = unicodedata.normalize("NFKC", str(value or "")).lower()
+    return " ".join(
+        "".join(
+            character if character.isalnum() else " "
+            for character in normalized
+        ).split()
+    )
+
+
+def classify_idea_relation(left: dict, right: dict, similarity: float):
+    left_label = normalize_idea_text(left.get("label"))
+    right_label = normalize_idea_text(right.get("label"))
+    left_statement = normalize_idea_text(left.get("statement"))
+    right_statement = normalize_idea_text(right.get("statement"))
+    if (
+        left_label
+        and (
+            left_label == right_label
+            or (
+                left_statement
+                and left_statement == right_statement
+            )
+        )
+    ):
+        return "same_as", "exact-normalized-idea"
+    if (
+        similarity >= 0.82
+        and left_statement
+        and right_statement
+        and (
+            left_statement in right_statement
+            or right_statement in left_statement
+        )
+    ):
+        return "extends", "semantic-containment"
+    return "related_to", "embedding-neighbour"
+
+
 def vector_bucket_signature(vector: list[float], table: int, bits: int = 8):
     if not vector:
         return None
@@ -1349,21 +1530,21 @@ def build_graph(sidecar: Path, manifests: list[dict], model_name: str):
             if left["workId"] == right["workId"]:
                 continue
             score = cosine(vectors.get(left["ideaId"], []), vectors.get(right["ideaId"], []))
-            if score >= 0.68:
+            if score >= LIBRARY_LINK_MIN_SCORE:
                 candidates.append((score, right))
-        for score, right in sorted(candidates, key=lambda row: -row[0])[:8]:
-            same = (
-                re.sub(r"\W+", " ", left["label"].lower()).strip()
-                == re.sub(r"\W+", " ", right["label"].lower()).strip()
-            )
-            key = "|".join(sorted([left["ideaId"], right["ideaId"]]))
+        for score, right in sorted(
+            candidates,
+            key=lambda row: (-row[0], row[1]["ideaId"]),
+        )[:LIBRARY_LINKS_PER_IDEA]:
+            relation, method = classify_idea_relation(left, right, score)
+            key = "\u001f".join(sorted([left["ideaId"], right["ideaId"]]))
             links.append({
-                "linkId": "idea-link_" + hashlib.sha256(key.encode()).hexdigest()[:24],
+                "linkId": "idea-link_" + re.sub(r"[^\w-]+", "_", key),
                 "leftIdeaId": left["ideaId"],
                 "rightIdeaId": right["ideaId"],
                 "leftWorkId": left["workId"],
                 "rightWorkId": right["workId"],
-                "relation": "same_as" if same else "related_to",
+                "relation": relation,
                 "score": round(score, 6),
                 "evidence": {
                     "leftPassageIds": [
@@ -1374,7 +1555,7 @@ def build_graph(sidecar: Path, manifests: list[dict], model_name: str):
                     ],
                 },
                 "generatedBy": {
-                    "method": "exact-normalized-idea" if same else "embedding-neighbour",
+                    "method": method,
                     "model": model_name,
                     "dimensions": dimensions,
                 },
@@ -1505,7 +1686,11 @@ def classify_graph(args, sidecar: Path, graph: dict):
         classifications = {
             row.get("linkId"): row
             for row in parsed.get("relations", [])
-            if row.get("relation") in RELATION_TYPES
+            if (
+                row.get("relation") in RELATION_TYPES
+                and max(0, min(1, float(row.get("confidence") or 0)))
+                >= RELATION_CLASSIFICATION_MIN_CONFIDENCE
+            )
         }
         for link in graph["links"]:
             row = classifications.get(link["linkId"])
@@ -1547,6 +1732,30 @@ def ensure_library_manifest(sidecar: Path, root: Path):
     return value
 
 
+def load_latest_inventory(sidecar: Path):
+    current = read_json(sidecar / "inventory" / "current.json")
+    if (
+        isinstance(current, dict)
+        and current.get("recordType") == "books.folder-inventory"
+        and current.get("completed") is True
+    ):
+        return current
+    generation_directory = sidecar / "inventory" / "generations"
+    for path in sorted(generation_directory.glob("*.json"), reverse=True):
+        candidate = read_json(path)
+        if (
+            isinstance(candidate, dict)
+            and candidate.get("recordType") == "books.folder-inventory"
+            and candidate.get("completed") is True
+        ):
+            print(
+                f"Recovered inventory from {path.name}; current.json was incomplete.",
+                file=sys.stderr,
+            )
+            return candidate
+    return None
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("folder", help="Root of the Books folder library")
@@ -1559,6 +1768,12 @@ def parse_args():
     )
     parser.add_argument("--api-key", default=os.environ.get("BOOKS_AI_API_KEY"))
     parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument(
+        "--scan-attempts",
+        type=int,
+        default=3,
+        help="Fingerprint retries when a source is changing (default: 3)",
+    )
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()
 
@@ -1571,8 +1786,8 @@ def main():
     sidecar = root / SIDECAR
     sidecar.mkdir(exist_ok=True)
     ensure_library_manifest(sidecar, root)
-    previous = read_json(sidecar / "inventory" / "current.json")
-    inventory, _ = scan_sources(root, previous)
+    previous = load_latest_inventory(sidecar)
+    inventory, _ = scan_sources(root, previous, max(1, args.scan_attempts))
     generation_path = (
         sidecar / "inventory" / "generations"
         / f"{inventory['generation']:08d}.json"

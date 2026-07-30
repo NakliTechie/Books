@@ -609,6 +609,26 @@ assert.match(
 );
 assert.match(
   harness,
+  /originalAnchorClick[\s\S]*?capturedExport[\s\S]*?\.books-library\.json[\s\S]*?capturedExport\.blob\.text\(\)[\s\S]*?Portable export interception/,
+  'browser harness validates portable exports in memory without downloading them',
+);
+assert.match(
+  html,
+  /processing-queue-summary[\s\S]*?Build processing report[\s\S]*?Retry failed stages[\s\S]*?buildLibraryReport[\s\S]*?refreshProcessingQueueSummary[\s\S]*?buildActiveLibraryProcessingReport[\s\S]*?manual-retry/,
+  'processing surfaces expose blocked jobs and safe per-work retry',
+);
+assert.match(
+  html,
+  /browserLocalAi\.pending\?\.size[\s\S]*?navigator\.connection\?\.saveData[\s\S]*?navigator\.getBattery[\s\S]*?battery\.level < 0\.15/,
+  'background processing yields to interactive AI, Data Saver, and low battery',
+);
+assert.match(
+  html,
+  /counts\.collisions[\s\S]*?Folder needs review[\s\S]*?path collision/,
+  'folder path collisions are visible instead of silently merged',
+);
+assert.match(
+  harness,
   /Move this book to Trash[\s\S]*?recoverable trash record[\s\S]*?recoverable Trash restore action[\s\S]*?Trash restores original bytes and portable identity/,
   'browser harness verifies reversible removal through Trash',
 );

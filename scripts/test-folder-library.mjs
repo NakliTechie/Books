@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {
+  detectFolderPathCollisions,
   FOLDER_SIDECAR_DIRECTORY,
+  folderPathCollisionKey,
   makeFolderInventoryRecord,
   makeFolderLibraryManifest,
   normaliseFolderRelativePath,
@@ -11,6 +13,18 @@ import {
 
 assert.equal(normaliseFolderRelativePath('Fiction\\Dune.epub'), 'Fiction/Dune.epub');
 assert.throws(() => normaliseFolderRelativePath('../Dune.epub'));
+assert.equal(
+  folderPathCollisionKey('Fiction/RÉSUMÉ.epub'),
+  folderPathCollisionKey('fiction/re\u0301sume\u0301.epub'),
+);
+assert.deepEqual(detectFolderPathCollisions([
+  { relativePath:'Fiction/Book.epub' },
+  { relativePath:'fiction/book.epub' },
+  { relativePath:'Research/Paper.pdf' },
+]), [{
+  collisionKey:'fiction/book.epub',
+  paths:['Fiction/Book.epub', 'fiction/book.epub'],
+}]);
 assert.equal(FOLDER_SIDECAR_DIRECTORY, '.books');
 assert.equal(shouldSkipFolderEntry({
   name:'.books',
@@ -81,6 +95,29 @@ assert.equal(
   'sha256:dune',
 );
 assert.equal(reconciled.inventory.missing[0].relativePath, 'Notes/Old.txt');
+assert.equal(reconciled.inventory.counts.collisions, 0);
+
+const withCollision = reconcileFolderInventory({
+  observed:[
+    {
+      relativePath:'Fiction/Book.epub',
+      byteLength:10,
+      lastModified:1,
+      format:'epub',
+    },
+    {
+      relativePath:'fiction/book.epub',
+      byteLength:20,
+      lastModified:2,
+      format:'epub',
+    },
+  ],
+});
+assert.equal(withCollision.inventory.counts.collisions, 1);
+assert.deepEqual(withCollision.inventory.collisions[0].paths, [
+  'Fiction/Book.epub',
+  'fiction/book.epub',
+]);
 
 const withFingerprint = {
   ...reconciled.inventory,

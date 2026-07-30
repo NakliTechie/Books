@@ -940,13 +940,51 @@
           ),
         'library validation report',
       );
-      app.getElementById('library-export-btn').click();
-      await waitFor(
-        () => app.getElementById('library-health').textContent.includes(
-          'Exported originals and portable records'
-        ),
-        'portable library export',
-      );
+      const appWindow = frame.contentWindow;
+      const anchorPrototype = appWindow.HTMLAnchorElement.prototype;
+      const originalAnchorClick = anchorPrototype.click;
+      const originalCreateObjectURL = appWindow.URL.createObjectURL;
+      let capturedExport = null;
+      appWindow.URL.createObjectURL = function (blob) {
+        capturedExport = { blob, filename:null };
+        return originalCreateObjectURL.call(appWindow.URL, blob);
+      };
+      anchorPrototype.click = function () {
+        if (String(this.download || '').endsWith('.books-library.json')) {
+          if (capturedExport) capturedExport.filename = this.download;
+          return;
+        }
+        return originalAnchorClick.call(this);
+      };
+      try {
+        app.getElementById('library-export-btn').click();
+        await waitFor(
+          () => app.getElementById('library-health').textContent.includes(
+            'Exported originals and portable records'
+          ) && capturedExport?.filename,
+          'intercepted portable library export',
+        );
+        const exportedBundle = JSON.parse(await capturedExport.blob.text());
+        const exportedNames = exportedBundle.assets
+          .map((asset) => asset.filename)
+          .sort();
+        if (
+          exportedBundle.recordType !== 'books.portable-library'
+          || exportedBundle.records.works.length !== 3
+          || exportedNames.join('|') !== [
+            'Harness.epub',
+            'Missing.epub',
+            'Sample.md',
+          ].join('|')
+        ) {
+          throw new Error(
+            'Portable export interception did not preserve the fixture library'
+          );
+        }
+      } finally {
+        anchorPrototype.click = originalAnchorClick;
+        appWindow.URL.createObjectURL = originalCreateObjectURL;
+      }
       const importTransfer = new DataTransfer();
       importTransfer.items.add(new File(
         [JSON.stringify(portableImportBundle())],

@@ -74,6 +74,14 @@ fingerprints survive an unchanged scan. Only new or plausibly changed sources
 enter the durable fingerprint/parsing queue. Missing records retain their last
 strong fingerprint and are not treated as destructive deletion.
 
+Paths are NFC-normalized and also grouped by a case-folded collision key.
+Distinct paths such as `Fiction/Book.epub` and `fiction/book.epub` remain
+separate records but produce a reviewable collision; Books never silently
+chooses one. Native fingerprinting compares file metadata before and after the
+read. A source that continues changing is marked `unstable`, remains readable,
+and waits for a later scan instead of producing derived data from partial
+bytes.
+
 Books excludes `.books`, `.git`, `.hg`, `.svn`, `node_modules`, hidden
 directories, hidden files, and symlinks. It never follows a path outside the
 granted root.
@@ -146,6 +154,8 @@ avoiding quadratic comparison while retaining a deterministic rebuild path.
 - Browser Folder writes close their File System Access writable before the
   generation pointer is advanced.
 - Generation files are written before `current.json`.
+- If `current.json` is malformed or incomplete, the native executor recovers
+  the latest completed generation before diffing.
 - A malformed or partial derived artifact is ignored and rebuilt.
 - Catalog loss rebuilds from work manifests.
 - Browser-site-data loss is recovered by granting the folder again; canonical

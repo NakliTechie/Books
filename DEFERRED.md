@@ -2,9 +2,11 @@
 
 > **Lifecycle:** `living` — running list of features and design decisions intentionally pushed past v1. Update as decisions land. The point of this doc is to make sure things we knowingly deferred are not lost — they're parked, not forgotten.
 >
-> The complete execution mapping for these items now lives in
-> [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md). This file
-> remains the source of deferral history, rationale, and revisit triggers.
+> The original phase mapping for these items lives in
+> [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md). The current
+> dependency-aware execution order lives in
+> [BATCHED-ROADMAP.md](BATCHED-ROADMAP.md). This file remains the source of
+> deferral history, rationale, and revisit triggers.
 
 ## Convention
 
@@ -25,7 +27,7 @@ This is the consolidated queue, not a committed release roadmap:
 
 | Capability | State | Revisit gate |
 |---|---|---|
-| Scanned-PDF OCR, with Baidu PaddleOCR as the first candidate | Pending evaluation | Complete the OCR privacy, runtime, quality, anchoring, and licensing spike below |
+| Scanned-PDF OCR, with Baidu PaddleOCR as the first candidate | Local-first architecture accepted; runtime gate pending | Run the pinned corpus through the live browser and local-service routes |
 | Source-grounded AI illustrations | Pending product decision | Approve the Phase 6 generation policy |
 | Local embeddings / semantic-similarity index | Shipped in Books 2.0 | Continue measuring retrieval quality and storage on real libraries |
 | Metadata and cover provider | Pending policy decision | Approve licensing, attribution, caching, and destination consent |
@@ -40,7 +42,9 @@ This is the consolidated queue, not a committed release roadmap:
 
 ### Scanned-PDF OCR — evaluate Baidu PaddleOCR
 
-**Status:** Pending evaluation. Do not integrate it into the current release.
+**Status:** Architecture decision, artifact schema, synthetic/public corpus,
+and package/model budgets complete. Runtime quality and resource measurements
+remain pending. Do not integrate it into the current release.
 
 PaddleOCR is the first candidate because it can run locally, is Apache-2.0,
 supports multilingual recognition and structured document parsing, and now has
@@ -75,8 +79,9 @@ confidence, model provenance, and a visible route to the scanned source page.
 It must be removable and rebuildable without changing the PDF, annotations, or
 portable records.
 
-**Trigger to revisit:** A dedicated OCR spike is scheduled with a
-representative scanned-book corpus and local/BYOK runtime budget.
+**Trigger to revisit:** Chrome control is connected for the official
+PaddleOCR.js corpus run, or a visible local PP-StructureV3 endpoint is selected
+for the high-fidelity comparison.
 
 ---
 

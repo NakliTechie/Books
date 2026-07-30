@@ -26,6 +26,29 @@ export function normaliseFolderRelativePath(input) {
   return value;
 }
 
+export function folderPathCollisionKey(input) {
+  return normaliseFolderRelativePath(input).toLowerCase();
+}
+
+export function detectFolderPathCollisions(records = []) {
+  const pathsByKey = new Map();
+  for (const record of records || []) {
+    const relativePath = normaliseFolderRelativePath(
+      record?.relativePath ?? record,
+    );
+    const collisionKey = folderPathCollisionKey(relativePath);
+    const paths = pathsByKey.get(collisionKey) || new Set();
+    paths.add(relativePath);
+    pathsByKey.set(collisionKey, paths);
+  }
+  return Array.from(pathsByKey, ([collisionKey, paths]) => ({
+    collisionKey,
+    paths:Array.from(paths).sort(),
+  }))
+    .filter((collision) => collision.paths.length > 1)
+    .sort((left, right) => left.collisionKey.localeCompare(right.collisionKey));
+}
+
 export function shouldSkipFolderEntry({
   name,
   relativePath = '',
@@ -122,12 +145,13 @@ export function reconcileFolderInventory({
   const added = [];
   const changed = [];
   const unchanged = [];
+  const normalizedObserved = observed.map((raw) => makeFolderInventoryRecord({
+    ...raw,
+    lastSeenGeneration:nextGeneration,
+  }));
+  const collisions = detectFolderPathCollisions(normalizedObserved);
 
-  for (const raw of observed) {
-    const current = makeFolderInventoryRecord({
-      ...raw,
-      lastSeenGeneration:nextGeneration,
-    });
+  for (const current of normalizedObserved) {
     if (seen.has(current.relativePath)) continue;
     seen.add(current.relativePath);
     const prior = priorByPath.get(current.relativePath);
@@ -180,12 +204,14 @@ export function reconcileFolderInventory({
       completed:true,
       files,
       missing,
+      collisions,
       counts:{
         total:files.length,
         added:added.length,
         changed:changed.length,
         unchanged:unchanged.length,
         missing:missing.length,
+        collisions:collisions.length,
       },
     },
     diff:{ added, changed, unchanged, missing },

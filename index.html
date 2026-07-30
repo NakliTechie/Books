@@ -952,6 +952,21 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   font-size:10px;
   cursor:pointer;
 }
+.processing-queue-summary { display:grid; gap:5px; margin:10px 0; }
+.processing-queue-problems {
+  display:grid; gap:5px; margin-top:5px; padding-top:8px;
+  border-top:1px solid var(--line);
+}
+.processing-queue-problem {
+  display:grid; gap:2px; padding:6px 8px; border-radius:6px;
+  background:var(--row); font-size:10px;
+}
+.processing-queue-problem span { color:var(--muted); overflow-wrap:anywhere; }
+.processing-report-output {
+  max-height:260px; overflow:auto; white-space:pre-wrap; user-select:text;
+  padding:10px; border:1px solid var(--line); border-radius:7px;
+  background:var(--row); color:var(--ink); font:11px/1.5 ui-monospace, monospace;
+}
 .work-concepts { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 0; }
 .work-concept {
   border:1px solid var(--line); border-radius:999px; padding:5px 8px;
@@ -1316,11 +1331,18 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       </p>
       <progress id="background-intelligence-progress" max="100" value="0"
                 hidden></progress>
+      <div class="processing-queue-summary" id="processing-queue-summary"
+           aria-live="polite"></div>
       <div class="derived-storage-actions">
         <button type="button" id="background-intelligence-run" disabled>
           Process queued books
         </button>
+        <button type="button" id="processing-report-btn">
+          Build processing report
+        </button>
       </div>
+      <pre class="processing-report-output" id="processing-report-output"
+           tabindex="0" hidden></pre>
     </section>
     <section class="trash-section" aria-labelledby="trash-section-title">
       <div class="trash-section-head">
@@ -1370,6 +1392,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div class="work-processing-controls">
       <div class="work-processing-state" id="work-processing-state">Checking local processing…</div>
       <button type="button" id="work-processing-cancel-btn" hidden>Cancel processing</button>
+      <button type="button" id="work-processing-retry-btn" hidden>Retry failed stages</button>
     </div>
     <div>
       <strong style="font-size:12px">Available formats</strong>
@@ -2578,6 +2601,11 @@ import {
   makeSourceGroundedIdeas,
   searchIdeaRecords,
 } from './idea-graph.js';
+import {
+  buildLibraryReport,
+  formatLibraryReport,
+  processingOutcome,
+} from './library-report.js';
 
 const VENDOR_FOLIATE = './vendor/foliate-js@1.0.1/';
 const VENDOR_PDFJS   = './vendor/pdfjs-dist@5.7.284/';
@@ -2670,6 +2698,9 @@ const backgroundIntelligenceProgress =
   document.getElementById('background-intelligence-progress');
 const backgroundIntelligenceRun =
   document.getElementById('background-intelligence-run');
+const processingQueueSummary = document.getElementById('processing-queue-summary');
+const processingReportBtn = document.getElementById('processing-report-btn');
+const processingReportOutput = document.getElementById('processing-report-output');
 const portableLibraryImportInput = document.getElementById('portable-library-import-input');
 const trashCount = document.getElementById('trash-count');
 const trashList = document.getElementById('trash-list');
@@ -2697,6 +2728,7 @@ const workShelvesInput = document.getElementById('work-shelves-input');
 const workRatingInput = document.getElementById('work-rating-input');
 const workProcessingState = document.getElementById('work-processing-state');
 const workProcessingCancelBtn = document.getElementById('work-processing-cancel-btn');
+const workProcessingRetryBtn = document.getElementById('work-processing-retry-btn');
 const workFormats = document.getElementById('work-formats');
 const workGrouping = document.getElementById('work-grouping');
 const workGroupingSummary = document.getElementById('work-grouping-summary');
@@ -3507,6 +3539,8 @@ function processingSummary(run) {
     lexicalIndex: 'Search',
     deterministicSemantics: 'Concepts',
     modelSemantics: 'Local/BYOK enrichment',
+    embeddings: 'Semantic vectors',
+    libraryLinks: 'Cross-book links',
   };
   return Object.entries(run.stages).map(([stage, value]) => {
     const status = value?.status || 'pending';
@@ -3515,10 +3549,153 @@ function processingSummary(run) {
       : status === 'waiting-for-ocr'
         ? 'needs OCR'
         : status === 'waiting-for-provider'
-          ? 'optional'
+        ? 'optional'
           : status;
-    return (labels[stage] || stage) + ': ' + suffix;
+    const metric = stage === 'passages' && value?.passageCount != null
+      ? ' · ' + value.passageCount + ' passages'
+      : stage === 'deterministicSemantics' && value?.conceptCount != null
+        ? ' · ' + value.conceptCount + ' concepts'
+        : stage === 'embeddings' && value?.ideaCount != null
+          ? ' · ' + value.ideaCount + ' ideas'
+          : stage === 'libraryLinks' && value?.linkCount != null
+            ? ' · ' + value.linkCount + ' links'
+            : '';
+    const route = [value?.provider, value?.model]
+      .filter(Boolean)
+      .join(' · ');
+    const error = value?.error
+      ? ' · ' + String(value.error).slice(0, 180)
+      : '';
+    return (labels[stage] || stage) + ': ' + suffix + metric +
+      (route ? ' · ' + route : '') + error;
   }).join(' · ');
+}
+
+function failedProcessingStages(run) {
+  return Object.entries(run?.stages || {})
+    .filter(([, stage]) => stage?.status === 'failed')
+    .map(([name]) => name);
+}
+
+const PROCESSING_STAGE_ORDER = [
+  'fingerprint',
+  'passages',
+  'lexicalIndex',
+  'deterministicSemantics',
+  'modelSemantics',
+  'embeddings',
+  'libraryLinks',
+];
+
+async function refreshProcessingQueueSummary() {
+  processingQueueSummary.innerHTML =
+    '<span class="semantic-search-state">Inspecting processing jobs…</span>';
+  const rows = await Promise.all(
+    Array.from(semanticManifests.values())
+      .filter((manifest) => manifest.recordState !== 'merged')
+      .map(async (manifest) => ({
+        manifest,
+        run:await readJsonRecord(processingRunPath(manifest.workId)),
+      })),
+  );
+  const outcomes = new Map();
+  const problems = [];
+  for (const row of rows) {
+    const outcome = processingOutcome(row.run);
+    outcomes.set(outcome, (outcomes.get(outcome) || 0) + 1);
+    if (
+      outcome === 'failed'
+      || outcome === 'waiting-for-ocr'
+      || outcome === 'waiting-for-stable-source'
+      || outcome === 'not-queued'
+    ) {
+      problems.push({
+        title:row.manifest.title || 'Untitled',
+        outcome,
+        error:row.run?.error
+          || Object.values(row.run?.stages || {})
+            .find((stage) => stage?.error)?.error
+          || null,
+      });
+    }
+  }
+  const outcomeRows = Array.from(outcomes)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([outcome, count]) =>
+      '<div class="storage-accounting-row"><span>' +
+        escapeHtml(outcome.replaceAll('-', ' ')) + '</span><strong>' +
+        count + '</strong></div>'
+    ).join('');
+  const problemRows = problems.slice(0, 12).map((problem) =>
+    '<div class="processing-queue-problem"><strong>' +
+      escapeHtml(problem.title) + '</strong><span>' +
+      escapeHtml(
+        problem.outcome.replaceAll('-', ' ') +
+        (problem.error ? ' · ' + problem.error : ''),
+      ) + '</span></div>'
+  ).join('');
+  processingQueueSummary.innerHTML = outcomeRows +
+    (problemRows
+      ? '<div class="processing-queue-problems">' + problemRows + '</div>'
+      : '<p class="semantic-search-state">No blocked processing jobs.</p>');
+  return { rows, outcomes, problems };
+}
+
+async function buildActiveLibraryProcessingReport() {
+  processingReportBtn.disabled = true;
+  processingReportOutput.hidden = false;
+  processingReportOutput.textContent = 'Building processing report…';
+  try {
+    const manifests = Array.from(semanticManifests.values())
+      .filter((manifest) => manifest.recordState !== 'merged');
+    const workIds = manifests.map((manifest) => manifest.workId);
+    const readRecords = async (pathForWork) => (
+      await Promise.all(workIds.map((workId) =>
+        readJsonRecord(pathForWork(workId))
+      ))
+    ).filter(Boolean);
+    const [
+      library,
+      inventory,
+      jobs,
+      passages,
+      semantics,
+      ideas,
+      graph,
+    ] = await Promise.all([
+      activeBackendId() === 'fsa' ? readJsonRecord('library.json') : null,
+      activeBackendId() === 'fsa'
+        ? readJsonRecord(FOLDER_INVENTORY_CURRENT_PATH)
+        : null,
+      readRecords(processingRunPath),
+      readRecords(passagesPath),
+      readRecords(semanticRecordsPath),
+      readRecords(ideaRecordsPath),
+      readJsonRecord(LIBRARY_IDEA_GRAPH_PATH),
+    ]);
+    const report = buildLibraryReport({
+      library:library || {
+        libraryId:activeBackendId(),
+        rootName:backendLabel(activeBackendId()) + ' library',
+        schemaVersion:1,
+      },
+      inventory,
+      catalog:semanticCatalog,
+      manifests,
+      jobs,
+      passages,
+      semantics,
+      ideas,
+      graph,
+    });
+    processingReportOutput.textContent = formatLibraryReport(report);
+    processingReportOutput.focus();
+  } catch (error) {
+    processingReportOutput.textContent =
+      'Processing report failed: ' + String(error?.message || error);
+  } finally {
+    processingReportBtn.disabled = false;
+  }
 }
 
 async function renderWorkIdeaConnections(manifest, ideaRecord, graph) {
@@ -3602,6 +3779,7 @@ async function openWorkDetails(filename) {
     ? '' : String(manifest.userMetadata.rating);
   workProcessingState.textContent = 'Checking local processing…';
   workProcessingCancelBtn.hidden = true;
+  workProcessingRetryBtn.hidden = true;
   const availableAssets = manifest.assets.filter(
     (asset) => asset.availability === 'available',
   );
@@ -3633,6 +3811,7 @@ async function openWorkDetails(filename) {
   workDetailsSemanticRecord = semantics;
   workProcessingState.textContent = processingSummary(run);
   workProcessingCancelBtn.hidden = !run;
+  workProcessingRetryBtn.hidden = !failedProcessingStages(run).length;
   workProcessingCancelBtn.dataset.cancelled = String(run?.cancelRequested === true);
   workProcessingCancelBtn.textContent = run?.cancelRequested
     ? 'Resume processing'
@@ -3733,6 +3912,34 @@ workProcessingCancelBtn.addEventListener('click', async () => {
       ? 'Resumed processing for this book.'
       : 'Processing will stop safely after its current stage.',
   );
+});
+
+workProcessingRetryBtn.addEventListener('click', async () => {
+  if (!workDetailsWorkId) return;
+  const stored = await readJsonRecord(processingRunPath(workDetailsWorkId));
+  const failed = failedProcessingStages(stored);
+  if (!stored || !failed.length) return;
+  const indexes = failed.map((stage) => PROCESSING_STAGE_ORDER.indexOf(stage))
+    .filter((index) => index >= 0);
+  const earliest = indexes.length ? Math.min(...indexes) : 0;
+  let next = requestProcessingCancellation(stored, false);
+  next = invalidateProcessingStages(
+    next,
+    PROCESSING_STAGE_ORDER.slice(earliest),
+    'manual-retry',
+  );
+  await writeProcessingRun(next);
+  workProcessingState.textContent = processingSummary(next);
+  workProcessingRetryBtn.hidden = true;
+  workProcessingCancelBtn.hidden = false;
+  workProcessingCancelBtn.dataset.cancelled = 'false';
+  workProcessingCancelBtn.textContent = 'Cancel processing';
+  scheduleSemanticProcessing();
+  showToast('Queued failed processing stages for retry.');
+});
+
+processingReportBtn.addEventListener('click', () => {
+  void buildActiveLibraryProcessingReport();
 });
 
 workDetailsDialog.addEventListener('close', () => {
@@ -7566,6 +7773,10 @@ async function openLibraryTools() {
   trashList.innerHTML = '';
   libraryStorageAccounting.innerHTML =
     '<span class="semantic-search-state">Measuring local records…</span>';
+  processingQueueSummary.innerHTML =
+    '<span class="semantic-search-state">Inspecting processing jobs…</span>';
+  processingReportOutput.hidden = true;
+  processingReportOutput.textContent = '';
   syncProcessingControls();
   syncBackgroundIntelligenceControls();
   libraryToolsDialog.showModal();
@@ -7575,6 +7786,7 @@ async function openLibraryTools() {
     }),
     refreshTrashRecords(),
     refreshStorageAccounting(),
+    refreshProcessingQueueSummary(),
   ]);
 }
 
@@ -11121,12 +11333,21 @@ function scheduleStandaloneFolderRefresh() {
         const result = await persistStandaloneFolderInventory();
         if (!result || backendId !== activeBackendId()) return;
         const counts = result.inventory.counts;
-        const changed = counts.added || counts.changed || counts.missing;
+        const changed = (
+          counts.added
+          || counts.changed
+          || counts.missing
+          || counts.collisions
+        );
         if (changed && !reader.classList.contains('is-open')) {
           await listLibrary({
             skipFolderRefresh:true,
             folderReconciliation:result,
           });
+        } else if (counts.collisions) {
+          topbarStatus.textContent = 'Folder needs review · '
+            + counts.collisions + ' path collision'
+            + (counts.collisions === 1 ? '' : 's');
         } else {
           topbarStatus.textContent = 'Folder up to date · ' + counts.total + ' books';
         }
@@ -11215,10 +11436,13 @@ async function listLibrary({
     }));
     if (folderReconciliation) {
       const counts = folderReconciliation.inventory.counts;
-      topbarStatus.textContent = counts.added || counts.changed || counts.missing
-        ? 'Folder refreshed · ' + counts.added + ' new · '
-          + counts.changed + ' changed · ' + counts.missing + ' missing'
-        : 'Folder up to date · ' + counts.total + ' books';
+      topbarStatus.textContent = counts.collisions
+        ? 'Folder needs review · ' + counts.collisions + ' path collision'
+          + (counts.collisions === 1 ? '' : 's')
+        : counts.added || counts.changed || counts.missing
+          ? 'Folder refreshed · ' + counts.added + ' new · '
+            + counts.changed + ' changed · ' + counts.missing + ' missing'
+          : 'Folder up to date · ' + counts.total + ' books';
     }
     scheduleSemanticProcessing();
 

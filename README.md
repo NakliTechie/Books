@@ -23,7 +23,9 @@ This direction is now active. The product and architecture live in
 choices in
 [SEMANTIC-LIBRARY-DECISIONS.md](SEMANTIC-LIBRARY-DECISIONS.md), and the gated
 execution sequence and complete pending-item map in
-[SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md).
+[SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md). The
+dependency-aware sequence for the work that remains is in
+[BATCHED-ROADMAP.md](BATCHED-ROADMAP.md).
 
 The foundation now includes work/edition/asset identity, resumable local
 passage indexing and concepts, Books-native reading, portable highlights,
@@ -73,7 +75,7 @@ through portable work-manifest overrides that survive derived-data rebuilds.
   before downloading the semantic model.
 - The checked-in native benchmark is reproducible with
   `npm run benchmark:indexer -- 1000`; the release-development machine measured
-  3.25 seconds cold and 0.66 seconds warm for 1,000 small Markdown books.
+  2.22 seconds cold and 0.50 seconds warm for 1,000 small Markdown books.
 
 The folder layout and executor contract are documented in
 [FOLDER-LIBRARY-FORMAT.md](FOLDER-LIBRARY-FORMAT.md), with the completed
@@ -143,8 +145,16 @@ naklios-universe/
     ├── SPEC.md                   ← shipped v1.4 architectural decisions
     ├── SEMANTIC-LIBRARY-SPEC.md  ← active product and architecture contract
     ├── SEMANTIC-LIBRARY-WORKPLAN.md ← phase status and remaining decision gates
+    ├── BATCHED-ROADMAP.md        ← dependency-aware post-2.0 execution batches
+    ├── ROADMAP-EXECUTION-REPORT.md ← delivered evidence and final access queue
     ├── LIBRARY-INTELLIGENCE-WORKPLAN.md ← completed v2 ingestion/ideas plan
     ├── FOLDER-LIBRARY-FORMAT.md ← durable `.books/` sidecar and executor contract
+    ├── OCR-DECISION.md          ← accepted local-first OCR routes and artifact gate
+    ├── BENCHMARKS.md            ← reproducible Folder and semantic quality evidence
+    ├── SEMANTIC-QUALITY-GATE.md ← named quality defaults and recalibration rules
+    ├── LIBRARY-MOVEMENT-CONTRACT.md ← proposed recoverable cross-backend transfer
+    ├── DEFERRED-DECISIONS.md    ← consolidated end-of-roadmap user decisions
+    ├── METADATA-PROVIDER-DECISION.md ← opt-in provider evidence and policy gate
     ├── PORTABLE-LIBRARY-FORMAT.md ← documented backup/import bundle
     ├── SYNC-CONTRACT.md          ← future private-continuity conflict rules
     ├── STORAGE-RECOVERY.md       ← quotas, data classes, and recovery order
@@ -213,6 +223,10 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
 - [SPEC.md](SPEC.md)
 - [walkthroughs.md](walkthroughs.md)
 - [DEFERRED.md](DEFERRED.md)
+- [BATCHED-ROADMAP.md](BATCHED-ROADMAP.md) — dependency-aware execution plan
+  for the work remaining after Books 2.0
+- [ROADMAP-EXECUTION-REPORT.md](ROADMAP-EXECUTION-REPORT.md) — delivered
+  autonomous roadmap evidence and the final access-dependent release queue
 - [CALIBRE-RESEARCH.md](CALIBRE-RESEARCH.md) — official feature inventory and
   comparison worksheet
 - [SEMANTIC-LIBRARY-SPEC.md](SEMANTIC-LIBRARY-SPEC.md) — active private
@@ -223,6 +237,18 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
   conflict-safe original-file and portable-record bundle
 - [FOLDER-LIBRARY-FORMAT.md](FOLDER-LIBRARY-FORMAT.md) — recursive folder
   inventory, `.books/` sidecar, shared jobs, and derived artifact schemas
+- [OCR-DECISION.md](OCR-DECISION.md) — PaddleOCR browser/local-service
+  decision, versioned OCR artifact, and corpus gate
+- [BENCHMARKS.md](BENCHMARKS.md) — 1k/10k Folder mutation timings and labeled
+  MiniLM/lexical/hybrid retrieval evidence
+- [SEMANTIC-QUALITY-GATE.md](SEMANTIC-QUALITY-GATE.md) — named browser/native
+  quality defaults, thresholds, evidence requirements, and recalibration gate
+- [LIBRARY-MOVEMENT-CONTRACT.md](LIBRARY-MOVEMENT-CONTRACT.md) — proposed
+  two-phase Copy/Move, rollback, and multiple-root ownership semantics
+- [DEFERRED-DECISIONS.md](DEFERRED-DECISIONS.md) — access checks and product
+  choices deliberately deferred until autonomous roadmap work is complete
+- [METADATA-PROVIDER-DECISION.md](METADATA-PROVIDER-DECISION.md) — Open
+  Library recommendation, Google Books disposition, and approval gate
 - [AI-PROVIDER-PRIVACY.md](AI-PROVIDER-PRIVACY.md) — exact standalone and
   NakliOS model boundary, consent, credential, and provenance rules
 - [NATIVE-READER.md](NATIVE-READER.md) — Native/Faithful fidelity,
@@ -248,6 +274,8 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
 npm install
 npm test
 npm run dev
+npm run report -- /path/to/library
+npm run benchmark:indexer -- 1000
 ```
 
 Index a folder natively without changing its source files:

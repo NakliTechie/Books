@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "recordType": "books.ocr-public-corpus",
+  "purpose": "Pinned public-domain and CC0 real-world pages for OCR architecture evaluation. Expected text is a manually checked excerpt, not a claim of full-page ground truth.",
+  "fixtures": [
+    {
+      "id": "loc-engineering-formulas-1902",
+      "filename": "loc-engineering-formulas-1902.jpg",
+      "url": "https://tile.loc.gov/image-services/iiif/public:gdc:00281611252:0052/full/pct:50.0/0/default.jpg",
+      "sha256": "1b7705d19138547dcc1995c64609205185226370262e75b3781baf4ee9a1edbf",
+      "byteLength": 115378,
+      "sourcePage": "https://www.loc.gov/item/02003575/",
+      "rights": "Public domain; free to use and reuse. Credit: Library of Congress.",
+      "rightsPage": "https://data.labs.loc.gov/digitized-books/",
+      "features": [
+        "born-scanned",
+        "formula",
+        "superscript",
+        "fraction",
+        "historical-type",
+        "english"
+      ],
+      "expectedText": "ALGEBRAIC SYMBOLS AND FORMULAS. ∞ signifies Infinite.",
+      "expectedRegions": [
+        "heading",
+        "formula",
+        "text"
+      ]
+    },
+    {
+      "id": "loc-engineering-table-1902",
+      "filename": "loc-engineering-table-1902.jpg",
+      "url": "https://tile.loc.gov/image-services/iiif/public:gdc:00281611252:0058/full/pct:50.0/0/default.jpg",
+      "sha256": "f133ecea86109ee8997fd6f6566a1876c7cc108bc6772aaa58235e153d2cc0ca",
+      "byteLength": 116104,
+      "sourcePage": "https://www.loc.gov/item/02003575/",
+      "rights": "Public domain; free to use and reuse. Credit: Library of Congress.",
+      "rightsPage": "https://data.labs.loc.gov/digitized-books/",
+      "features": [
+        "born-scanned",
+        "complex-table",
+        "merged-heading",
+        "dense-numerals",
+        "historical-type",
+        "english"
+      ],
+      "expectedText": "MEASURES AND WEIGHTS. Equivalent Values in Metric Denominations of U. S. Inches Decimally = Millimeters.",
+      "expectedRegions": [
+        "heading",
+        "table",
+        "text"
+      ]
+    },
+    {
+      "id": "loc-natural-history-figures-1895",
+      "filename": "loc-natural-history-figures-1895.jpg",
+      "url": "https://tile.loc.gov/image-services/iiif/public:gdcmassbookdig:naturalhistoryo00tenn:naturalhistoryo00tenn_0023/full/pct:50.0/0/default.jpg",
+      "sha256": "775779e6698cecdec842e58e39889286fa5589dcae3a4fc6d23e749dbbcdb3be",
+      "byteLength": 232397,
+      "sourcePage": "https://www.loc.gov/item/05023878/",
+      "rights": "Public domain; free to use and reuse. Credit: Library of Congress.",
+      "rightsPage": "https://data.labs.loc.gov/digitized-books/",
+      "features": [
+        "born-scanned",
+        "authored-figures",
+        "captions",
+        "running-heading",
+        "footer",
+        "english"
+      ],
+      "expectedText": "GENERAL DESCRIPTION OF ANIMALS. Fig. 16.—Jellyfish. Fig. 17.—Sea Anemone. Fig. 18.—Coral Polyps. Fig. 19.—Coral Polyps.",
+      "expectedRegions": [
+        "heading",
+        "figure",
+        "caption",
+        "footnote"
+      ]
+    },
+    {
+      "id": "loc-evening-star-1854",
+      "filename": "loc-evening-star-1854.jpg",
+      "url": "https://tile.loc.gov/image-services/iiif/service:ndnp:dlc:batch_dlc_kuvasz_ver02:data:sn83045462:00280654048:1854100901:0007/full/1400,/0/default.jpg",
+      "sha256": "07937d2f91094fb43b34cecddce85f31ee90be52835682489a5960baffed2cf0",
+      "byteLength": 999898,
+      "sourcePage": "https://www.loc.gov/resource/sn83045462/1854-10-09/ed-1/?sp=3",
+      "rights": "The Library of Congress believes Chronicling America newspapers are in the public domain or have no known copyright restrictions.",
+      "rightsPage": "https://www.loc.gov/collections/chronicling-america/about-this-collection/rights-and-access/",
+      "features": [
+        "born-scanned",
+        "newspaper",
+        "multi-column",
+        "reading-order",
+        "small-type",
+        "ornament",
+        "english"
+      ],
+      "expectedText": "EVENING STAR. WASHINGTON, D. C., MONDAY, OCTOBER 9, 1854.",
+      "expectedRegions": [
+        "heading",
+        "text",
+        "list"
+      ]
+    },
+    {
+      "id": "loc-jackson-letter-copy-1828",
+      "filename": "loc-jackson-letter-copy-1828.jpg",
+      "url": "https://tile.loc.gov/storage-services/master/mss/maj/06161/0000/0009.jpg",
+      "sha256": "481bd62e15461d033e07b7cfc3f62f761babf38e1cd68245dc509c020bad4d67",
+      "byteLength": 999074,
+      "sourcePage": "https://www.loc.gov/item/maj024318/",
+      "rights": "The Library of Congress digital scans of the Andrew Jackson Papers are in the public domain.",
+      "rightsPage": "https://www.loc.gov/item/maj024318/",
+      "features": [
+        "born-scanned",
+        "handwritten",
+        "cursive",
+        "show-through",
+        "historical-manuscript",
+        "english"
+      ],
+      "expectedText": "Although it is a long time since I wrote you, still that friendship that once existed remains bright on my part.",
+      "expectedRegions": [
+        "heading",
+        "text"
+      ]
+    },
+    {
+      "id": "commons-open-book-camera-negative",
+      "filename": "commons-open-book-camera-negative.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Open_book_1_%28Unsplash%29.jpg/1920px-Open_book_1_%28Unsplash%29.jpg",
+      "sha256": "79920898a50dba6764a377356d170e3d15706ac81ae0c50e7932c73abcbd183e",
+      "byteLength": 628786,
+      "sourcePage": "https://commons.wikimedia.org/wiki/File:Open_book_1_(Unsplash).jpg",
+      "rights": "CC0 1.0; dedicated to the public domain.",
+      "rightsPage": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "features": [
+        "photographed-page",
+        "perspective",
+        "page-curvature",
+        "depth-of-field",
+        "uneven-light",
+        "negative-control"
+      ],
+      "expectedText": "",
+      "expectedOutcome": "needs-review",
+      "expectedRegions": []
+    }
+  ]
+}

@@ -7,6 +7,12 @@ export const IDEA_RECORD_SCHEMA_VERSION = 1;
 export const IDEA_GRAPH_SCHEMA_VERSION = 1;
 export const IDEA_EXTRACTOR_VERSION = 'source-grounded-ideas-v1';
 export const LIBRARY_IDEA_GRAPH_PATH = 'indexes/library-idea-graph.json';
+export const DEFAULT_LIBRARY_LINK_MIN_SCORE = 0.68;
+export const DEFAULT_LIBRARY_LINKS_PER_IDEA = 8;
+export const DEFAULT_RELATION_CLASSIFICATION_MIN_CONFIDENCE = 0.65;
+export const DEFAULT_HYBRID_SEMANTIC_WEIGHT = 0.72;
+export const DEFAULT_HYBRID_LEXICAL_WEIGHT =
+  1 - DEFAULT_HYBRID_SEMANTIC_WEIGHT;
 export const IDEA_RELATION_TYPES = Object.freeze([
   'same_as',
   'supports',
@@ -312,8 +318,8 @@ export function buildLibraryIdeaGraph({
   vectors = new Map(),
   model,
   dimensions,
-  minScore = 0.68,
-  topK = 8,
+  minScore = DEFAULT_LIBRARY_LINK_MIN_SCORE,
+  topK = DEFAULT_LIBRARY_LINKS_PER_IDEA,
   now = () => new Date().toISOString(),
 } = {}) {
   const scalable = ideas.length > 2_048;
@@ -399,6 +405,7 @@ export function applyIdeaRelationClassifications(
   {
     provider = null,
     model = null,
+    minConfidence = DEFAULT_RELATION_CLASSIFICATION_MIN_CONFIDENCE,
     now = () => new Date().toISOString(),
   } = {},
 ) {
@@ -409,12 +416,14 @@ export function applyIdeaRelationClassifications(
         !classification?.linkId
         || !IDEA_RELATION_TYPE_SET.has(relation)
       ) return [];
+      const confidence = Math.max(
+        0,
+        Math.min(1, Number(classification.confidence) || 0),
+      );
+      if (confidence < minConfidence) return [];
       return [[String(classification.linkId), {
         relation,
-        confidence:Math.max(
-          0,
-          Math.min(1, Number(classification.confidence) || 0),
-        ),
+        confidence,
         rationale:String(classification.rationale || '').slice(0, 500) || null,
       }]];
     }),
@@ -475,7 +484,8 @@ export function searchIdeaRecords({
       idea,
       lexical,
       semantic,
-      score:(semantic * 0.72) + (lexical * 0.28),
+      score:(semantic * DEFAULT_HYBRID_SEMANTIC_WEIGHT)
+        + (lexical * DEFAULT_HYBRID_LEXICAL_WEIGHT),
     };
   })
     .filter((result) => result.score > 0)

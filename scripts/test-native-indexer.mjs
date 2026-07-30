@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   renameSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -11,6 +12,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const fixture = mkdtempSync(join(tmpdir(), 'books-index-fixture-'));
+process.on('exit', () => rmSync(fixture, { recursive:true, force:true }));
 const scriptSource = readFileSync(
   new URL('./books-index.py', import.meta.url),
   'utf8',
@@ -149,5 +151,30 @@ const resumedJob = JSON.parse(readFileSync(jobPath, 'utf8'));
 assert.equal(resumedJob.cancelRequested, false);
 assert.equal(resumedJob.lease, null);
 assert.equal(resumedJob.stages.passages.status, 'complete');
+
+writeFileSync(
+  join(fixture, '.books', 'inventory', 'current.json'),
+  '{"recordType":"books.folder-inventory","completed":',
+);
+execFileSync(
+  'python3',
+  [
+    new URL('./books-index.py', import.meta.url).pathname,
+    fixture,
+    '--no-embeddings',
+  ],
+  { stdio:'pipe' },
+);
+const recoveredInventory = JSON.parse(readFileSync(
+  join(fixture, '.books', 'inventory', 'current.json'),
+  'utf8',
+));
+assert.equal(
+  recoveredInventory.generation,
+  6,
+  'a partial current inventory recovers from the latest completed generation',
+);
+assert.equal(recoveredInventory.counts.unstable, 0);
+assert.equal(recoveredInventory.counts.collisions, 0);
 
 console.log('Books native indexer contract: PASS');
