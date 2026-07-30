@@ -212,6 +212,18 @@ assert.match(html, /id="library-ask-btn"/,
   'work-centered library controls expose Ask without entering a reader');
 assert.match(html, /id="work-enrich-btn"/,
   'book details expose explicit on-demand semantic enrichment');
+assert.match(html, /id="concept-curation-dialog"/,
+  'generated concepts have an app-styled portable curation surface');
+assert.match(
+  html,
+  /curateSemanticConcepts\([\s\S]*?data-concept-id[\s\S]*?updateConceptCuration\(/,
+  'work details apply portable rename, hide, merge, and split overrides',
+);
+assert.match(
+  html,
+  /curatedNativeSemanticRecord[\s\S]*?curateSemanticConcepts\([\s\S]*?new NativeEngine/,
+  'Native reading applies portable concept curation to derived records',
+);
 assert.match(html, /id="work-formats"/,
   'work details expose every available source format');
 assert.match(html, /id="work-split-btn"/,
@@ -275,6 +287,11 @@ assert.match(
   html,
   /storageAccountingSnapshot[\s\S]*?Original sources[\s\S]*?Portable records[\s\S]*?Semantic \+ AI[\s\S]*?Clear local derived data/,
   'storage lifecycle separates canonical, user-owned, and rebuildable data',
+);
+assert.match(
+  html,
+  /navigator\.storage\?\.estimate[\s\S]*?navigator\.storage\.estimate\(\)[\s\S]*?Browser origin/,
+  'standalone storage tools surface browser origin usage and quota when available',
 );
 assert.match(
   html,
@@ -587,8 +604,13 @@ assert.match(
 );
 assert.match(
   harness,
-  /native-reader\[role="document"\]\[tabindex="0"\][\s\S]*?native-fallback-notice[\s\S]*?Quiet source grounding[\s\S]*?reader-font-family[\s\S]*?native preference application/,
+  /native-reader\[role="document"\]\[tabindex="0"\][\s\S]*?native-fallback-notice[\s\S]*?Grounded quiet reading[\s\S]*?reader-font-family[\s\S]*?native preference application/,
   'browser harness verifies accessible Native semantics and typography controls',
+);
+assert.match(
+  harness,
+  /portable concept rename write[\s\S]*?portable concept hide write[\s\S]*?portable concept merge write[\s\S]*?portable concept split restore/,
+  'browser harness verifies portable concept rename, hide, merge, and split',
 );
 assert.match(
   harness,

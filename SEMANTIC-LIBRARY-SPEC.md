@@ -408,7 +408,9 @@ The library evolves from a file list into work-centered views:
 - Duplicate/grouping suggestions that are reversible and user-confirmed.
 
 Generated concepts never become invisible filters. Users can inspect, rename,
-hide, or regenerate them.
+hide, merge, split, or regenerate them. Those decisions are portable
+manifest overrides keyed to stable generated identities; rebuilding disposable
+semantic records cannot silently erase them.
 
 ## Search and questions
 

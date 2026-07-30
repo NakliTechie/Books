@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   addPortableAnnotation,
   createPortableBundle,
+  curateSemanticConcepts,
   makeLibraryViewsRecord,
   mergeLibraryViewsRecords,
   PORTABLE_BUNDLE_VERSION,
@@ -28,6 +29,7 @@ import {
   splitWorkManifests,
   tombstonePortableAnnotation,
   updateAssetFingerprint,
+  updateConceptCuration,
   updatePortableAnnotation,
   updateWorkDetails,
   updateWorkMetadata,
@@ -248,6 +250,73 @@ assert.equal(
   }, now).changed,
   false,
   'repeating normalized work details is idempotent',
+);
+
+const conceptFixture = [{
+  conceptId:'concept_memory',
+  label:'memory',
+  evidence:[{ passageId:'passage_1' }],
+  userState:{ hidden:false, labelOverride:null },
+}, {
+  conceptId:'concept_recall',
+  label:'recall',
+  evidence:[{ passageId:'passage_2' }],
+  userState:{ hidden:false, labelOverride:null },
+}];
+const renamedConcept = updateConceptCuration(details.manifest, 'concept_memory', {
+  labelOverride:'Cultural memory',
+});
+assert.equal(renamedConcept.changed, true);
+assert.equal(
+  curateSemanticConcepts(conceptFixture, renamedConcept.manifest)[0]
+    .userState.labelOverride,
+  'Cultural memory',
+  'portable concept labels overlay disposable semantic records',
+);
+const mergedConcept = updateConceptCuration(
+  renamedConcept.manifest,
+  'concept_recall',
+  { mergedInto:'concept_memory' },
+);
+const visibleMergedConcepts = curateSemanticConcepts(
+  conceptFixture,
+  mergedConcept.manifest,
+);
+assert.equal(visibleMergedConcepts.length, 1);
+assert.deepEqual(
+  visibleMergedConcepts[0].userState.mergedConceptIds,
+  ['concept_recall'],
+  'portable concept merging leaves one visible target without rewriting evidence',
+);
+assert.deepEqual(
+  visibleMergedConcepts[0].evidence.map((evidence) => evidence.passageId),
+  ['passage_1', 'passage_2'],
+  'a curated merge presents the union of source-grounded evidence',
+);
+const restoredConcept = updateConceptCuration(
+  mergedConcept.manifest,
+  'concept_recall',
+  {},
+);
+assert.equal(
+  curateSemanticConcepts(conceptFixture, restoredConcept.manifest).length,
+  2,
+  'clearing an override splits a concept back to its generated identity',
+);
+const hiddenConcept = updateConceptCuration(
+  renamedConcept.manifest,
+  'concept_memory',
+  { hidden:true },
+);
+assert.equal(curateSemanticConcepts(conceptFixture, hiddenConcept.manifest).length, 1);
+assert.equal(
+  curateSemanticConcepts(
+    conceptFixture,
+    hiddenConcept.manifest,
+    { includeHidden:true },
+  ).length,
+  2,
+  'hidden concepts stay inspectable while remaining absent from normal views',
 );
 
 const annotationFirst = reconcileLegacyAnnotations({

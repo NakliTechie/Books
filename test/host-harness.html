@@ -660,6 +660,99 @@
       ) {
         throw new Error('Model semantic enrichment lost evidence, provenance, or its injection boundary');
       }
+      const modelConceptButton = await waitFor(
+        () => Array.from(
+          app.querySelectorAll('[data-concept-id]')
+        ).find((button) =>
+          button.dataset.conceptId === modelConcept.conceptId
+        ),
+        'inspectable model concept',
+      );
+      modelConceptButton.click();
+      await waitFor(
+        () => app.getElementById('concept-curation-dialog').open,
+        'portable concept rename dialog',
+      );
+      app.getElementById('concept-label-input').value =
+        'Grounded quiet reading';
+      app.getElementById('concept-curation-form').requestSubmit();
+      await waitFor(() => {
+        const manifest = jsonFromStore(
+          'catalog/works/' + sampleWorkId + '.json'
+        );
+        return manifest?.userMetadata?.conceptCuration?.[
+          modelConcept.conceptId
+        ]?.labelOverride === 'Grounded quiet reading'
+          && app.getElementById('work-details-dialog').open;
+      }, 'portable concept rename write');
+      const deterministicConceptButton = await waitFor(
+        () => Array.from(
+          app.querySelectorAll('[data-concept-id]')
+        ).find((button) =>
+          button.dataset.conceptId !== modelConcept.conceptId
+          && button.dataset.state === 'visible'
+        ),
+        'inspectable deterministic concept',
+      );
+      const deterministicConceptId =
+        deterministicConceptButton.dataset.conceptId;
+      deterministicConceptButton.click();
+      await waitFor(
+        () => app.getElementById('concept-curation-dialog').open,
+        'portable concept hide dialog',
+      );
+      app.getElementById('concept-hidden-input').checked = true;
+      app.getElementById('concept-curation-form').requestSubmit();
+      const hiddenConceptButton = await waitFor(() => {
+        const manifest = jsonFromStore(
+          'catalog/works/' + sampleWorkId + '.json'
+        );
+        const button = app.querySelector(
+          '[data-concept-id="' + deterministicConceptId + '"]'
+        );
+        return manifest?.userMetadata?.conceptCuration?.[
+          deterministicConceptId
+        ]?.hidden === true && button?.dataset.state === 'hidden'
+          ? button : null;
+      }, 'portable concept hide write');
+      hiddenConceptButton.click();
+      await waitFor(
+        () => app.getElementById('concept-curation-dialog').open,
+        'portable concept merge dialog',
+      );
+      app.getElementById('concept-hidden-input').checked = false;
+      app.getElementById('concept-merge-input').value =
+        modelConcept.conceptId;
+      app.getElementById('concept-curation-form').requestSubmit();
+      const mergedConceptButton = await waitFor(() => {
+        const manifest = jsonFromStore(
+          'catalog/works/' + sampleWorkId + '.json'
+        );
+        const button = app.querySelector(
+          '[data-concept-id="' + deterministicConceptId + '"]'
+        );
+        return manifest?.userMetadata?.conceptCuration?.[
+          deterministicConceptId
+        ]?.mergedInto === modelConcept.conceptId
+          && button?.dataset.state === 'merged' ? button : null;
+      }, 'portable concept merge write');
+      mergedConceptButton.click();
+      await waitFor(
+        () => app.getElementById('concept-curation-dialog').open,
+        'portable concept split dialog',
+      );
+      app.getElementById('concept-restore-btn').click();
+      await waitFor(() => {
+        const manifest = jsonFromStore(
+          'catalog/works/' + sampleWorkId + '.json'
+        );
+        const button = app.querySelector(
+          '[data-concept-id="' + deterministicConceptId + '"]'
+        );
+        return !manifest?.userMetadata?.conceptCuration?.[
+          deterministicConceptId
+        ] && button?.dataset.state === 'visible';
+      }, 'portable concept split restore');
       app.getElementById('work-details-dialog').close();
 
       app.querySelector('.row[data-filename="Sample.md"]').click();
@@ -675,7 +768,7 @@
           && app.querySelector('.native-fallback-notice')
             ?.textContent.includes('table layout')
           && Array.from(app.querySelectorAll('.native-concept')).some(
-            (concept) => concept.textContent.includes('Quiet source grounding')
+            (concept) => concept.textContent.includes('Grounded quiet reading')
           )
           && app.getElementById('reader-status').textContent.includes(
             'Reference '

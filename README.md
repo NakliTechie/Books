@@ -32,7 +32,9 @@ stable references, time remaining, accessible landmarks, deeper typography,
 source-grounded concepts, and explicit Faithful-only structure notices.
 The work-centered library includes deterministic reading-state, rating, shelf,
 tag, and annotation views. Queries, facets, and sort order can be saved as a
-portable view inside the active Browser, Folder, or Crate library.
+portable view inside the active Browser, Folder, or Crate library. Generated
+concepts remain inspectable and can be renamed, hidden, merged, or split
+through portable work-manifest overrides that survive derived-data rebuilds.
 
 ## v1.4 highlights
 
@@ -92,6 +94,8 @@ naklios-universe/
     ├── SEMANTIC-LIBRARY-SPEC.md  ← proposed v2+ product and architecture
     ├── SEMANTIC-LIBRARY-WORKPLAN.md ← pending phases and decision gates
     ├── PORTABLE-LIBRARY-FORMAT.md ← documented backup/import bundle
+    ├── SYNC-CONTRACT.md          ← future private-continuity conflict rules
+    ├── STORAGE-RECOVERY.md       ← quotas, data classes, and recovery order
     ├── AI-PROVIDER-PRIVACY.md  ← provider, consent, and provenance boundary
     ├── NATIVE-READER.md        ← reflow, fidelity, accessibility, and cleanup contract
     ├── CALIBRE-RESEARCH.md       ← comparison input, not a parity mandate
@@ -159,6 +163,10 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
   NakliOS model boundary, consent, credential, and provenance rules
 - [NATIVE-READER.md](NATIVE-READER.md) — Native/Faithful fidelity,
   accessibility, preferences, and derived-data lifecycle
+- [SYNC-CONTRACT.md](SYNC-CONTRACT.md) — version ancestry, tombstones, and
+  deterministic record-level conflict behavior for any future transport
+- [STORAGE-RECOVERY.md](STORAGE-RECOVERY.md) — backend isolation, browser
+  quota guidance, and recovery order
 
 ## Context
 

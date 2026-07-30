@@ -422,6 +422,127 @@ export function updateWorkDetails(
   return { manifest: next, changed: true };
 }
 
+function validConceptId(value) {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= 500
+    && !/[\u0000-\u001f]/.test(value);
+}
+
+export function updateConceptCuration(
+  manifest,
+  conceptId,
+  { labelOverride = null, hidden = false, mergedInto = null } = {},
+  now = () => new Date().toISOString(),
+) {
+  if (!manifest || !validConceptId(conceptId)) {
+    return { manifest, changed:false };
+  }
+  const normalizedLabel = typeof labelOverride === 'string'
+    ? labelOverride.trim().slice(0, 160) : '';
+  const normalizedMergedInto = validConceptId(mergedInto)
+    && mergedInto !== conceptId ? mergedInto : null;
+  const next = cloneJson(manifest);
+  const prior = next.userMetadata?.conceptCuration?.[conceptId] || null;
+  const isDefault = !normalizedLabel && hidden !== true && !normalizedMergedInto;
+  const nextEntry = isDefault ? null : {
+    labelOverride:normalizedLabel || null,
+    hidden:hidden === true,
+    mergedInto:normalizedMergedInto,
+    updatedAt:isoNow(now),
+  };
+  const comparablePrior = prior ? {
+    labelOverride:prior.labelOverride || null,
+    hidden:prior.hidden === true,
+    mergedInto:prior.mergedInto || null,
+  } : null;
+  const comparableNext = nextEntry ? {
+    labelOverride:nextEntry.labelOverride,
+    hidden:nextEntry.hidden,
+    mergedInto:nextEntry.mergedInto,
+  } : null;
+  if (jsonEqual(comparablePrior, comparableNext)) {
+    return { manifest, changed:false };
+  }
+  next.userMetadata = {
+    ...(next.userMetadata || {}),
+    conceptCuration:{
+      ...(next.userMetadata?.conceptCuration || {}),
+    },
+  };
+  if (nextEntry) {
+    next.userMetadata.conceptCuration[conceptId] = nextEntry;
+  } else {
+    delete next.userMetadata.conceptCuration[conceptId];
+  }
+  if (!Object.keys(next.userMetadata.conceptCuration).length) {
+    delete next.userMetadata.conceptCuration;
+  }
+  next.updatedAt = isoNow(now);
+  return { manifest:next, changed:true };
+}
+
+export function curateSemanticConcepts(
+  concepts,
+  manifest,
+  { includeHidden = false, includeMerged = false } = {},
+) {
+  const source = Array.isArray(concepts) ? concepts : [];
+  const knownIds = new Set(
+    source.map((concept) => concept?.conceptId).filter(validConceptId),
+  );
+  const overrides = manifest?.userMetadata?.conceptCuration || {};
+  const curated = source.map((concept) => {
+    const next = cloneJson(concept);
+    const override = overrides[next.conceptId] || null;
+    const mergedInto = validConceptId(override?.mergedInto)
+      && override.mergedInto !== next.conceptId
+      && knownIds.has(override.mergedInto)
+      ? override.mergedInto : null;
+    next.userState = {
+      ...(next.userState || {}),
+      labelOverride:override?.labelOverride
+        || next.userState?.labelOverride
+        || null,
+      hidden:override?.hidden === true || next.userState?.hidden === true,
+      mergedInto,
+      curationSource:override ? 'portable-manifest' : null,
+    };
+    return next;
+  });
+  const byId = new Map(curated.map((concept) => [concept.conceptId, concept]));
+  for (const concept of curated) {
+    const target = concept.userState?.mergedInto
+      && byId.get(concept.userState.mergedInto);
+    if (!target) continue;
+    target.userState = {
+      ...(target.userState || {}),
+      mergedConceptIds:Array.from(new Set([
+        ...(target.userState?.mergedConceptIds || []),
+        concept.conceptId,
+      ])).sort(),
+    };
+    const evidenceKeys = new Set(
+      (target.evidence || []).map((evidence) =>
+        String(evidence.passageId || '') + '\u001f' +
+        String(evidence.quoteHash || '')),
+    );
+    target.evidence = (target.evidence || []).concat(
+      (concept.evidence || []).filter((evidence) => {
+        const key = String(evidence.passageId || '') + '\u001f' +
+          String(evidence.quoteHash || '');
+        if (evidenceKeys.has(key)) return false;
+        evidenceKeys.add(key);
+        return true;
+      }).map(cloneJson),
+    );
+  }
+  return curated.filter((concept) =>
+    (includeHidden || !concept.userState?.hidden)
+    && (includeMerged || !concept.userState?.mergedInto)
+  );
+}
+
 export function updateAssetFingerprint(
   manifest,
   assetId,
@@ -671,7 +792,14 @@ export function mergeWorkManifests(
       merged.userMetadata?.shelves,
       secondary.userMetadata?.shelves,
     ),
+    conceptCuration:{
+      ...(secondary.userMetadata?.conceptCuration || {}),
+      ...(merged.userMetadata?.conceptCuration || {}),
+    },
   };
+  if (!Object.keys(merged.userMetadata.conceptCuration).length) {
+    delete merged.userMetadata.conceptCuration;
+  }
   merged.grouping = {
     ...(merged.grouping || {}),
     mergedFrom:(merged.grouping?.mergedFrom || []).concat([{

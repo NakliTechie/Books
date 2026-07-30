@@ -437,6 +437,12 @@ Before implementation, decide:
 
 **Status:** Pending core schemas; safety slices may move earlier.
 
+**Implementation status (2026-07-30):** Portable bundle import/export,
+validation, catalog rebuild, recoverable Trash, per-class storage accounting,
+derived cleanup, browser quota guidance, and the version/tombstone/conflict
+contract are shipped or documented. No sync transport is enabled; transport
+prototyping remains gated on an explicit product decision.
+
 **Question:** Can the user move and recover a semantic library without needing
 Books' current installation or a central service?
 

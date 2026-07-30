@@ -869,7 +869,15 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 .work-concepts { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 0; }
 .work-concept {
   border:1px solid var(--line); border-radius:999px; padding:5px 8px;
-  background:var(--body); color:var(--ink); font-size:10px;
+  background:var(--body); color:var(--ink); font:10px inherit; cursor:pointer;
+}
+.work-concept:hover { border-color:var(--brand); }
+.work-concept[data-state="hidden"] { opacity:.58; text-decoration:line-through; }
+.work-concept[data-state="merged"] { opacity:.7; border-style:dashed; }
+.work-concept-status { color:var(--muted); font-size:9px; }
+.concept-curation-meta {
+  padding:9px 10px; border:1px solid var(--line); border-radius:7px;
+  background:var(--row); color:var(--muted); font-size:11px; line-height:1.5;
 }
 .work-formats { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 12px; }
 .work-formats button {
@@ -1196,6 +1204,38 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div class="books-dialog-actions">
       <button type="button" data-close-dialog="work-details-dialog">Cancel</button>
       <button class="primary" type="submit">Save details</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="books-dialog" id="concept-curation-dialog"
+        aria-labelledby="concept-curation-title">
+  <form class="books-dialog-body" id="concept-curation-form">
+    <h3 id="concept-curation-title">Curate concept</h3>
+    <p>
+      These portable choices overlay derived concepts. Re-indexing can refresh
+      evidence without erasing your label, visibility, or merge decision.
+    </p>
+    <div class="concept-curation-meta" id="concept-curation-meta"></div>
+    <div class="books-dialog-text-field">
+      <label for="concept-label-input">Custom label <span aria-hidden="true">·</span> optional</label>
+      <input id="concept-label-input" type="text" maxlength="160"
+             autocomplete="off">
+    </div>
+    <label class="ai-consent">
+      <input id="concept-hidden-input" type="checkbox">
+      <span>Hide this concept from normal library and Native reader views</span>
+    </label>
+    <div class="books-dialog-field">
+      <label for="concept-merge-input">Merge into</label>
+      <select id="concept-merge-input">
+        <option value="">Keep separate</option>
+      </select>
+    </div>
+    <div class="books-dialog-actions">
+      <button type="button" id="concept-restore-btn">Split / restore generated</button>
+      <button type="button" data-close-dialog="concept-curation-dialog">Cancel</button>
+      <button class="primary" type="submit">Save concept</button>
     </div>
   </form>
 </dialog>
@@ -1858,6 +1898,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 import {
   addPortableAnnotation,
   createPortableBundle,
+  curateSemanticConcepts,
   makeLibraryViewsRecord,
   markAssetTrashed,
   mergeLibraryViewsRecords,
@@ -1880,6 +1921,7 @@ import {
   splitWorkManifests,
   tombstonePortableAnnotation,
   updateAssetFingerprint,
+  updateConceptCuration,
   updateWorkDetails,
   updateWorkMetadata,
   upsertLibraryView,
@@ -2012,6 +2054,13 @@ const workSplitBtn = document.getElementById('work-split-btn');
 const workConcepts = document.getElementById('work-concepts');
 const workEnrichmentBoundary = document.getElementById('work-enrichment-boundary');
 const workEnrichBtn = document.getElementById('work-enrich-btn');
+const conceptCurationDialog = document.getElementById('concept-curation-dialog');
+const conceptCurationForm = document.getElementById('concept-curation-form');
+const conceptCurationMeta = document.getElementById('concept-curation-meta');
+const conceptLabelInput = document.getElementById('concept-label-input');
+const conceptHiddenInput = document.getElementById('concept-hidden-input');
+const conceptMergeInput = document.getElementById('concept-merge-input');
+const conceptRestoreBtn = document.getElementById('concept-restore-btn');
 const readerPrefsBtn = document.getElementById('reader-prefs-btn');
 const aiProviderDialog = document.getElementById('ai-provider-dialog');
 const aiProviderForm = document.getElementById('ai-provider-form');
@@ -2088,6 +2137,12 @@ let semanticSearchTimer = null;
 let semanticSearchRun = 0;
 let semanticSearchResults = new Map();
 let workDetailsWorkId = null;
+let workDetailsFilename = null;
+let workDetailsSemanticRecord = null;
+let activeConceptId = null;
+let activeConceptWorkId = null;
+let activeConceptFilename = null;
+let activeConceptSemanticRecord = null;
 let latestLibraryValidation = null;
 let activeTrashRecords = [];
 let libraryAskController = null;
@@ -2735,6 +2790,8 @@ async function openWorkDetails(filename) {
     return;
   }
   workDetailsWorkId = manifest.workId;
+  workDetailsFilename = filename;
+  workDetailsSemanticRecord = null;
   workTitleInput.value = manifest.title || '';
   workAuthorsInput.value = (manifest.authors || []).map((author) => author.name).join(', ');
   workTagsInput.value = (manifest.userMetadata?.tags || []).join(', ');
@@ -2766,19 +2823,32 @@ async function openWorkDetails(filename) {
     readJsonRecord(semanticRecordsPath(manifest.workId)),
   ]);
   if (!workDetailsDialog.open || workDetailsWorkId !== manifest.workId) return;
+  workDetailsSemanticRecord = semantics;
   workProcessingState.textContent = processingSummary(run);
-  const concepts = (semantics?.concepts || []).filter(
-    (concept) => !concept.userState?.hidden,
+  const concepts = curateSemanticConcepts(
+    semantics?.concepts,
+    manifest,
+    { includeHidden:true, includeMerged:true },
   );
   workConcepts.innerHTML = concepts.length
     ? concepts.slice(0, 24).map((concept) =>
-        '<span class="work-concept" title="' +
-          escapeHtml((concept.evidence?.length || 0) + ' source passage(s)') + '">' +
+        '<button class="work-concept" type="button" data-concept-id="' +
+          escapeHtml(concept.conceptId) + '" data-state="' +
+          escapeHtml(concept.userState?.hidden
+            ? 'hidden'
+            : concept.userState?.mergedInto ? 'merged' : 'visible') +
+          '" title="' +
+          escapeHtml((concept.evidence?.length || 0) +
+            ' source passage(s) · inspect concept') + '">' +
           escapeHtml(concept.userState?.labelOverride || concept.label) +
-        '</span>'
+          (concept.userState?.hidden
+            ? ' <span class="work-concept-status">hidden</span>'
+            : concept.userState?.mergedInto
+              ? ' <span class="work-concept-status">merged</span>' : '') +
+        '</button>'
       ).join('')
     : '<span class="semantic-search-state">No concepts yet. Processing may still be running.</span>';
-  const modelCount = concepts.filter(
+  const modelCount = curateSemanticConcepts(semantics?.concepts, manifest).filter(
     (concept) => concept.generatedBy?.mode === 'model-assisted',
   ).length;
   workEnrichmentBoundary.textContent = modelCount
@@ -2799,7 +2869,108 @@ async function openWorkDetails(filename) {
 }
 
 workDetailsDialog.addEventListener('close', () => {
+  // Enrichment and concept curation intentionally close and immediately
+  // reopen this same dialog. Ignore the stale close event if a new details
+  // session is already active.
+  if (workDetailsDialog.open) return;
   workDetailsWorkId = null;
+  workDetailsFilename = null;
+  workDetailsSemanticRecord = null;
+});
+
+function openConceptCuration(conceptId) {
+  const manifest = workDetailsWorkId
+    && semanticManifests.get(workDetailsWorkId);
+  const concepts = curateSemanticConcepts(
+    workDetailsSemanticRecord?.concepts,
+    manifest,
+    { includeHidden:true, includeMerged:true },
+  );
+  const concept = concepts.find((candidate) =>
+    candidate.conceptId === conceptId);
+  if (!manifest || !concept) return;
+  activeConceptId = conceptId;
+  activeConceptWorkId = manifest.workId;
+  activeConceptFilename = workDetailsFilename;
+  activeConceptSemanticRecord = workDetailsSemanticRecord;
+  const override = manifest.userMetadata?.conceptCuration?.[conceptId] || {};
+  const mode = concept.generatedBy?.mode === 'model-assisted'
+    ? 'Model-assisted' : 'Deterministic local';
+  conceptCurationMeta.textContent =
+    'Generated label: ' + concept.label + ' · ' + mode + ' · ' +
+    (concept.evidence?.length || 0) + ' source passage' +
+    ((concept.evidence?.length || 0) === 1 ? '' : 's') + '.';
+  conceptLabelInput.value = override.labelOverride || '';
+  conceptLabelInput.placeholder = concept.label;
+  conceptHiddenInput.checked = override.hidden === true;
+  const targets = concepts.filter((candidate) =>
+    candidate.conceptId !== conceptId
+    && !candidate.userState?.mergedInto
+    && !candidate.userState?.hidden
+  );
+  conceptMergeInput.innerHTML =
+    '<option value="">Keep separate</option>' +
+    targets.map((candidate) =>
+      '<option value="' + escapeHtml(candidate.conceptId) + '"' +
+        (override.mergedInto === candidate.conceptId ? ' selected' : '') + '>' +
+        escapeHtml(candidate.userState?.labelOverride || candidate.label) +
+      '</option>'
+    ).join('');
+  workDetailsDialog.close();
+  conceptCurationDialog.showModal();
+  conceptLabelInput.focus();
+}
+
+workConcepts.addEventListener('click', (event) => {
+  const concept = event.target.closest('[data-concept-id]');
+  if (concept) openConceptCuration(concept.dataset.conceptId);
+});
+
+async function persistConceptCuration(values) {
+  const manifest = activeConceptWorkId
+    && semanticManifests.get(activeConceptWorkId);
+  if (!manifest || !activeConceptId) return;
+  const filename = activeConceptFilename;
+  try {
+    const update = updateConceptCuration(
+      manifest,
+      activeConceptId,
+      values,
+    );
+    if (update.changed) await persistSemanticManifest(update.manifest);
+    conceptCurationDialog.close();
+    if (filename) await openWorkDetails(filename);
+    showToast(
+      values.labelOverride || values.hidden || values.mergedInto
+        ? 'Saved portable concept curation.'
+        : 'Restored the generated concept as a separate record.',
+    );
+  } catch (error) {
+    showToast("Couldn't save concept: " + String(error?.message || error), {
+      error:true,
+      duration:5500,
+    });
+  }
+}
+
+conceptCurationForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void persistConceptCuration({
+    labelOverride:conceptLabelInput.value,
+    hidden:conceptHiddenInput.checked,
+    mergedInto:conceptMergeInput.value || null,
+  });
+});
+
+conceptRestoreBtn.addEventListener('click', () => {
+  void persistConceptCuration({});
+});
+
+conceptCurationDialog.addEventListener('close', () => {
+  activeConceptId = null;
+  activeConceptWorkId = null;
+  activeConceptFilename = null;
+  activeConceptSemanticRecord = null;
 });
 
 workFormats.addEventListener('click', (event) => {
@@ -5965,7 +6136,24 @@ async function storageAccountingSnapshot() {
       Array.from(paths, storedPathSize),
     )).reduce((sum, size) => sum + size, 0);
   }
-  return { totals, categories };
+  let browserEstimate = null;
+  if (
+    activeBackendId() === 'browser'
+    && navigator.storage?.estimate
+  ) {
+    try {
+      const [estimate, persisted] = await Promise.all([
+        navigator.storage.estimate(),
+        navigator.storage.persisted?.() ?? Promise.resolve(false),
+      ]);
+      browserEstimate = {
+        usage:Number(estimate?.usage) || 0,
+        quota:Number(estimate?.quota) || 0,
+        persisted:persisted === true,
+      };
+    } catch (_) {}
+  }
+  return { totals, categories, browserEstimate };
 }
 
 function syncProcessingControls() {
@@ -5988,11 +6176,21 @@ async function refreshStorageAccounting() {
       ['Semantic + AI', snapshot.totals.semantics],
       ['Cover cache', snapshot.totals.media],
     ];
-    libraryStorageAccounting.innerHTML = rows.map(([label, size]) =>
+    const classRows = rows.map(([label, size]) =>
       '<div class="storage-accounting-row"><span>' + escapeHtml(label) +
         '</span><strong>' + escapeHtml(formatByteCount(size)) +
         '</strong></div>'
     ).join('');
+    const estimate = snapshot.browserEstimate;
+    const browserRow = estimate?.quota
+      ? '<div class="storage-accounting-row"><span>Browser origin</span>' +
+          '<strong>' + escapeHtml(
+            formatByteCount(estimate.usage) + ' / ' +
+            formatByteCount(estimate.quota) +
+            (estimate.persisted ? ' · persistent' : ''),
+          ) + '</strong></div>'
+      : '';
+    libraryStorageAccounting.innerHTML = classRows + browserRow;
     return snapshot;
   } catch (error) {
     libraryStorageAccounting.innerHTML =
@@ -7782,11 +7980,18 @@ async function switchToNativeMode() {
     const nativeSemanticRecord = await readJsonRecord(
       semanticRecordsPath(manifest.workId),
     );
+    const curatedNativeSemanticRecord = nativeSemanticRecord ? {
+      ...nativeSemanticRecord,
+      concepts:curateSemanticConcepts(
+        nativeSemanticRecord.concepts,
+        manifest,
+      ),
+    } : null;
     activeEngine = new NativeEngine(
       readerContent,
       activeNativePassageRecord,
       manifest,
-      nativeSemanticRecord,
+      curatedNativeSemanticRecord,
     );
     await activeEngine.load();
     activeEngine.applyPreferences(activeReaderPrefs);
