@@ -145,10 +145,90 @@ function completionEndpoint(endpoint) {
   const parsed = endpointUrl(endpoint);
   const path = parsed.pathname.replace(/\/+$/, '');
   if (/\/chat\/completions$/i.test(path)) return parsed.toString();
+  if (/\/models$/i.test(path)) {
+    parsed.pathname = path.replace(/\/models$/i, '/chat/completions');
+    return parsed.toString();
+  }
   parsed.pathname = (
     path.endsWith('/v1') ? path : path + '/v1'
   ) + '/chat/completions';
   return parsed.toString();
+}
+
+function modelsEndpoint(endpoint) {
+  const parsed = endpointUrl(endpoint);
+  const path = parsed.pathname.replace(/\/+$/, '');
+  if (/\/models$/i.test(path)) return parsed.toString();
+  if (/\/chat\/completions$/i.test(path)) {
+    parsed.pathname = path.replace(/\/chat\/completions$/i, '/models');
+    return parsed.toString();
+  }
+  parsed.pathname = (path.endsWith('/v1') ? path : path + '/v1') + '/models';
+  return parsed.toString();
+}
+
+function providerHeaders(apiKey = '') {
+  const headers = { Accept:'application/json' };
+  if (apiKey) headers.Authorization = 'Bearer ' + String(apiKey);
+  return headers;
+}
+
+function providerReachabilityError(normalized, error) {
+  if (error?.name === 'AbortError') return error;
+  const origin = globalThis.location?.origin || 'the Books web origin';
+  const detail = normalized.providerClass === 'local'
+    ? ' Start the local server and allow browser requests from ' + origin +
+      '. For Ollama, configure OLLAMA_ORIGINS. For LM Studio, enable CORS.'
+    : ' Confirm the endpoint permits browser CORS requests and that the key is valid.';
+  return new Error(
+    'Could not reach the configured provider at ' + normalized.destination +
+    '.' + detail,
+  );
+}
+
+export async function listOpenAICompatibleModels({
+  endpoint,
+  apiKey = '',
+  providerClass = 'local',
+  fetchImpl = globalThis.fetch,
+  signal,
+}) {
+  const normalized = normalizeProviderConfig({
+    providerClass,
+    endpoint,
+    model:'connection-test',
+    enabled:true,
+  });
+  if (typeof fetchImpl !== 'function') {
+    throw new Error('This browser cannot contact the configured provider.');
+  }
+  let response;
+  try {
+    response = await fetchImpl(modelsEndpoint(normalized.endpoint), {
+      method:'GET',
+      headers:providerHeaders(apiKey),
+      signal,
+    });
+  } catch (error) {
+    throw providerReachabilityError(normalized, error);
+  }
+  if (!response.ok) {
+    throw new Error(
+      'Provider connection test failed with HTTP ' + response.status + '.',
+    );
+  }
+  const payload = await response.json();
+  const models = Array.isArray(payload?.data)
+    ? payload.data
+      .map((entry) => safeText(entry?.id, 300).trim())
+      .filter(Boolean)
+    : [];
+  return {
+    destination:normalized.destination,
+    endpoint:modelsEndpoint(normalized.endpoint),
+    models:Array.from(new Set(models)).sort((left, right) =>
+      left.localeCompare(right)),
+  };
 }
 
 export async function callOpenAICompatible({
@@ -164,20 +244,27 @@ export async function callOpenAICompatible({
   if (typeof fetchImpl !== 'function') {
     throw new Error('This browser cannot contact the configured provider.');
   }
-  const headers = { 'Content-Type':'application/json' };
-  if (apiKey) headers.Authorization = 'Bearer ' + String(apiKey);
-  const response = await fetchImpl(completionEndpoint(normalized.endpoint), {
-    method:'POST',
-    headers,
-    signal,
-    body:JSON.stringify({
-      model:normalized.model,
-      messages:cloneJson(messages || []),
-      temperature,
-      max_tokens:maxTokens,
-      stream:false,
-    }),
-  });
+  const headers = {
+    ...providerHeaders(apiKey),
+    'Content-Type':'application/json',
+  };
+  let response;
+  try {
+    response = await fetchImpl(completionEndpoint(normalized.endpoint), {
+      method:'POST',
+      headers,
+      signal,
+      body:JSON.stringify({
+        model:normalized.model,
+        messages:cloneJson(messages || []),
+        temperature,
+        max_tokens:maxTokens,
+        stream:false,
+      }),
+    });
+  } catch (error) {
+    throw providerReachabilityError(normalized, error);
+  }
   if (!response.ok) {
     throw new Error(
       'Provider request failed with HTTP ' + response.status + '.',

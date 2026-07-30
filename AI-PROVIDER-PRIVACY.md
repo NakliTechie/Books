@@ -15,11 +15,13 @@ selection and consent, and remains the preferred route in hosted mode.
 
 Books also includes an on-device browser route modelled on VaultMind:
 
-- Transformers.js 4.2 runs `onnx-community/gemma-4-E4B-it-ONNX` with `q4f16`
-  weights and WebGPU in a dedicated module Worker.
-- The model is loaded only after the user chooses **Load model**. The roughly
-  4 GB download is cached by the browser; a cached model may be loaded when
-  the reader sidecar is opened.
+- Transformers.js 4.2 runs either
+  `onnx-community/gemma-4-E2B-it-ONNX` (recommended, about 3.4 GB) or
+  `onnx-community/gemma-4-E4B-it-ONNX` (higher quality, about 5.2 GB) with
+  `q4f16` weights and WebGPU in a dedicated module Worker.
+- The selected model is loaded only after the user chooses **Load**. The
+  download is cached by the browser; a cached model may be loaded when the
+  reader sidecar is opened.
 - Model files come from Hugging Face and the pinned Transformers.js module
   comes from jsDelivr. Book text is passed only to the local Worker and is not
   transmitted with those model-file requests.
@@ -30,6 +32,11 @@ Standalone Books supports an explicitly configured OpenAI-compatible endpoint:
 
 - A **local service** may use HTTP or HTTPS. Its endpoint and model are visible
   before use.
+- Ollama defaults to `http://127.0.0.1:11434`; its `OLLAMA_ORIGINS` must allow
+  the Books browser origin. LM Studio defaults to `http://127.0.0.1:1234`; its
+  server must be running with CORS enabled.
+- **Test connection** requests the endpoint's OpenAI-compatible `/v1/models`
+  resource and lets the user select a returned model identifier.
 - A **remote BYOK service** must use HTTPS and requires consent tied to the
   exact destination origin and approved capabilities.
 - Credentials cannot be embedded in the endpoint URL.

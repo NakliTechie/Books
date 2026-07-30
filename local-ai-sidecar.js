@@ -3,15 +3,43 @@ export const TRANSFORMERS_JS_MODULE =
   'https://cdn.jsdelivr.net/npm/@huggingface/transformers@' +
   TRANSFORMERS_JS_VERSION + '/+esm';
 
-export const LOCAL_AI_MODEL = Object.freeze({
-  providerClass:'browser-local',
-  destination:'browser-webgpu',
-  endpoint:null,
-  model:'onnx-community/gemma-4-E4B-it-ONNX',
-  label:'Gemma 4 E4B',
-  dtype:'q4f16',
-  approximateDownloadBytes:4_000_000_000,
-});
+export const DEFAULT_LOCAL_AI_MODEL_KEY = 'gemma-4-e2b';
+export const LOCAL_AI_MODELS = Object.freeze([
+  Object.freeze({
+    key:'gemma-4-e2b',
+    providerClass:'browser-local',
+    destination:'browser-webgpu',
+    endpoint:null,
+    model:'onnx-community/gemma-4-E2B-it-ONNX',
+    label:'Gemma 4 E2B',
+    shortLabel:'E2B',
+    dtype:'q4f16',
+    approximateDownloadBytes:3_400_000_000,
+    recommended:true,
+  }),
+  Object.freeze({
+    key:'gemma-4-e4b',
+    providerClass:'browser-local',
+    destination:'browser-webgpu',
+    endpoint:null,
+    model:'onnx-community/gemma-4-E4B-it-ONNX',
+    label:'Gemma 4 E4B',
+    shortLabel:'E4B',
+    dtype:'q4f16',
+    approximateDownloadBytes:5_200_000_000,
+    recommended:false,
+  }),
+]);
+const LOCAL_AI_MODEL_BY_KEY = new Map(
+  LOCAL_AI_MODELS.map((model) => [model.key, model]),
+);
+
+export function localAiModel(modelKey = DEFAULT_LOCAL_AI_MODEL_KEY) {
+  return LOCAL_AI_MODEL_BY_KEY.get(String(modelKey))
+    || LOCAL_AI_MODEL_BY_KEY.get(DEFAULT_LOCAL_AI_MODEL_KEY);
+}
+
+export const LOCAL_AI_MODEL = localAiModel();
 
 function abortError() {
   const error = new Error('Local generation was stopped.');
@@ -19,12 +47,12 @@ function abortError() {
   return error;
 }
 
-export function browserLocalProviderDescriptor() {
+export function browserLocalProviderDescriptor(model = LOCAL_AI_MODEL) {
   return {
-    providerClass:LOCAL_AI_MODEL.providerClass,
-    destination:LOCAL_AI_MODEL.destination,
-    endpoint:LOCAL_AI_MODEL.endpoint,
-    model:LOCAL_AI_MODEL.model,
+    providerClass:model.providerClass,
+    destination:model.destination,
+    endpoint:model.endpoint,
+    model:model.model,
   };
 }
 
@@ -40,6 +68,7 @@ export function browserLocalAiSupported(scope = globalThis) {
 }
 
 export function makeLocalAiWorkerSource(
+  modelDefinition = LOCAL_AI_MODEL,
   transformersModule = TRANSFORMERS_JS_MODULE,
 ) {
   return `
@@ -60,23 +89,30 @@ let model = null;
 let activeRequestId = null;
 const stoppingCriteria = new InterruptableStoppingCriteria();
 const progress = data => self.postMessage({ type:'progress', data });
+self.postMessage({ type:'booted' });
 
 async function loadModel() {
   self.postMessage({ type:'status', data:'Loading tokenizer and processor…' });
   processor = await AutoProcessor.from_pretrained(
-    ${JSON.stringify(LOCAL_AI_MODEL.model)},
+    ${JSON.stringify(modelDefinition.model)},
     { progress_callback:progress },
   );
-  self.postMessage({ type:'status', data:'Loading Gemma 4 E4B into WebGPU…' });
+  self.postMessage({
+    type:'status',
+    data:${JSON.stringify('Loading ' + modelDefinition.label + ' into WebGPU…')},
+  });
   model = await Gemma4ForConditionalGeneration.from_pretrained(
-    ${JSON.stringify(LOCAL_AI_MODEL.model)},
+    ${JSON.stringify(modelDefinition.model)},
     {
-      dtype:${JSON.stringify(LOCAL_AI_MODEL.dtype)},
+      dtype:${JSON.stringify(modelDefinition.dtype)},
       device:'webgpu',
       progress_callback:progress,
     },
   );
-  self.postMessage({ type:'status', data:'Warming up Gemma 4 E4B…' });
+  self.postMessage({
+    type:'status',
+    data:${JSON.stringify('Warming up ' + modelDefinition.label + '…')},
+  });
   const warmup = processor.tokenizer('a');
   await model.generate({ ...warmup, max_new_tokens:1 });
   self.postMessage({ type:'ready' });
@@ -117,7 +153,11 @@ self.addEventListener('message', async ({ data }) => {
     if (data.type === 'load') {
       await loadModel();
     } else if (data.type === 'generate') {
-      if (!model || !processor) throw new Error('Load Gemma 4 E4B first.');
+      if (!model || !processor) {
+        throw new Error(
+          ${JSON.stringify('Load ' + modelDefinition.label + ' first.')},
+        );
+      }
       await generate(data.messages || [], data.id, data.maxTokens);
     } else if (data.type === 'stop') {
       if (!data.id || data.id === activeRequestId) stoppingCriteria.interrupt();
@@ -135,8 +175,11 @@ self.addEventListener('message', async ({ data }) => {
 }
 
 export class BrowserLocalAi {
-  constructor(scope = globalThis) {
+  constructor(scope = globalThis, {
+    modelKey = DEFAULT_LOCAL_AI_MODEL_KEY,
+  } = {}) {
     this.scope = scope;
+    this.model = localAiModel(modelKey);
     this.worker = null;
     this.workerUrl = null;
     this.ready = false;
@@ -158,7 +201,7 @@ export class BrowserLocalAi {
   }
 
   descriptor() {
-    return browserLocalProviderDescriptor();
+    return browserLocalProviderDescriptor(this.model);
   }
 
   snapshot() {
@@ -169,7 +212,7 @@ export class BrowserLocalAi {
       progress:this.progress,
       status:this.status,
       error:this.error,
-      model:LOCAL_AI_MODEL,
+      model:this.model,
     };
   }
 
@@ -187,7 +230,17 @@ export class BrowserLocalAi {
     }
   }
 
-  async hasCachedModel() {
+  selectModel(modelKey) {
+    const next = localAiModel(modelKey);
+    if (next.key === this.model.key) return this.snapshot();
+    this.dispose();
+    this.model = next;
+    this.status = 'Ready to load ' + next.label + ' on demand.';
+    this.emit();
+    return this.snapshot();
+  }
+
+  async hasCachedModel(model = this.model) {
     if (!this.scope.caches?.keys) return false;
     try {
       const names = await this.scope.caches.keys();
@@ -196,9 +249,9 @@ export class BrowserLocalAi {
         const keys = await cache.keys();
         if (keys.some((request) => {
           try {
-            return decodeURIComponent(request.url).includes(LOCAL_AI_MODEL.model);
+            return decodeURIComponent(request.url).includes(model.model);
           } catch (_) {
-            return request.url.includes(LOCAL_AI_MODEL.model);
+            return request.url.includes(model.model);
           }
         })) return true;
       }
@@ -209,26 +262,38 @@ export class BrowserLocalAi {
   ensureWorker() {
     if (this.worker) return;
     if (!this.supported) {
-      throw new Error('WebGPU is unavailable. Use NakliOS AI or an external provider.');
+      throw new Error('WebGPU is unavailable. Use NakliOS AI or an endpoint provider.');
     }
-    const source = makeLocalAiWorkerSource();
+    const source = makeLocalAiWorkerSource(this.model);
     this.workerUrl = this.scope.URL.createObjectURL(
       new this.scope.Blob([source], { type:'application/javascript' }),
     );
     this.worker = new this.scope.Worker(this.workerUrl, { type:'module' });
     this.worker.addEventListener('message', (event) => this.handleMessage(event.data));
     this.worker.addEventListener('error', (event) => {
-      this.failAll(new Error(event.message || 'The local AI worker stopped.'));
+      event.preventDefault?.();
+      const location = event.filename
+        ? ' (' + event.filename + ':' + (event.lineno || 0) + ')'
+        : '';
+      this.failAll(new Error(
+        (event.message || 'The browser blocked the local AI runtime.') + location,
+      ));
     });
   }
 
   handleMessage(data) {
+    if (data.type === 'booted') {
+      this.status = 'Transformers.js is ready. Starting ' + this.model.label + '…';
+      this.emit();
+      return;
+    }
     if (data.type === 'progress') {
       const raw = Number(data.data?.progress);
       this.progress = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : null;
       this.status = this.progress == null
         ? 'Downloading model files…'
-        : 'Downloading Gemma 4 E4B… ' + Math.round(this.progress) + '%';
+        : 'Downloading ' + this.model.label + '… ' +
+          Math.round(this.progress) + '%';
       this.emit();
       return;
     }
@@ -241,7 +306,7 @@ export class BrowserLocalAi {
       this.ready = true;
       this.loading = false;
       this.progress = 100;
-      this.status = 'Gemma 4 E4B is ready on this device.';
+      this.status = this.model.label + ' is ready on this device.';
       this.error = null;
       this.loadResolve?.(this.snapshot());
       this.clearLoadPromise();
@@ -261,11 +326,13 @@ export class BrowserLocalAi {
       this.pending.delete(data.id);
       request.cleanup();
       if (!request.text.trim()) {
-        request.reject(new Error('Gemma 4 E4B returned no readable answer.'));
+        request.reject(new Error(
+          this.model.label + ' returned no readable answer.',
+        ));
       } else {
         request.resolve({
           text:request.text.trim(),
-          model:LOCAL_AI_MODEL.model,
+          model:this.model.model,
           usage:null,
         });
       }
@@ -281,7 +348,7 @@ export class BrowserLocalAi {
       } else if (this.loading) {
         this.loading = false;
         this.error = error.message;
-        this.status = 'Could not load Gemma 4 E4B.';
+        this.status = 'Could not load ' + this.model.label + '.';
         this.loadReject?.(error);
         this.clearLoadPromise();
         this.emit();
@@ -319,10 +386,14 @@ export class BrowserLocalAi {
     onDelta = () => {},
   } = {}) {
     if (!this.ready || !this.worker) {
-      return Promise.reject(new Error('Load Gemma 4 E4B before asking Books AI.'));
+      return Promise.reject(new Error(
+        'Load ' + this.model.label + ' before asking Books AI.',
+      ));
     }
     if (this.pending.size) {
-      return Promise.reject(new Error('Gemma 4 E4B is already answering another request.'));
+      return Promise.reject(new Error(
+        this.model.label + ' is already answering another request.',
+      ));
     }
     const id = this.scope.crypto?.randomUUID?.()
       || 'local_' + Date.now().toString(36);
@@ -358,7 +429,7 @@ export class BrowserLocalAi {
     });
   }
 
-  failAll(error) {
+  stopWorker(error, { report = true } = {}) {
     this.worker?.terminate();
     if (this.workerUrl) this.scope.URL.revokeObjectURL(this.workerUrl);
     this.worker = null;
@@ -374,13 +445,24 @@ export class BrowserLocalAi {
     }
     this.pending.clear();
     this.ready = false;
-    this.error = error.message;
-    this.status = 'The local AI worker stopped.';
-    this.emit();
+    this.progress = null;
+    if (report) {
+      this.error = error.message;
+      this.status = 'Could not start the local AI runtime.';
+      this.emit();
+    } else {
+      this.error = null;
+      this.status = this.supported
+        ? 'Ready to load on demand.'
+        : 'WebGPU is unavailable in this browser.';
+    }
+  }
+
+  failAll(error) {
+    this.stopWorker(error, { report:true });
   }
 
   dispose() {
-    this.failAll(new Error('The local AI worker was closed.'));
-    this.progress = null;
+    this.stopWorker(abortError(), { report:false });
   }
 }

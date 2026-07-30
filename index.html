@@ -415,6 +415,11 @@ body { display: flex; flex-direction: column; }
 .ai-local-card-head { display:flex; justify-content:space-between; gap:10px; }
 .ai-local-card strong { font-size:11px; }
 .ai-local-card small { color:var(--muted); font-size:9px; line-height:1.4; }
+.ai-local-model {
+  width:100%; box-sizing:border-box; background:var(--body); color:var(--ink);
+  border:1px solid var(--line); border-radius:6px; padding:6px 8px;
+  font:10px/1.3 inherit;
+}
 .ai-local-load {
   border:1px solid var(--brand); border-radius:6px; padding:6px 8px;
   background:var(--panel); color:var(--brand); cursor:pointer; font:10px/1.2 inherit;
@@ -896,6 +901,17 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   padding:9px 10px; border:1px solid var(--line); border-radius:7px;
   background:var(--row); color:var(--muted); font-size:11px; line-height:1.5;
 }
+.ai-provider-presets { display:flex; flex-wrap:wrap; gap:7px; margin:8px 0 12px; }
+.ai-provider-presets button,.ai-provider-test {
+  background:var(--row); color:var(--ink); border:1px solid var(--line);
+  border-radius:7px; padding:7px 10px; cursor:pointer; font:11px/1.2 inherit;
+}
+.ai-provider-presets button:hover,.ai-provider-test:hover {
+  border-color:var(--brand);
+}
+.ai-provider-help {
+  margin:-4px 0 12px; color:var(--muted); font-size:10px; line-height:1.45;
+}
 .ai-consent {
   display:flex; align-items:flex-start; gap:8px; margin:12px 0;
   color:var(--ink); font-size:11px; line-height:1.45;
@@ -1076,12 +1092,21 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
         <div class="ai-local-card" id="reader-ai-local-card">
           <div class="ai-local-card-head">
             <div>
-              <strong>Gemma 4 E4B · WebGPU</strong>
-              <small>Transformers.js · about 4 GB once, cached by this browser</small>
+              <strong id="reader-ai-local-title">Gemma 4 E2B · WebGPU</strong>
+              <small id="reader-ai-local-detail">
+                Transformers.js · about 3.4 GB once, cached by this browser
+              </small>
             </div>
             <button class="ai-local-load" id="reader-ai-local-load"
-                    type="button">Load model</button>
+                    type="button">Load E2B</button>
           </div>
+          <label class="sr-only" for="reader-ai-local-model">
+            On-device model
+          </label>
+          <select class="ai-local-model" id="reader-ai-local-model">
+            <option value="gemma-4-e2b">Gemma 4 E2B · smaller, recommended</option>
+            <option value="gemma-4-e4b">Gemma 4 E4B · higher quality</option>
+          </select>
           <progress class="ai-local-progress" id="reader-ai-local-progress"
                     max="100" value="0" hidden></progress>
           <div class="ai-local-status" id="reader-ai-local-status">
@@ -1407,23 +1432,41 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div class="ai-local-card">
       <div class="ai-local-card-head">
         <div>
-          <strong>Built in · Gemma 4 E4B</strong>
-          <small>Transformers.js 4.2 · WebGPU · about 4 GB, cached locally</small>
+          <strong id="provider-ai-local-title">Built in · Gemma 4 E2B</strong>
+          <small id="provider-ai-local-detail">
+            Transformers.js 4.2 · WebGPU · about 3.4 GB, cached locally
+          </small>
         </div>
         <button class="ai-local-load" id="provider-ai-local-load"
-                type="button">Load model</button>
+                type="button">Load E2B</button>
       </div>
+      <label class="sr-only" for="provider-ai-local-model">
+        On-device model
+      </label>
+      <select class="ai-local-model" id="provider-ai-local-model">
+        <option value="gemma-4-e2b">Gemma 4 E2B · smaller, recommended</option>
+        <option value="gemma-4-e4b">Gemma 4 E4B · higher quality</option>
+      </select>
       <progress class="ai-local-progress" id="provider-ai-local-progress"
                 max="100" value="0" hidden></progress>
       <div class="ai-local-status" id="provider-ai-local-status">
         No book text is uploaded. Model files are downloaded from Hugging Face.
       </div>
     </div>
-    <h4 style="margin:18px 0 6px;font-size:12px">Optional endpoint fallback</h4>
+    <h4 style="margin:18px 0 6px;font-size:12px">Endpoint or BYOK</h4>
     <p>
       The endpoint and model stay in this browser. The API key is session-only
       and is never written into a book, library export, or log.
     </p>
+    <div class="ai-provider-presets" aria-label="Provider presets">
+      <button type="button" data-ai-provider-preset="ollama">Ollama</button>
+      <button type="button" data-ai-provider-preset="lm-studio">LM Studio</button>
+      <button type="button" data-ai-provider-preset="byok">Remote BYOK</button>
+    </div>
+    <div class="ai-provider-help" id="ai-provider-help">
+      Ollama and LM Studio expose OpenAI-compatible APIs. Start the local
+      server, allow CORS for this Books origin, then test the connection.
+    </div>
     <div class="books-dialog-field">
       <label for="ai-provider-class">Destination class</label>
       <select id="ai-provider-class">
@@ -1439,7 +1482,9 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div class="books-dialog-text-field">
       <label for="ai-provider-model">Model identifier</label>
       <input id="ai-provider-model" type="text" maxlength="300"
-             autocomplete="off" placeholder="local-reader">
+             autocomplete="off" placeholder="Choose a model after testing"
+             list="ai-provider-model-options">
+      <datalist id="ai-provider-model-options"></datalist>
     </div>
     <div class="books-dialog-text-field">
       <label for="ai-provider-key">API key <span aria-hidden="true">·</span> session only</label>
@@ -1461,6 +1506,8 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
          aria-live="polite">AI is optional. Reading and local lexical search do not depend on it.</div>
     <div class="books-dialog-actions">
       <button type="button" data-close-dialog="ai-provider-dialog">Cancel</button>
+      <button class="ai-provider-test" id="ai-provider-test"
+              type="button">Test connection</button>
       <button class="primary" type="submit">Save provider</button>
     </div>
   </form>
@@ -2047,6 +2094,7 @@ import {
   callOpenAICompatible,
   GROUNDED_PROMPT_VERSION,
   hashAiConfiguration,
+  listOpenAICompatibleModels,
   makeAiRunRecord,
   makeProviderConsent,
   mergeModelSemanticRecords,
@@ -2059,7 +2107,7 @@ import {
 } from './semantic-ai.js';
 import {
   BrowserLocalAi,
-  LOCAL_AI_MODEL,
+  DEFAULT_LOCAL_AI_MODEL_KEY,
 } from './local-ai-sidecar.js';
 
 const VENDOR_FOLIATE = './vendor/foliate-js@1.0.1/';
@@ -2073,8 +2121,19 @@ const TRASH_COVERS_PREFIX = 'trash/covers/';
 const AI_PROVIDER_CONFIG_KEY = 'books.aiProvider.v1';
 const AI_PROVIDER_CONSENT_KEY = 'books.aiConsent.v1';
 const AI_PROVIDER_SESSION_KEY = 'books.aiKey.session.v1';
+const AI_LOCAL_MODEL_KEY = 'books.localAiModel.v1';
 const AI_RUNS_PREFIX = 'semantic/ai-runs/';
-const browserLocalAi = new BrowserLocalAi();
+function loadBrowserLocalModelKey() {
+  try {
+    return localStorage.getItem(AI_LOCAL_MODEL_KEY)
+      || DEFAULT_LOCAL_AI_MODEL_KEY;
+  } catch (_) {
+    return DEFAULT_LOCAL_AI_MODEL_KEY;
+  }
+}
+const browserLocalAi = new BrowserLocalAi(globalThis, {
+  modelKey:loadBrowserLocalModelKey(),
+});
 const ENGINE_BY_EXT = {
   epub:'foliate', mobi:'foliate', azw3:'foliate', fb2:'foliate',
   pdf:'pdf',
@@ -2169,8 +2228,11 @@ const aiProviderForm = document.getElementById('ai-provider-form');
 const aiProviderClass = document.getElementById('ai-provider-class');
 const aiProviderEndpoint = document.getElementById('ai-provider-endpoint');
 const aiProviderModel = document.getElementById('ai-provider-model');
+const aiProviderModelOptions = document.getElementById('ai-provider-model-options');
 const aiProviderKey = document.getElementById('ai-provider-key');
 const aiProviderEnabled = document.getElementById('ai-provider-enabled');
+const aiProviderHelp = document.getElementById('ai-provider-help');
+const aiProviderTest = document.getElementById('ai-provider-test');
 const aiRemoteConsentRow = document.getElementById('ai-remote-consent-row');
 const aiRemoteConsent = document.getElementById('ai-remote-consent');
 const aiRemoteConsentLabel = document.getElementById('ai-remote-consent-label');
@@ -2178,6 +2240,9 @@ const aiProviderStatus = document.getElementById('ai-provider-status');
 const providerAiLocalLoad = document.getElementById('provider-ai-local-load');
 const providerAiLocalProgress = document.getElementById('provider-ai-local-progress');
 const providerAiLocalStatus = document.getElementById('provider-ai-local-status');
+const providerAiLocalTitle = document.getElementById('provider-ai-local-title');
+const providerAiLocalDetail = document.getElementById('provider-ai-local-detail');
+const providerAiLocalModel = document.getElementById('provider-ai-local-model');
 const libraryAskDialog = document.getElementById('library-ask-dialog');
 const libraryAskBoundary = document.getElementById('library-ask-boundary');
 const libraryAskScope = document.getElementById('library-ask-scope');
@@ -2195,6 +2260,9 @@ const readerAiLocalCard = document.getElementById('reader-ai-local-card');
 const readerAiLocalLoad = document.getElementById('reader-ai-local-load');
 const readerAiLocalProgress = document.getElementById('reader-ai-local-progress');
 const readerAiLocalStatus = document.getElementById('reader-ai-local-status');
+const readerAiLocalTitle = document.getElementById('reader-ai-local-title');
+const readerAiLocalDetail = document.getElementById('reader-ai-local-detail');
+const readerAiLocalModel = document.getElementById('reader-ai-local-model');
 const readerAiProviderSettings = document.getElementById('reader-ai-provider-settings');
 const readerAiContext = document.getElementById('reader-ai-context');
 const readerAiQuestion = document.getElementById('reader-ai-question');
@@ -6697,8 +6765,33 @@ function aiCapabilityReady(capability = 'answerFromSources') {
   return standaloneAiCapability(capability).allowed;
 }
 
+function selectedLocalAiLabel() {
+  return browserLocalAi.snapshot().model.label;
+}
+
+function selectBrowserLocalAiModel(modelKey) {
+  try {
+    localStorage.setItem(AI_LOCAL_MODEL_KEY, modelKey);
+  } catch (_) {}
+  readerAiCacheChecked = false;
+  browserLocalAi.selectModel(modelKey);
+}
+
 function updateLocalAiSurfaces(snapshot = browserLocalAi.snapshot()) {
   const progress = snapshot.progress == null ? 0 : snapshot.progress;
+  const approximateGigabytes =
+    (snapshot.model.approximateDownloadBytes / 1_000_000_000).toFixed(1);
+  readerAiLocalTitle.textContent = snapshot.model.label + ' · WebGPU';
+  providerAiLocalTitle.textContent = 'Built in · ' + snapshot.model.label;
+  for (const detail of [readerAiLocalDetail, providerAiLocalDetail]) {
+    detail.textContent =
+      'Transformers.js 4.2 · WebGPU · about ' + approximateGigabytes +
+      ' GB, cached locally';
+  }
+  for (const select of [readerAiLocalModel, providerAiLocalModel]) {
+    select.value = snapshot.model.key;
+    select.disabled = snapshot.loading;
+  }
   for (const element of [readerAiLocalProgress, providerAiLocalProgress]) {
     element.hidden = !snapshot.loading;
     element.value = progress;
@@ -6707,7 +6800,7 @@ function updateLocalAiSurfaces(snapshot = browserLocalAi.snapshot()) {
     button.disabled = !snapshot.supported || snapshot.loading || snapshot.ready;
     button.textContent = snapshot.ready
       ? 'Ready'
-      : snapshot.loading ? 'Loading…' : 'Load model';
+      : snapshot.loading ? 'Loading…' : 'Load ' + snapshot.model.shortLabel;
   }
   const status = snapshot.error
     ? snapshot.status + ' ' + snapshot.error
@@ -6723,7 +6816,7 @@ function updateLocalAiSurfaces(snapshot = browserLocalAi.snapshot()) {
     && (snapshot.ready || snapshot.loading)
   ) {
     readerAiSidecar.querySelector('#reader-ai-title').textContent =
-      'Books AI · ' + LOCAL_AI_MODEL.label;
+      'Books AI · ' + snapshot.model.label;
   }
   if (
     snapshot.ready
@@ -6741,14 +6834,15 @@ function updateLocalAiSurfaces(snapshot = browserLocalAi.snapshot()) {
 }
 
 async function loadBrowserLocalAi() {
+  const label = selectedLocalAiLabel();
   try {
     await browserLocalAi.load();
-    showToast('Gemma 4 E4B is ready in the private AI sidecar.', {
+    showToast(label + ' is ready in the private AI sidecar.', {
       duration:5000,
     });
   } catch (error) {
     showToast(
-      "Couldn't load Gemma 4 E4B: " + String(error?.message || error),
+      "Couldn't load " + label + ': ' + String(error?.message || error),
       { error:true, duration:7000 },
     );
   }
@@ -6760,7 +6854,50 @@ providerAiLocalLoad.addEventListener('click', () => {
 readerAiLocalLoad.addEventListener('click', () => {
   void loadBrowserLocalAi();
 });
+for (const select of [readerAiLocalModel, providerAiLocalModel]) {
+  select.addEventListener('change', () => {
+    selectBrowserLocalAiModel(select.value);
+  });
+}
 browserLocalAi.subscribe(updateLocalAiSurfaces);
+
+const AI_PROVIDER_PRESETS = Object.freeze({
+  ollama:{
+    providerClass:'local',
+    endpoint:'http://127.0.0.1:11434',
+    help:
+      'Ollama: start ollama serve, allow this origin with OLLAMA_ORIGINS, ' +
+      'then test to discover installed models.',
+  },
+  'lm-studio':{
+    providerClass:'local',
+    endpoint:'http://127.0.0.1:1234',
+    help:
+      'LM Studio: start the local server in Developer, enable CORS in Server ' +
+      'Settings, then test to discover loaded models.',
+  },
+  byok:{
+    providerClass:'remote',
+    endpoint:'',
+    help:
+      'Remote BYOK: enter the provider’s HTTPS OpenAI-compatible base URL, ' +
+      'a session-only API key, and approve the exact destination.',
+  },
+});
+
+function applyAiProviderPreset(presetKey) {
+  const preset = AI_PROVIDER_PRESETS[presetKey];
+  if (!preset) return;
+  aiProviderClass.value = preset.providerClass;
+  aiProviderEndpoint.value = preset.endpoint;
+  aiProviderModel.value = '';
+  aiRemoteConsent.checked = false;
+  aiProviderModelOptions.replaceChildren();
+  aiProviderHelp.textContent = preset.help;
+  aiProviderStatus.textContent =
+    'Preset selected. Test the connection before saving.';
+  updateRemoteConsentSurface();
+}
 
 function updateRemoteConsentSurface() {
   const remote = aiProviderClass.value === 'remote';
@@ -6774,6 +6911,26 @@ function updateRemoteConsentSurface() {
       'I approve sending retrieved book passages to ' + destination +
       ' for source-grounded answers and on-demand concept/scene enrichment. ' +
       'This approval is destination-specific and revocable.';
+  }
+}
+
+function updateAiProviderHelp() {
+  const endpoint = aiProviderEndpoint.value.trim();
+  if (
+    aiProviderClass.value === 'local'
+    && /^https?:\/\/(?:127\.0\.0\.1|localhost):11434(?:\/|$)/i.test(endpoint)
+  ) {
+    aiProviderHelp.textContent = AI_PROVIDER_PRESETS.ollama.help;
+  } else if (
+    aiProviderClass.value === 'local'
+    && /^https?:\/\/(?:127\.0\.0\.1|localhost):1234(?:\/|$)/i.test(endpoint)
+  ) {
+    aiProviderHelp.textContent = AI_PROVIDER_PRESETS['lm-studio'].help;
+  } else {
+    aiProviderHelp.textContent = aiProviderClass.value === 'remote'
+      ? AI_PROVIDER_PRESETS.byok.help
+      : 'Use any visible OpenAI-compatible local endpoint. It must allow ' +
+        'browser CORS requests from ' + location.origin + '.';
   }
 }
 
@@ -6802,11 +6959,61 @@ function openAiProviderSettings() {
     ? 'Configured for ' + config.model + ' at ' + config.destination + '.'
     : 'AI is optional. Reading and local lexical search do not depend on it.';
   updateRemoteConsentSurface();
+  updateAiProviderHelp();
   aiProviderDialog.showModal();
 }
 
-aiProviderClass.addEventListener('change', updateRemoteConsentSurface);
-aiProviderEndpoint.addEventListener('input', updateRemoteConsentSurface);
+for (const button of aiProviderDialog.querySelectorAll('[data-ai-provider-preset]')) {
+  button.addEventListener('click', () => {
+    applyAiProviderPreset(button.dataset.aiProviderPreset);
+  });
+}
+aiProviderClass.addEventListener('change', () => {
+  aiRemoteConsent.checked = false;
+  updateRemoteConsentSurface();
+  updateAiProviderHelp();
+});
+aiProviderEndpoint.addEventListener('input', () => {
+  aiRemoteConsent.checked = false;
+  updateRemoteConsentSurface();
+  updateAiProviderHelp();
+  aiProviderModelOptions.replaceChildren();
+});
+aiProviderTest.addEventListener('click', async () => {
+  aiProviderTest.disabled = true;
+  aiProviderStatus.textContent = 'Testing the provider and discovering models…';
+  try {
+    const result = await listOpenAICompatibleModels({
+      providerClass:aiProviderClass.value,
+      endpoint:aiProviderEndpoint.value,
+      apiKey:aiProviderKey.value
+        || sessionStorage.getItem(AI_PROVIDER_SESSION_KEY)
+        || '',
+    });
+    aiProviderModelOptions.replaceChildren();
+    for (const model of result.models) {
+      const option = document.createElement('option');
+      option.value = model;
+      aiProviderModelOptions.append(option);
+    }
+    if (
+      result.models.length
+      && !result.models.includes(aiProviderModel.value.trim())
+    ) {
+      aiProviderModel.value = result.models[0];
+    }
+    aiProviderStatus.textContent = result.models.length
+      ? 'Connected to ' + result.destination + '. Found ' +
+        result.models.length.toLocaleString() + ' model' +
+        (result.models.length === 1 ? '' : 's') + '; choose one and save.'
+      : 'Connected to ' + result.destination +
+        ', but it returned no model identifiers.';
+  } catch (error) {
+    aiProviderStatus.textContent = error?.message || String(error);
+  } finally {
+    aiProviderTest.disabled = false;
+  }
+});
 aiProviderForm.addEventListener('submit', (event) => {
   event.preventDefault();
   if (
@@ -6907,10 +7114,13 @@ function resolveAiProvider(capability = 'answerFromSources') {
   );
   if (!result.allowed) {
     const messages = {
-      'provider-disabled':'Load Gemma 4 E4B or enable an endpoint provider.',
+      'provider-disabled':
+        'Load ' + selectedLocalAiLabel() + ' or enable an endpoint provider.',
       'destination-consent-required':
         'Approve the configured remote destination in Provider settings first.',
-      'invalid-provider':'Load Gemma 4 E4B or configure a visible endpoint and model.',
+      'invalid-provider':
+        'Load ' + selectedLocalAiLabel() +
+        ' or configure a visible endpoint and model.',
     };
     throw new Error(messages[result.reason] || 'Configure an AI provider first.');
   }
@@ -7049,10 +7259,13 @@ function describeAiBoundary() {
     return 'NakliOS mediates this request using its configured AI consent and destination.';
   }
   if (browserLocalAi.ready) {
-    return 'Gemma 4 E4B runs in a dedicated WebGPU worker; book text stays on this device.';
+    return selectedLocalAiLabel() +
+      ' runs in a dedicated WebGPU worker; book text stays on this device.';
   }
   const config = loadStandaloneAiConfig();
-  if (!config?.enabled) return 'Load Gemma 4 E4B or configure another provider.';
+  if (!config?.enabled) {
+    return 'Load ' + selectedLocalAiLabel() + ' or configure another provider.';
+  }
   return config.providerClass === 'local'
     ? 'Retrieved excerpts are sent to the visible local service at ' +
       config.destination + '.'
@@ -7077,7 +7290,8 @@ function openLibraryAsk(scope = 'library') {
     ' Answers must cite those passages as [S1], [S2], and so on.';
   libraryAskStatus.textContent = aiCapabilityReady()
     ? 'Ready. No source text is sent until you choose Ask.'
-    : 'Load Gemma 4 E4B or configure a provider to enable source-grounded answers.';
+    : 'Load ' + selectedLocalAiLabel() +
+      ' or configure a provider to enable source-grounded answers.';
   libraryAskStop.hidden = true;
   libraryAskSubmit.disabled = false;
   libraryAskDialog.showModal();
@@ -8477,7 +8691,7 @@ async function openReaderAi() {
       naklios.capabilities.hosted && naklios.capabilities.ai
         ? naklios.capabilities.aiModelLabel || 'NakliOS provider'
         : browserLocalAi.ready || browserLocalAi.loading
-          ? LOCAL_AI_MODEL.label
+          ? selectedLocalAiLabel()
           : standaloneConfig?.enabled
             ? standaloneConfig.model
             : 'private reading companion'
@@ -8513,7 +8727,7 @@ async function openReaderAi() {
       ' It is not added to your notes.';
     readerAiStatus.textContent = aiCapabilityReady()
       ? 'Choose an action or ask a question.'
-      : 'Load Gemma 4 E4B or choose another provider.';
+      : 'Load ' + selectedLocalAiLabel() + ' or choose another provider.';
   } catch (error) {
     readerAiStatus.textContent = error?.message || String(error);
   }

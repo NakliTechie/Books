@@ -72,21 +72,26 @@ library bytes.
 AI is optional. Reading, lexical search, annotations, concepts produced by
 deterministic extraction, and recovery work without a model.
 
-- The built-in route runs the pinned Gemma 4 E4B ONNX model in a dedicated
-  WebGPU Worker. The user explicitly starts the approximately 4 GB model
+- The built-in route runs a pinned Gemma 4 E2B or E4B ONNX model in a
+  dedicated WebGPU Worker. The user explicitly starts the selected model
   download; browser caching is enabled. Model-file requests go to Hugging
   Face, and the pinned Transformers.js module loads from jsDelivr. Book text
   is not included in either request.
-- The CSP permits only that named script origin for the Worker module and
-  permits `blob:` fetches required by both Foliate's generated EPUB sections
-  and the local module Worker. The existing `worker-src` and `frame-src`
-  restrictions remain in place.
+- The CSP permits only that named script and Worker origin for the module
+  import graph and permits `blob:` fetches required by both Foliate's
+  generated EPUB sections and the local module Worker. `wasm-unsafe-eval` is
+  narrowly enabled in `script-src` so the pinned ONNX runtime can compile
+  WebAssembly, and `blob:` is enabled there for ONNX's generated WebGPU
+  backend module; arbitrary JavaScript `eval` remains disallowed. The existing
+  `worker-src` and `frame-src` restrictions remain in place.
 - Standalone configuration always shows the endpoint, model, and whether the
   destination is local or remote.
 - A remote provider must use HTTPS and requires consent tied to the exact
   destination origin and named capabilities.
 - A local provider may use HTTP for loopback/LAN operation; its visible
-  endpoint is the consent boundary.
+  endpoint is the consent boundary. Books tests `/v1/models` before use and
+  explains that Ollama requires `OLLAMA_ORIGINS` while LM Studio requires its
+  CORS server setting.
 - Credentials are rejected in provider URLs. API keys are held in
   `sessionStorage`, cleared when the destination changes, and excluded from
   portable records and run provenance.

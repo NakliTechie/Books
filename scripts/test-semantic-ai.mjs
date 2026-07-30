@@ -6,6 +6,7 @@ import {
   callOpenAICompatible,
   GROUNDED_PROMPT_VERSION,
   hashAiConfiguration,
+  listOpenAICompatibleModels,
   makeAiRunRecord,
   makeProviderConsent,
   mergeModelSemanticRecords,
@@ -164,6 +165,60 @@ assert.equal(capturedRequest.url, 'https://provider.example/v1/chat/completions'
 assert.equal(capturedRequest.options.headers.Authorization, 'Bearer session-secret');
 assert.doesNotMatch(capturedRequest.options.body, /session-secret/);
 assert.equal(completion.text, 'Grounded response [S1].');
+
+let modelsRequest = null;
+const discovered = await listOpenAICompatibleModels({
+  endpoint:'http://127.0.0.1:11434',
+  providerClass:'local',
+  apiKey:'local-session-secret',
+  fetchImpl:async (url, options) => {
+    modelsRequest = { url, options };
+    return {
+      ok:true,
+      status:200,
+      async json() {
+        return {
+          data:[
+            { id:'gemma3:4b' },
+            { id:'qwen3:8b' },
+            { id:'gemma3:4b' },
+          ],
+        };
+      },
+    };
+  },
+});
+assert.equal(modelsRequest.url, 'http://127.0.0.1:11434/v1/models');
+assert.equal(modelsRequest.options.method, 'GET');
+assert.equal(
+  modelsRequest.options.headers.Authorization,
+  'Bearer local-session-secret',
+);
+assert.deepEqual(discovered.models, ['gemma3:4b', 'qwen3:8b']);
+assert.equal(discovered.destination, 'http://127.0.0.1:11434');
+
+let modelsV1Url = null;
+await listOpenAICompatibleModels({
+  endpoint:'http://127.0.0.1:1234/v1',
+  fetchImpl:async (url) => {
+    modelsV1Url = url;
+    return {
+      ok:true,
+      status:200,
+      async json() { return { data:[] }; },
+    };
+  },
+});
+assert.equal(modelsV1Url, 'http://127.0.0.1:1234/v1/models');
+await assert.rejects(
+  listOpenAICompatibleModels({
+    endpoint:'http://127.0.0.1:11434',
+    fetchImpl:async () => {
+      throw new TypeError('Failed to fetch');
+    },
+  }),
+  /OLLAMA_ORIGINS[\s\S]*LM Studio, enable CORS/,
+);
 
 const promptHash = await hashAiConfiguration({
   promptVersion:GROUNDED_PROMPT_VERSION,

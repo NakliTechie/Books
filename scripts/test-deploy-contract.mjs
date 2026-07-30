@@ -59,6 +59,21 @@ assert.match(
   /script-src[^;]*https:\/\/cdn\.jsdelivr\.net/,
   'the pinned Transformers.js worker module has an explicit CSP source',
 );
+assert.match(
+  headers,
+  /script-src[^;]*'wasm-unsafe-eval'/,
+  'the pinned ONNX runtime may compile WebAssembly inside the local AI Worker',
+);
+assert.match(
+  headers,
+  /script-src[^;]*\bblob:/,
+  'the ONNX WebGPU backend may import its generated blob module',
+);
+assert.match(
+  headers,
+  /worker-src[^;]*https:\/\/cdn\.jsdelivr\.net/,
+  'the module Worker may import the pinned Transformers.js runtime',
+);
 assert.match(headers, /workers\.dev\/\*[\s\S]*?X-Robots-Tag:\s*noindex/);
 
 assert.match(workflow, /npm ci/);

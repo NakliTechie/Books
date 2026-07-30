@@ -42,6 +42,11 @@ assert.doesNotMatch(
   'standalone API keys are never persisted in localStorage',
 );
 assert.match(
+  index,
+  /aiProviderEndpoint\.addEventListener\('input', \(\) => \{\s*aiRemoteConsent\.checked = false;/,
+  'changing a remote destination invalidates the prior consent checkbox',
+);
+assert.match(
   localAi,
   /transformers@' \+\s*TRANSFORMERS_JS_VERSION \+ '\/\+esm'/,
   'the browser AI runtime uses a pinned Transformers.js module version',
@@ -94,6 +99,9 @@ assert.match(headers, /object-src 'none'/);
 assert.match(headers, /base-uri 'none'/);
 assert.match(headers, /form-action 'self'/);
 assert.match(headers, /connect-src[^;]*\bblob:/);
+assert.match(headers, /script-src[^;]*'wasm-unsafe-eval'/);
+assert.match(headers, /script-src[^;]*\bblob:/);
+assert.match(headers, /worker-src[^;]*https:\/\/cdn\.jsdelivr\.net/);
 assert.doesNotMatch(
   headers,
   /frame-ancestors|X-Frame-Options/i,
