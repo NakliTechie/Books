@@ -18,6 +18,7 @@ for (const asset of [
   'local-ai-sidecar.js',
   'semantic-embedding-sidecar.js',
   'idea-graph.js',
+  'open-library-metadata.js',
   'embedding-binary.js',
   '_headers',
 ]) {
@@ -77,6 +78,11 @@ assert.match(
   headers,
   /worker-src[^;]*https:\/\/cdn\.jsdelivr\.net/,
   'the module Worker may import the pinned Transformers.js runtime',
+);
+assert.match(
+  headers,
+  /img-src[^;]*https:\/\/covers\.openlibrary\.org/,
+  'on-demand Open Library cover previews use one explicit image origin',
 );
 assert.match(headers, /workers\.dev\/\*[\s\S]*?X-Robots-Tag:\s*noindex/);
 

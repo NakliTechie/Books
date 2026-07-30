@@ -5,27 +5,28 @@
 
 ## Access-dependent verification
 
-- Enable **Allow access to file URLs** for the ChatGPT Chrome extension before
-  repeating the disposable localhost file-import smoke. Production standalone
-  reading and the candidate NakliOS host regression already pass.
-- Sign in to the Cloudflare dashboard in Chrome so its Git integration and
-  resulting production build can be inspected there. Wrangler is currently
-  authenticated to a different Cloudflare account than the `naklitechie.com`
-  Worker.
-- Turn on Background Intelligence when ready to download the local embedding
-  model and build cross-book relationships. The production report is otherwise
-  healthy; relationships are currently zero because semantic embeddings are
-  disabled.
-- Grant a real Folder (and, separately, a sync-managed/network Folder) for the
-  mutation, permission-loss, partial-write, and long-running soak matrix.
+- [x] Chrome extension local-file access was enabled.
+- [x] Cloudflare dashboard access and the named `naklitechie` Wrangler profile
+  were reauthenticated and verified without replacing the default profile.
+- [x] Background Intelligence was enabled for the production Browser library;
+  the local MiniLM encoder downloaded and initialized.
+- [x] A disposable recursive Folder under
+  `~/Code/temp/books-folder-soak` completed add, repeated missing, and restored
+  rename reconciliation. The exercise found and fixed an identity-duplication
+  bug; a regression now covers the restored-after-gap case.
+- [ ] A sync-managed/network Folder is not currently available. Defer its
+  permission-loss, partial-write, conflict, and long-running soak matrix until
+  the user has one.
 
 ## Product decisions
 
-- **OCR:** choose the first default language/model pack and whether hosted OCR
-  should be offered at all. The accepted local-first route and remaining
-  corpus gate are in `OCR-DECISION.md`.
-- **Metadata/cover provider:** approve licensing, attribution, caching,
-  correction, and remote-destination policy before a provider is enabled.
+- [x] **OCR product defaults:** English/Latin PP-OCRv6 tiny is the first browser
+  candidate, local PP-StructureV3 handles complex layouts, and hosted OCR is
+  disabled. Runtime corpus and resource gates still block the production OCR
+  queue; see `OCR-DECISION.md`.
+- [x] **Metadata/cover provider:** Open Library is enabled only through an
+  explicit per-book lookup, with bounded results, preserved provenance,
+  courtesy links, no bulk calls, and a separate cover choice.
 - **Illustrations:** choose purpose, visual style/consistency, cadence,
   provider/on-device route, safety/copyright posture, storage budget,
   regeneration, and whether generation is automatic or on demand.

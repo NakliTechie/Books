@@ -220,6 +220,11 @@ def scan_sources(
         for row in (previous or {}).get("files", [])
         if row.get("relativePath")
     }
+    previous_missing_by_path = {
+        row.get("relativePath"): row
+        for row in (previous or {}).get("missing", [])
+        if row.get("relativePath")
+    }
     generation = max(1, int((previous or {}).get("generation") or 0) + 1)
     rows = []
     paths = []
@@ -290,6 +295,19 @@ def scan_sources(
             "relativePath": relative,
             "fingerprint": prior.get("fingerprint"),
             "firstMissingGeneration": prior.get("firstMissingGeneration") or generation,
+            "lastSeenGeneration": prior.get("lastSeenGeneration") or 0,
+        })
+    for relative, prior in previous_missing_by_path.items():
+        if relative in seen or any(
+            row["relativePath"] == relative for row in missing
+        ):
+            continue
+        missing.append({
+            "relativePath": relative,
+            "fingerprint": prior.get("fingerprint"),
+            "firstMissingGeneration": (
+                prior.get("firstMissingGeneration") or generation
+            ),
             "lastSeenGeneration": prior.get("lastSeenGeneration") or 0,
         })
     rows.sort(key=lambda row: row["relativePath"])
@@ -933,6 +951,7 @@ def load_manifests(sidecar: Path) -> list[dict]:
 def reconcile_manifests(sidecar: Path, inventory: dict) -> list[dict]:
     manifests = load_manifests(sidecar)
     by_filename = {}
+    recovered_missing_paths = set()
     for manifest in manifests:
         if manifest.get("recordState") == "merged":
             continue
@@ -948,7 +967,13 @@ def reconcile_manifests(sidecar: Path, inventory: dict) -> list[dict]:
     for row in inventory["files"]:
         relative = row["relativePath"]
         if relative not in by_filename:
-            candidates = missing_by_fingerprint.get(row.get("fingerprint"), [])
+            candidates = [
+                candidate
+                for candidate in missing_by_fingerprint.get(
+                    row.get("fingerprint"), []
+                )
+                if candidate["relativePath"] in by_filename
+            ]
             if len(candidates) == 1 and candidates[0]["relativePath"] in by_filename:
                 old = candidates[0]["relativePath"]
                 manifest, asset = by_filename.pop(old)
@@ -962,6 +987,7 @@ def reconcile_manifests(sidecar: Path, inventory: dict) -> list[dict]:
                 ))
                 manifest["updatedAt"] = asset["updatedAt"]
                 by_filename[relative] = (manifest, asset)
+                recovered_missing_paths.add(old)
 
     for row in inventory["files"]:
         relative = row["relativePath"]
@@ -999,6 +1025,14 @@ def reconcile_manifests(sidecar: Path, inventory: dict) -> list[dict]:
         atomic_json(
             sidecar / "catalog" / "works" / f"{manifest['workId']}.json",
             manifest,
+        )
+    if recovered_missing_paths:
+        inventory["missing"] = [
+            record for record in inventory.get("missing", [])
+            if record.get("relativePath") not in recovered_missing_paths
+        ]
+        inventory.setdefault("counts", {})["missing"] = len(
+            inventory["missing"]
         )
     return manifests
 
@@ -1794,14 +1828,15 @@ def main():
     )
     atomic_json(generation_path, inventory)
     atomic_json(sidecar / "inventory" / "current.json", inventory)
+    manifests = reconcile_manifests(sidecar, inventory)
+    atomic_json(generation_path, inventory)
+    atomic_json(sidecar / "inventory" / "current.json", inventory)
     print(
         f"Inventory: {inventory['counts']['total']} books "
         f"({inventory['counts']['added']} new, "
         f"{inventory['counts']['changed']} changed, "
         f"{inventory['counts']['missing']} missing)"
     )
-
-    manifests = reconcile_manifests(sidecar, inventory)
     rebuild_catalog(sidecar, manifests)
     embedder = Embedder(args)
     processed = 0

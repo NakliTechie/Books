@@ -90,6 +90,49 @@ assert.equal(renamedCatalog.works.length, 1);
 assert.equal(renamedCatalog.works[0].workId, workId);
 assert.deepEqual(renamedCatalog.works[0].sourceFilenames, ['Renamed Feedback.md']);
 
+renameSync(
+  join(fixture, 'Renamed Feedback.md'),
+  join(fixture, '.held-feedback.md'),
+);
+for (let pass = 0; pass < 2; pass++) {
+  execFileSync(
+    'python3',
+    [
+      new URL('./books-index.py', import.meta.url).pathname,
+      fixture,
+      '--no-embeddings',
+    ],
+    { stdio:'pipe' },
+  );
+}
+renameSync(
+  join(fixture, '.held-feedback.md'),
+  join(fixture, 'Returned Feedback.md'),
+);
+execFileSync(
+  'python3',
+  [
+    new URL('./books-index.py', import.meta.url).pathname,
+    fixture,
+    '--no-embeddings',
+  ],
+  { stdio:'pipe' },
+);
+const returnedCatalog = JSON.parse(readFileSync(
+  join(fixture, '.books', 'catalog', 'catalog.json'),
+  'utf8',
+));
+assert.equal(
+  returnedCatalog.works.length,
+  1,
+  'a source restored under a new path after an intervening scan is not duplicated',
+);
+assert.equal(returnedCatalog.works[0].workId, workId);
+assert.deepEqual(
+  returnedCatalog.works[0].sourceFilenames,
+  ['Returned Feedback.md'],
+);
+
 const jobPath = join(fixture, '.books', 'jobs', workId + '.json');
 const leasedJob = JSON.parse(readFileSync(jobPath, 'utf8'));
 leasedJob.lease = {
@@ -101,7 +144,7 @@ leasedJob.lease = {
 };
 writeFileSync(jobPath, JSON.stringify(leasedJob));
 appendFileSync(
-  join(fixture, 'Renamed Feedback.md'),
+  join(fixture, 'Returned Feedback.md'),
   '\n\nA changed source waits for its active foreign lease.',
 );
 execFileSync(
@@ -171,7 +214,7 @@ const recoveredInventory = JSON.parse(readFileSync(
 ));
 assert.equal(
   recoveredInventory.generation,
-  6,
+  9,
   'a partial current inventory recovers from the latest completed generation',
 );
 assert.equal(recoveredInventory.counts.unstable, 0);

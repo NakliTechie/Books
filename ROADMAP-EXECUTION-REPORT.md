@@ -1,9 +1,10 @@
 # Books roadmap execution report
 
-> **Run:** 2026-07-30
+> **Run:** 2026-07-31
 >
-> **State:** Autonomous work and live mode validation complete; real Folder,
-> OCR runtime, and account-specific release inspection remain.
+> **State:** Approved implementation and local Folder validation complete;
+> final release verification is in progress. The unavailable sync-folder soak
+> and gated OCR runtime benchmark remain.
 
 ## Delivered in this run
 
@@ -32,6 +33,11 @@
   missing files remain reviewable.
 - Multiple-root ownership and recoverable Browser/Folder/Crate Copy/Move
   semantics are specified but remain disabled behind approval.
+- A user-granted disposable recursive Folder completed add, repeated missing,
+  and restored rename checks. Restoring a source after an intervening missing
+  generation initially created a duplicate work. Reconciliation now carries
+  missing inventory candidates forward and consumes the recovered row only
+  after a strong-fingerprint match; browser and native regressions cover it.
 
 ### Semantic quality and parity
 
@@ -63,7 +69,10 @@
   passes.
 - Open Library is recommended only for explicit on-demand ISBN lookup;
   library-wide automatic queries and fuzzy automatic overwrites are rejected.
-  Google Books remains separate optional BYOK.
+  The approved implementation is now an explicit per-book action with five
+  bounded candidates, provider courtesy links and provenance, preserved
+  user/source metadata, and a separate capped cover download. Google Books
+  remains out of the core provider list.
 
 ### Product-held batches
 
@@ -89,8 +98,8 @@ npm run corpus:ocr-public -- /path/to/output
 npm run report -- /path/to/folder-library
 ```
 
-The last full autonomous validation passed all application contracts, built
-238 static assets, and completed Wrangler's deployment dry-run. In Chrome, the
+The current release validation passed all application contracts, built
+239 static assets, and completed Wrangler's deployment dry-run. In Chrome, the
 production standalone library loaded 40 works, opened a real EPUB in Faithful
 mode, reflowed it into 352 Native source references, and produced no console
 error. The candidate NakliOS regression also passed without a console error or
@@ -99,22 +108,17 @@ user-visible export download.
 GitHub `main` deployed through the existing Cloudflare Git integration. The
 production in-app report records 40 available sources and 40 core-complete
 jobs; 20,910 passages, 636 concepts, 457 scenes, 636 source-grounded ideas,
-zero issues, and zero cross-book relationships while Background Intelligence
-and semantic embeddings are disabled.
+zero issues, and 1,677 cross-book relationships after Background Intelligence
+was enabled and the local MiniLM encoder completed.
 
-## Deferred to the final access window
+## Deferred after this release
 
-1. Sign in to the Cloudflare dashboard's `naklitechie.com` account and enable
-   local-file access for the Chrome extension when the disposable localhost
-   import smoke is repeated.
-2. Enable Background Intelligence when its local model download is desired,
-   then capture real labeled semantic queries and relationship quality.
-3. Grant representative local and sync-managed/network folders for mutation,
-   permission-loss, partial-write, and long-running reading/processing soaks.
-4. Run the official PaddleOCR.js corpus benchmark in the actual browser
-   worker.
-5. Inspect the successful Cloudflare Workers Git build in the dashboard once
-   that Chrome session is signed in.
+1. Grant a representative sync-managed/network Folder for permission-loss,
+   partial-write, conflict, and long-running reading/processing soaks.
+2. Run the official PaddleOCR.js corpus benchmark in the actual browser worker
+   before opening the production OCR queue.
+3. Label production semantic queries and relationship judgments; enabling the
+   model builds evidence but does not substitute for human quality labels.
 
 Product decisions remain separately consolidated in
 `DEFERRED-DECISIONS.md`; none blocks faithful reading, lexical search, or the

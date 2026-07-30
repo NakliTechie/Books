@@ -9,6 +9,7 @@ const ai = read('semantic-ai.js');
 const localAi = read('local-ai-sidecar.js');
 const embeddingBinary = read('embedding-binary.js');
 const library = read('semantic-library.js');
+const openLibrary = read('open-library-metadata.js');
 const headers = read('_headers');
 
 assert.match(
@@ -104,6 +105,31 @@ assert.match(
   /omittedRebuildableData:[\s\S]*?'passages\/'[\s\S]*?'indexes\/'[\s\S]*?'semantics\/'/,
   'portable export distinguishes rebuildable semantic data',
 );
+assert.match(
+  openLibrary,
+  /credentials:'omit'[\s\S]*?referrerPolicy:'no-referrer'/,
+  'metadata lookup sends neither ambient credentials nor a referrer',
+);
+assert.match(
+  openLibrary,
+  /OPEN_LIBRARY_RESULT_LIMIT = 5[\s\S]*?\.slice\(0, OPEN_LIBRARY_RESULT_LIMIT\)/,
+  'metadata lookup has a small hard result bound',
+);
+assert.match(
+  openLibrary,
+  /OPEN_LIBRARY_MIN_INTERVAL_MS = 1_000[\s\S]*?cache\.size > 50/,
+  'metadata lookup is rate-spaced and has a bounded session cache',
+);
+assert.match(
+  index,
+  /workOpenLibraryLookup\.addEventListener\('click'[\s\S]*?lookupWorkMetadata/,
+  'metadata lookup cannot start as an import-wide background side effect',
+);
+assert.match(
+  index,
+  /declaredLength > 6_000_000[\s\S]*?coverData\.byteLength > 6_000_000/,
+  'selected provider covers have declared and actual byte limits',
+);
 
 assert.match(headers, /Content-Security-Policy:/);
 assert.match(headers, /object-src 'none'/);
@@ -113,6 +139,11 @@ assert.match(headers, /connect-src[^;]*\bblob:/);
 assert.match(headers, /script-src[^;]*'wasm-unsafe-eval'/);
 assert.match(headers, /script-src[^;]*\bblob:/);
 assert.match(headers, /worker-src[^;]*https:\/\/cdn\.jsdelivr\.net/);
+assert.match(
+  headers,
+  /img-src[^;]*https:\/\/covers\.openlibrary\.org/,
+  'the image policy opens only the provider cover origin',
+);
 assert.doesNotMatch(
   headers,
   /frame-ancestors|X-Frame-Options/i,

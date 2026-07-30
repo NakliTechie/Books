@@ -132,4 +132,26 @@ assert.deepEqual(renameCandidates({ inventory:withFingerprint }), [{
   currentPath:'Research/New.pdf',
 }]);
 
+const stillMissing = reconcileFolderInventory({
+  previous:reconciled.inventory,
+  observed:[{
+    relativePath:'Fiction/Dune.epub',
+    byteLength:100,
+    lastModified:10,
+    format:'epub',
+  }],
+  now:() => '2026-07-30T00:02:00.000Z',
+});
+assert.deepEqual(
+  stillMissing.inventory.missing.map((record) => record.relativePath),
+  ['Notes/Old.txt', 'Research/New.pdf'],
+  'missing paths survive intervening scans so later restores retain identity',
+);
+assert.equal(
+  stillMissing.inventory.missing.find(
+    (record) => record.relativePath === 'Notes/Old.txt',
+  ).firstMissingGeneration,
+  4,
+);
+
 console.log('folder-library tests passed');

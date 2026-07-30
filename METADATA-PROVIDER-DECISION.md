@@ -2,17 +2,17 @@
 
 > **Recommendation:** Adapt Open Library as an optional, on-demand ISBN lookup.
 >
-> **Status:** Evidence complete; provider remains disabled pending approval of
-> the privacy and attribution policy.
+> **Status:** Approved and implemented as an explicit per-book action. There is
+> no library-wide lookup, automatic import request, or Google Books fallback.
 >
-> **Date:** 2026-07-30
+> **Date:** 2026-07-31
 
 ## Recommendation
 
-Use Open Library only when the user explicitly asks Books to look up one or
-more selected works. Match by a strong publication identifier—prefer ISBN—then
-show a preflight diff before changing title, authors, language, publication
-data, identifiers, or cover provenance.
+Use Open Library only when the user explicitly asks Books to look up the work
+whose details are open. Match by a strong publication identifier—prefer
+ISBN—show bounded candidates, and separately let the user apply missing
+metadata or choose a provider cover.
 
 Do not:
 
@@ -86,12 +86,22 @@ later refresh always presents a diff and never erases a user override.
   cover without affecting reading.
 - Provider covers remain removable cached media.
 
-## Approval gate
+## Implemented policy
 
-Before implementation, approve:
+- Clicking **Look up this book** is the consent action. The disclosure names
+  the ISBN/title/author fields and says the action never runs across the whole
+  library.
+- Results are limited to five, omit credentials and referrer data, and are not
+  persisted unless the user applies one. Identical requests share a bounded
+  in-memory session cache, and network requests are spaced at one per second.
+- Applying metadata fills only missing or filename-derived fields; user and
+  source-authored title/author values win.
+- Each result links to its Open Library work record. Accepted fields and a
+  selected cover retain provider, record ID, source URL, match, and fetch
+  provenance in the portable manifest.
+- A cover is downloaded only after **Use this cover**, is capped at 6 MB, and
+  is cached inside the active backend.
+- Google Books remains out of the core provider list.
 
-1. whether looking up an ISBN/title at Open Library counts as standing remote
-   consent or requires confirmation for each lookup session;
-2. the application contact used for an identified Open Library `User-Agent`;
-3. where the Open Library courtesy link and provenance appear;
-4. whether Google Books should be offered as a user-configured fallback.
+The browser cannot set an identified `User-Agent`; the implementation
+therefore stays a low-volume, human-triggered client and makes no bulk calls.

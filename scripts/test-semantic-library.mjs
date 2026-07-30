@@ -244,6 +244,7 @@ const details = updateWorkDetails(first.manifests[0], {
   tags: ['classic', 'fiction', 'classic'],
   shelves: ['Favourites'],
   rating: 5,
+  isbn: '978-0-306-40615-7',
 }, now);
 assert.equal(details.changed, true);
 assert.equal(details.manifest.title, 'Pride & Prejudice');
@@ -258,6 +259,14 @@ assert.equal(
 );
 assert.equal(details.manifest.metadataProvenance.title, 'user');
 assert.equal(details.manifest.metadataProvenance.authors, 'user');
+assert.deepEqual(
+  details.manifest.editions[0].identifiers['isbn-13'],
+  ['9780306406157'],
+);
+assert.equal(
+  details.manifest.editions[0].metadataProvenance.identifiers,
+  'user',
+);
 const protectedUserDetails = updateWorkMetadata(details.manifest, {
   bookId: 'Pride_Prejudice',
   title: 'Stale Sidecar Title',

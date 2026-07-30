@@ -370,7 +370,7 @@ export function updateWorkMetadata(manifest, sidecar, now = () => new Date().toI
 
 export function updateWorkDetails(
   manifest,
-  { title, authors, tags, shelves, rating },
+  { title, authors, tags, shelves, rating, isbn = undefined },
   now = () => new Date().toISOString(),
 ) {
   if (!manifest) return { manifest, changed: false };
@@ -403,17 +403,39 @@ export function updateWorkDetails(
     shelves: normalizedShelves,
     rating: Number.isFinite(normalizedRating) ? normalizedRating : null,
   };
+  if (isbn !== undefined && next.editions?.[0]) {
+    const normalizedIsbn = String(isbn || '')
+      .toUpperCase()
+      .replace(/[^\dX]/g, '');
+    const edition = next.editions[0];
+    const identifiers = { ...(edition.identifiers || {}) };
+    delete identifiers['isbn-10'];
+    delete identifiers['isbn-13'];
+    if (normalizedIsbn.length === 10 || normalizedIsbn.length === 13) {
+      identifiers[
+        normalizedIsbn.length === 13 ? 'isbn-13' : 'isbn-10'
+      ] = [normalizedIsbn];
+    }
+    edition.identifiers = identifiers;
+    edition.metadataProvenance = {
+      ...(edition.metadataProvenance || {}),
+      identifiers:'user',
+    };
+    edition.updatedAt = isoNow(now);
+  }
   const comparableBefore = {
     title: manifest.title,
     authors: manifest.authors || [],
     userMetadata: manifest.userMetadata || {},
     metadataProvenance: manifest.metadataProvenance || {},
+    editions:manifest.editions || [],
   };
   const comparableAfter = {
     title: next.title,
     authors: next.authors,
     userMetadata: next.userMetadata,
     metadataProvenance: next.metadataProvenance,
+    editions:next.editions || [],
   };
   if (jsonEqual(comparableBefore, comparableAfter)) {
     return { manifest, changed: false };

@@ -140,6 +140,12 @@ export function reconcileFolderInventory({
       record,
     ]),
   );
+  const priorMissingByPath = new Map(
+    (previous?.missing || []).map((record) => [
+      normaliseFolderRelativePath(record.relativePath),
+      record,
+    ]),
+  );
   const seen = new Set();
   const files = [];
   const added = [];
@@ -188,6 +194,19 @@ export function reconcileFolderInventory({
       relativePath,
       fingerprint:prior.fingerprint || null,
       firstMissingGeneration:prior.firstMissingGeneration || nextGeneration,
+      lastSeenGeneration:Number(prior.lastSeenGeneration) || 0,
+    });
+  }
+  for (const [relativePath, prior] of priorMissingByPath) {
+    if (
+      seen.has(relativePath)
+      || missing.some((record) => record.relativePath === relativePath)
+    ) continue;
+    missing.push({
+      relativePath,
+      fingerprint:prior.fingerprint || null,
+      firstMissingGeneration:
+        prior.firstMissingGeneration || nextGeneration,
       lastSeenGeneration:Number(prior.lastSeenGeneration) || 0,
     });
   }

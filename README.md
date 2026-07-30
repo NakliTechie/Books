@@ -65,6 +65,10 @@ through portable work-manifest overrides that survive derived-data rebuilds.
   typed relationships, confidence, and passage evidence. Hybrid library search
   combines lexical passages and semantic ideas, and book details expose
   evidence-linked connections into other books.
+- Book details can perform an explicit, single-work Open Library lookup by
+  ISBN or visible title/author. Results never run across the collection,
+  preserve user/source metadata, retain portable provenance and courtesy
+  links, and cache a bounded cover only after a separate user action.
 - `scripts/books-index.py` is the native collection indexer for larger
   libraries. It performs recursive incremental scans, preserves identity
   through strong-fingerprint renames, and writes the same portable artifacts

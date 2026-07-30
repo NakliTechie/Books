@@ -96,7 +96,7 @@ only when their own inputs or pipeline versions change.
 - Pause under critically low battery, before a model download under Data Saver,
   during interactive AI, or under explicit user control. Yield between works so
   reading remains responsive without stalling a long background queue.
-- Use Gemma E2B/E4B, NakliOS AI, Ollama, LM Studio, or remote BYOK only for
+- Use Gemma 4 E2B/E4B, NakliOS AI, Ollama, LM Studio, or remote BYOK only for
   capabilities that require structured generative extraction.
 - Preserve lexical search and reading when AI is disabled.
 

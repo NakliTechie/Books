@@ -1015,6 +1015,41 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   border-radius:7px; padding:7px 10px; cursor:pointer; font-size:11px;
 }
 .work-enrichment button:hover { border-color:var(--brand); }
+.work-metadata-lookup {
+  display:grid; gap:8px; margin:12px 0; padding:10px;
+  border:1px solid var(--line); border-radius:8px; background:var(--body);
+}
+.work-metadata-lookup-head {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
+.work-metadata-lookup-head strong { font-size:11px; }
+.work-metadata-lookup-head button,
+.metadata-candidate-actions button {
+  border:1px solid var(--line); border-radius:6px; padding:6px 8px;
+  background:var(--row); color:var(--ink); cursor:pointer; font-size:10px;
+}
+.work-metadata-lookup-head button:hover,
+.metadata-candidate-actions button:hover { border-color:var(--brand); }
+.work-metadata-boundary {
+  margin:0; color:var(--muted); font-size:10px; line-height:1.45;
+}
+.work-metadata-results { display:grid; gap:7px; }
+.metadata-candidate {
+  display:grid; grid-template-columns:48px minmax(0,1fr); gap:8px;
+  padding:8px; border:1px solid var(--line); border-radius:7px;
+  background:var(--panel);
+}
+.metadata-candidate-cover {
+  width:48px; height:68px; object-fit:cover; border-radius:4px;
+  background:var(--row);
+}
+.metadata-candidate-main { min-width:0; display:grid; gap:3px; }
+.metadata-candidate-main strong { font-size:11px; }
+.metadata-candidate-main span { color:var(--muted); font-size:10px; }
+.metadata-candidate-main a { color:var(--brand); font-size:10px; }
+.metadata-candidate-actions {
+  display:flex; flex-wrap:wrap; gap:5px; margin-top:3px;
+}
 @media (max-width:600px) {
   .topbar { gap:8px; padding:10px 12px; }
   .topbar-actions { min-width:0; }
@@ -1371,6 +1406,11 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <input id="work-authors-input" type="text" maxlength="1000">
     </div>
     <div class="books-dialog-text-field">
+      <label for="work-isbn-input">ISBN <span aria-hidden="true">·</span> optional</label>
+      <input id="work-isbn-input" type="text" maxlength="32"
+             autocomplete="off">
+    </div>
+    <div class="books-dialog-text-field">
       <label for="work-tags-input">Tags <span aria-hidden="true">·</span> comma separated</label>
       <input id="work-tags-input" type="text" maxlength="1000">
     </div>
@@ -1394,6 +1434,21 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <button type="button" id="work-processing-cancel-btn" hidden>Cancel processing</button>
       <button type="button" id="work-processing-retry-btn" hidden>Retry failed stages</button>
     </div>
+    <section class="work-metadata-lookup"
+             aria-labelledby="work-metadata-lookup-title">
+      <div class="work-metadata-lookup-head">
+        <strong id="work-metadata-lookup-title">Open Library metadata</strong>
+        <button type="button" id="work-open-library-lookup">
+          Look up this book
+        </button>
+      </div>
+      <p class="work-metadata-boundary" id="work-metadata-boundary">
+        Optional and on demand. Sends this ISBN, or the visible title and
+        author, to Open Library. Never runs across the whole library.
+      </p>
+      <div class="work-metadata-results" id="work-metadata-results"
+           aria-live="polite"></div>
+    </section>
     <div>
       <strong style="font-size:12px">Available formats</strong>
       <div class="work-formats" id="work-formats"></div>
@@ -2606,6 +2661,14 @@ import {
   formatLibraryReport,
   processingOutcome,
 } from './library-report.js';
+import {
+  applyOpenLibrarySuggestion,
+  findIsbn,
+  lookupOpenLibraryMetadata,
+  manifestIsbn,
+  normalizeIsbn,
+  selectOpenLibraryCover,
+} from './open-library-metadata.js';
 
 const VENDOR_FOLIATE = './vendor/foliate-js@1.0.1/';
 const VENDOR_PDFJS   = './vendor/pdfjs-dist@5.7.284/';
@@ -2723,6 +2786,7 @@ const workDetailsDialog = document.getElementById('work-details-dialog');
 const workDetailsForm = document.getElementById('work-details-form');
 const workTitleInput = document.getElementById('work-title-input');
 const workAuthorsInput = document.getElementById('work-authors-input');
+const workIsbnInput = document.getElementById('work-isbn-input');
 const workTagsInput = document.getElementById('work-tags-input');
 const workShelvesInput = document.getElementById('work-shelves-input');
 const workRatingInput = document.getElementById('work-rating-input');
@@ -2738,6 +2802,12 @@ const workConnectionsSection = document.getElementById('work-connections-section
 const workConnections = document.getElementById('work-connections');
 const workEnrichmentBoundary = document.getElementById('work-enrichment-boundary');
 const workEnrichBtn = document.getElementById('work-enrich-btn');
+const workOpenLibraryLookup =
+  document.getElementById('work-open-library-lookup');
+const workMetadataBoundary =
+  document.getElementById('work-metadata-boundary');
+const workMetadataResults =
+  document.getElementById('work-metadata-results');
 const conceptCurationDialog = document.getElementById('concept-curation-dialog');
 const conceptCurationForm = document.getElementById('concept-curation-form');
 const conceptCurationMeta = document.getElementById('concept-curation-meta');
@@ -2853,6 +2923,8 @@ let semanticLibraryQuery = '';
 let workDetailsWorkId = null;
 let workDetailsFilename = null;
 let workDetailsSemanticRecord = null;
+let workMetadataCandidates = new Map();
+let workMetadataLookupController = null;
 let workConnectionTargets = new Map();
 let activeConceptId = null;
 let activeConceptWorkId = null;
@@ -3761,6 +3833,177 @@ async function renderWorkIdeaConnections(manifest, ideaRecord, graph) {
   ).join('');
 }
 
+function renderOpenLibraryCandidates(candidates = []) {
+  workMetadataCandidates = new Map(
+    candidates.map((candidate) => [
+      candidate.providerRecordId,
+      candidate,
+    ]),
+  );
+  workMetadataResults.innerHTML = candidates.length
+    ? candidates.map((candidate) => {
+        const details = [
+          (candidate.authors || []).join(', '),
+          candidate.firstPublishYear || null,
+          candidate.publishers?.[0] || null,
+        ].filter(Boolean).join(' · ');
+        return '<article class="metadata-candidate" data-metadata-candidate="' +
+          escapeHtml(candidate.providerRecordId) + '">' +
+          (candidate.cover
+            ? '<img class="metadata-candidate-cover" alt="" loading="lazy" ' +
+                'referrerpolicy="no-referrer" src="' +
+                escapeHtml(candidate.cover.url) + '">'
+            : '<span class="metadata-candidate-cover" aria-hidden="true"></span>') +
+          '<div class="metadata-candidate-main">' +
+            '<strong>' + escapeHtml(candidate.title) + '</strong>' +
+            '<span>' + escapeHtml(details || 'Open Library work record') + '</span>' +
+            '<a href="' + escapeHtml(candidate.sourceUrl) +
+              '" target="_blank" rel="noreferrer">View on Open Library ↗</a>' +
+            '<div class="metadata-candidate-actions">' +
+              '<button type="button" data-metadata-action="apply">' +
+                'Apply missing metadata</button>' +
+              (candidate.cover
+                ? '<button type="button" data-metadata-action="cover">' +
+                    'Use this cover</button>' : '') +
+            '</div>' +
+          '</div>' +
+        '</article>';
+      }).join('')
+    : '<span class="semantic-search-state">No matching Open Library records were found.</span>';
+}
+
+function validatedWorkIsbnInput() {
+  const submitted = workIsbnInput.value.trim();
+  const normalized = submitted ? normalizeIsbn(submitted) : '';
+  if (submitted && !normalized) {
+    workIsbnInput.setCustomValidity('Enter a valid ISBN-10 or ISBN-13.');
+    workIsbnInput.reportValidity();
+    return { valid:false, value:null };
+  }
+  workIsbnInput.setCustomValidity('');
+  return { valid:true, value:normalized };
+}
+
+async function lookupWorkMetadata() {
+  if (!workDetailsWorkId) return;
+  const isbn = validatedWorkIsbnInput();
+  if (!isbn.valid) return;
+  workMetadataLookupController?.abort();
+  const controller = new AbortController();
+  workMetadataLookupController = controller;
+  workOpenLibraryLookup.disabled = true;
+  workMetadataBoundary.textContent =
+    'Looking up this one book at Open Library…';
+  workMetadataResults.innerHTML =
+    '<span class="semantic-search-state">Searching…</span>';
+  try {
+    const result = await lookupOpenLibraryMetadata({
+      isbn:isbn.value,
+      title:workTitleInput.value,
+      authors:commaSeparatedValues(workAuthorsInput.value),
+      signal:controller.signal,
+    });
+    if (
+      controller !== workMetadataLookupController
+      || !workDetailsDialog.open
+    ) return;
+    renderOpenLibraryCandidates(result.candidates);
+    workMetadataBoundary.textContent =
+      'On-demand result from Open Library. Applying preserves existing ' +
+      'user and source-authored title/author fields and stores provenance.';
+  } catch (error) {
+    if (controller !== workMetadataLookupController) return;
+    workMetadataResults.innerHTML = '';
+    workMetadataBoundary.textContent = error?.message || String(error);
+  } finally {
+    if (controller === workMetadataLookupController) {
+      workMetadataLookupController = null;
+      workOpenLibraryLookup.disabled = false;
+    }
+  }
+}
+
+async function persistMetadataCandidate(candidate, { useCover = false } = {}) {
+  const workId = workDetailsWorkId;
+  const filename = workDetailsFilename;
+  if (!workId || !candidate) return;
+  let coverData = null;
+  let coverPath = null;
+  if (useCover) {
+    workMetadataBoundary.textContent =
+      'Downloading the selected medium cover from Open Library…';
+    const response = await fetch(candidate.cover.url, {
+      credentials:'omit',
+      referrerPolicy:'no-referrer',
+    });
+    if (!response.ok) {
+      throw new Error('The selected Open Library cover is unavailable.');
+    }
+    const declaredLength = Number(response.headers.get('content-length')) || 0;
+    if (declaredLength > 6_000_000) {
+      throw new Error('The selected cover is larger than the 6 MB cache limit.');
+    }
+    coverData = await response.arrayBuffer();
+    if (!coverData.byteLength || coverData.byteLength > 6_000_000) {
+      throw new Error('The selected cover exceeds the local cache limit.');
+    }
+    coverPath = 'covers/' + workId + '-open-library-' +
+      candidate.cover.coverId + '.cover';
+    await naklios.fs.write(coverPath, new Uint8Array(coverData));
+  }
+
+  const update = await mutateSemanticManifest(workId, (latest) => {
+    const metadata = applyOpenLibrarySuggestion(latest, candidate);
+    return useCover
+      ? selectOpenLibraryCover(metadata.manifest, candidate, {
+          path:coverPath,
+          mimeType:'image/jpeg',
+          byteLength:coverData.byteLength,
+        })
+      : metadata;
+  });
+  if (update.changed) await persistSemanticManifest(update.manifest);
+
+  if (useCover && filename) {
+    const entry = libraryCache.find((candidateEntry) =>
+      candidateEntry.filename === filename);
+    const bookId = entry?.sidecar?.bookId
+      || update.manifest.legacy?.bookIds?.[0]
+      || bookIdFor(filename);
+    const sidecar = entry?.sidecar
+      ? structuredClone(entry.sidecar)
+      : makeInitialSidecar({
+          bookId,
+          sourceFilename:filename,
+          engineKey:engineKeyFor(filename),
+        });
+    sidecar.coverPath = coverPath;
+    sidecar.coverMime = 'image/jpeg';
+    sidecar.coverUnavailable = false;
+    await naklios.fs.write(
+      'notes/' + bookId + '.json',
+      JSON.stringify(sidecar, null, 2),
+    );
+    if (entry) entry.sidecar = sidecar;
+  }
+
+  const latest = semanticManifests.get(workId);
+  workTitleInput.value = latest?.title || workTitleInput.value;
+  workAuthorsInput.value = (latest?.authors || [])
+    .map((author) => author.name).join(', ');
+  workIsbnInput.value = manifestIsbn(latest) || workIsbnInput.value;
+  renderLibraryRows();
+  renderReaderLibrary();
+  workMetadataBoundary.textContent = useCover
+    ? 'Selected cover cached locally with Open Library provenance.'
+    : 'Applied available metadata without replacing user or source-authored fields.';
+  showToast(
+    useCover
+      ? 'Cached the selected Open Library cover locally.'
+      : 'Saved Open Library metadata with provenance.',
+  );
+}
+
 async function openWorkDetails(filename) {
   const entry = libraryCache.find((candidate) => candidate.filename === filename);
   const manifest = entry?.work && semanticManifests.get(entry.work.workId);
@@ -3773,6 +4016,9 @@ async function openWorkDetails(filename) {
   workDetailsSemanticRecord = null;
   workTitleInput.value = manifest.title || '';
   workAuthorsInput.value = (manifest.authors || []).map((author) => author.name).join(', ');
+  workIsbnInput.value = manifestIsbn(manifest)
+    || findIsbn(filename, manifest.title)
+    || '';
   workTagsInput.value = (manifest.userMetadata?.tags || []).join(', ');
   workShelvesInput.value = (manifest.userMetadata?.shelves || []).join(', ');
   workRatingInput.value = manifest.userMetadata?.rating == null
@@ -3780,6 +4026,12 @@ async function openWorkDetails(filename) {
   workProcessingState.textContent = 'Checking local processing…';
   workProcessingCancelBtn.hidden = true;
   workProcessingRetryBtn.hidden = true;
+  workMetadataCandidates = new Map();
+  workMetadataResults.innerHTML = '';
+  workMetadataBoundary.textContent =
+    'Optional and on demand. Sends this ISBN, or the visible title and ' +
+    'author, to Open Library. Never runs across the whole library.';
+  workOpenLibraryLookup.disabled = false;
   const availableAssets = manifest.assets.filter(
     (asset) => asset.availability === 'available',
   );
@@ -3859,6 +4111,31 @@ async function openWorkDetails(filename) {
     : 'Configure semantic provider';
   await renderWorkIdeaConnections(manifest, ideaRecord, ideaGraph);
 }
+
+workOpenLibraryLookup.addEventListener('click', () => {
+  void lookupWorkMetadata();
+});
+
+workMetadataResults.addEventListener('click', (event) => {
+  const action = event.target.closest('[data-metadata-action]');
+  const row = event.target.closest('[data-metadata-candidate]');
+  const candidate = row
+    && workMetadataCandidates.get(row.dataset.metadataCandidate);
+  if (!action || !candidate) return;
+  action.disabled = true;
+  void persistMetadataCandidate(candidate, {
+    useCover:action.dataset.metadataAction === 'cover',
+  }).catch((error) => {
+    workMetadataBoundary.textContent = error?.message || String(error);
+    showToast(
+      "Couldn't apply Open Library metadata: " +
+        String(error?.message || error),
+      { error:true, duration:6500 },
+    );
+  }).finally(() => {
+    action.disabled = false;
+  });
+});
 
 workConnections.addEventListener('click', async (event) => {
   const button = event.target.closest('[data-work-connection]');
@@ -3947,6 +4224,9 @@ workDetailsDialog.addEventListener('close', () => {
   // reopen this same dialog. Ignore the stale close event if a new details
   // session is already active.
   if (workDetailsDialog.open) return;
+  workMetadataLookupController?.abort();
+  workMetadataLookupController = null;
+  workMetadataCandidates = new Map();
   workDetailsWorkId = null;
   workDetailsFilename = null;
   workDetailsSemanticRecord = null;
@@ -4345,9 +4625,12 @@ workDetailsForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const current = workDetailsWorkId && semanticManifests.get(workDetailsWorkId);
   if (!current) return;
+  const isbn = validatedWorkIsbnInput();
+  if (!isbn.valid) return;
   const values = {
     title: workTitleInput.value,
     authors: commaSeparatedValues(workAuthorsInput.value),
+    isbn: isbn.value,
     tags: commaSeparatedValues(workTagsInput.value),
     shelves: commaSeparatedValues(workShelvesInput.value),
     rating: workRatingInput.value,
@@ -11226,25 +11509,30 @@ async function recoverStandaloneFolderRename(
   const candidates = renameCandidates({ inventory }).filter((candidate) =>
     candidate.currentPath === discoveredAsset.sourceFilename
     && candidate.fingerprint === fingerprint);
-  if (candidates.length !== 1) return false;
-  const previousPath = candidates[0].previousPath;
   const matches = [];
-  for (const manifest of semanticManifests.values()) {
-    if (
-      manifest.workId === discoveredManifest.workId
-      || manifest.recordState === 'merged'
-    ) continue;
-    for (const asset of manifest.assets || []) {
+  for (const candidate of candidates) {
+    for (const manifest of semanticManifests.values()) {
       if (
-        asset.sourceFilename === previousPath
-        && asset.availability === 'missing'
-        && asset.fingerprint === fingerprint
-      ) {
-        matches.push({ manifest, asset });
+        manifest.workId === discoveredManifest.workId
+        || manifest.recordState === 'merged'
+      ) continue;
+      for (const asset of manifest.assets || []) {
+        if (
+          asset.sourceFilename === candidate.previousPath
+          && asset.availability === 'missing'
+          && asset.fingerprint === fingerprint
+        ) {
+          matches.push({
+            manifest,
+            asset,
+            previousPath:candidate.previousPath,
+          });
+        }
       }
     }
   }
   if (matches.length !== 1) return false;
+  const previousPath = matches[0].previousPath;
   const recovered = recoverRenamedAssetIdentity(
     matches[0].manifest,
     discoveredManifest,
@@ -11306,6 +11594,24 @@ async function recoverStandaloneFolderRename(
     );
   }
   await deletePathIfPresent(processingRunPath(recovered.tombstone.workId));
+  inventory.missing = (inventory.missing || []).filter(
+    (record) => record.relativePath !== previousPath,
+  );
+  inventory.counts = {
+    ...(inventory.counts || {}),
+    missing:inventory.missing.length,
+  };
+  inventory.updatedAt = new Date().toISOString();
+  const serializedInventory = JSON.stringify(inventory, null, 2);
+  await naklios.fs.write(
+    FOLDER_INVENTORY_GENERATIONS_PREFIX
+      + String(inventory.generation).padStart(8, '0') + '.json',
+    serializedInventory,
+  );
+  await naklios.fs.write(
+    FOLDER_INVENTORY_CURRENT_PATH,
+    serializedInventory,
+  );
   return true;
 }
 

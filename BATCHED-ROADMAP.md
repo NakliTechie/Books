@@ -3,7 +3,7 @@
 > **Lifecycle:** `active` — the dependency-aware execution plan for work that
 > remains after Books 2.0.
 >
-> **Updated:** 2026-07-30
+> **Updated:** 2026-07-31
 
 Books already has the semantic-library foundation: standalone and NakliOS
 operation, durable Folder libraries, background ingestion, local embeddings,
@@ -32,10 +32,10 @@ This document owns execution order.
 
 | Batch | Outcome | Depends on | State |
 |---|---|---|---|
-| 0 | Release hygiene and real-library proof | Books 2.0 | Browser/NakliOS smoke passed; real Folder checks pending |
-| 1 | OCR Adopt / Adapt / Reject decision | Batch 0 corpus and evidence | Decision accepted; runtime corpus gate pending |
-| 2 | Semantic quality and ingestion operations | Batch 0 evidence | Synthetic gate passed; real-library gate pending |
-| 3 | Folder durability at collection scale | Batch 0 evidence | Local scale gate passed; real sync-folder gate pending |
+| 0 | Release hygiene and real-library proof | Books 2.0 | Local Folder proof passed; sync-folder/soak checks pending |
+| 1 | OCR Adopt / Adapt / Reject decision | Batch 0 corpus and evidence | Defaults accepted; runtime corpus gate pending |
+| 2 | Semantic quality and ingestion operations | Batch 0 evidence | Production intelligence enabled; labeled real queries pending |
+| 3 | Folder durability at collection scale | Batch 0 evidence | Local restore-after-gap gate passed; sync-folder gate pending |
 | 4 | Source-grounded illustration vertical slice | Batch 2 quality gate; Batch 1 where OCR is required | Product hold |
 | 5 | Private continuity and mobile handoff | Batch 3 storage/conflict gate | Product hold |
 | 6 | Reader depth and accessibility | Batch 0; may run beside Batches 1–3 | Demand-ranked |
@@ -63,14 +63,17 @@ real collection rather than only fixtures.
   without creating a `books-library*.json` file.
 - [x] Capture a processing report for the current 40-book production library:
   40 available sources and 40 core-complete jobs; 20,910 passages, 636
-  concepts, 457 scenes, 636 source-grounded ideas, zero issues, and zero
-  cross-book relationships while semantic embeddings are disabled.
+  concepts, 457 scenes, 636 source-grounded ideas, zero issues, and 1,677
+  cross-book relationships after the user-enabled MiniLM encoder completed.
 - [x] Ship a portable Folder-library report command and an in-app processing
   summary with per-book failures and safe retry.
 - [x] Exercise synthetic Folder mode at 1,000 and 10,000 books:
   initial recursion, warm diff, modify, move/rename, and remove.
-- [ ] Exercise Folder mode with a user-granted real directory:
-  initial recursion, reconnect, add, modify, rename, move, and remove.
+- [x] Exercise Folder mode with a user-granted disposable real directory:
+  recursive initial scan, add, repeated missing scans, and restored rename.
+  The restored-after-gap case exposed a duplicate-work bug; browser and native
+  reconciliation now retain the prior missing inventory long enough to
+  recover the original work identity, and the regression passes.
 - [x] Detect case/normalization path collisions, quarantine a source that
   changes during fingerprinting, and recover a partial `current.json` from the
   latest completed generation.
@@ -163,7 +166,11 @@ real library.
 - [x] Test the native indexer and browser executor against the same collection and
   compare portable artifacts, not just counts.
 - [x] Complete the metadata/cover provider spike and recommend opt-in
-  Open Library lookup; keep implementation behind the recorded approval gate.
+  Open Library lookup.
+- [x] Implement approved Open Library lookup as an explicit per-book action.
+  Bound results, omit credentials/referrer data, preserve user/source-authored
+  fields, retain accepted provenance, and download a capped cover only after a
+  separate user action.
 
 ### Exit gate
 
@@ -296,14 +303,14 @@ budget, and explicit approval.
 
 ## Final access and release run
 
-All safe autonomous work is complete. The remaining run is intentionally
-access-dependent:
+Local Chrome, Cloudflare, Folder, and Background Intelligence access is now
+available. The current release run verifies standalone and NakliOS modes,
+captures the refreshed production processing report, reruns the suite, pushes
+`main`, and inspects the Git-triggered Worker deployment.
 
-1. Reconnect Chrome control and execute the standalone and NakliOS host smoke
-   matrix, including the no-download assertion and OCR runtime harness.
-2. Export the production roughly-40-book processing report and label the real
-   semantic queries.
-3. Grant a real Folder and a sync-managed/network Folder for permission-loss,
-   mutation, partial-write, and soak checks.
-4. Fix any reproducible failures, rerun the complete suite, push `main`, verify
-   the Workers Build, and smoke the deployed URL.
+Only two evidence gates remain deliberately deferred:
+
+1. the real sync-managed/network Folder soak, because no representative folder
+   is currently available;
+2. the official PaddleOCR.js runtime corpus/resource benchmark before the
+   production OCR queue is opened.

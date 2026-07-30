@@ -2,16 +2,19 @@
 
 > **Decision:** Adapt a two-tier local-first PaddleOCR architecture.
 >
-> **Status:** Architecture and artifact contract accepted; runtime corpus
-> benchmark remains required before the OCR queue is opened in production.
+> **Status:** Product defaults accepted. English/Latin PP-OCRv6 tiny is the
+> first browser candidate, PP-StructureV3 is the local complex-layout route,
+> and hosted OCR is disabled. The runtime corpus benchmark remains required
+> before the OCR queue is opened in production.
 >
-> **Date:** 2026-07-30
+> **Date:** 2026-07-31
 
 ## Decision
 
-1. **Adapt the official PaddleOCR.js SDK as the browser route.** It is the
-   first candidate for ordinary scanned pages because it runs PP-OCRv5 in the
-   browser through ONNX Runtime Web and exposes text regions rather than only a
+1. **Adapt the official PaddleOCR.js SDK as the browser route.** Start the
+   measured implementation with the English/Latin PP-OCRv6 tiny model pair:
+   its recorded 6,318,080-byte weight budget is the smallest official pair in
+   the current comparison. It exposes text regions rather than only a
    transcription. The currently published package is
    `@paddleocr/paddleocr-js` 0.4.2, Apache-2.0, with an unpacked SDK package of
    roughly 23.8 MB. Model bytes are separate and must be measured by language
@@ -20,9 +23,10 @@
    PP-StructureV3 is the candidate for reading order, tables, formulas,
    figures, multi-column layouts, and page-to-Markdown structure that the
    compact browser route cannot promise.
-3. **Defer hosted PaddleOCR to an optional remote destination.** It may use the
-   same artifact contract, but Books will not send page images until the user
-   selects that destination and consents to it.
+3. **Do not ship hosted OCR in the first implementation.** The artifact
+   contract leaves room for a future user-selected endpoint, but Books has no
+   remote page-image destination by default and does not silently fail over
+   from local inference.
 4. **Reject direct reuse of ScanLocal's current Paddle path.** It is useful
    prior art, but currently combines third-party `paddleocr-browser`,
    `esearch-ocr`, remote OpenCV/ONNX scripts, and an English PP-OCRv3 model.
@@ -56,9 +60,9 @@ never masquerades as a complete semantic index.
 
 | Route | Decision | Intended use | Boundary |
 |---|---|---|---|
-| Official PaddleOCR.js | Adapt | Printed pages, local browser queue | Explicit first model download; pinned/self-hosted assets; Worker; cancellation |
+| Official PaddleOCR.js + English/Latin PP-OCRv6 tiny | Adapt | Printed pages, local browser queue | Explicit first model download; pinned/self-hosted assets; Worker; cancellation |
 | Local PaddleOCR / PP-StructureV3 service | Adopt | Layout, tables, formulas, large batches | User-visible localhost endpoint; no stored credential; health/model discovery |
-| Hosted endpoint | Defer | Devices unable to run local OCR | Destination-specific consent for page images |
+| Hosted endpoint | Disabled | Not part of the first implementation | No remote page-image transmission or automatic fallback |
 | Existing ScanLocal Paddle implementation | Reject direct reuse | Reference implementation only | Third-party/outdated dependency path |
 
 ## Artifact contract
@@ -144,5 +148,7 @@ offer the local-service route.
 - `needs-review`: low confidence, ambiguous order, or unsupported structure is
   linked back to the source page.
 
-Remote page transmission, background model download, and selecting a default
-language pack remain user-facing decisions and are deferred together.
+The default model route and hosted-OCR posture are decided. The first model
+download remains an explicit user action. Additional scripts, languages, and
+larger recognition packs stay opt-in until their weights, dictionaries,
+accuracy, and resource behavior pass the same gate.

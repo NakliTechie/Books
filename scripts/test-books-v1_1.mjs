@@ -159,6 +159,39 @@ assert.match(html, /id="work-details-dialog"/,
   'portable work metadata has an app-styled editor');
 assert.match(html, /function openWorkDetails\(/,
   'work details load portable metadata and local processing state');
+assert.match(html, /from '\.\/open-library-metadata\.js'/,
+  'Books loads its bounded Open Library metadata adapter');
+assert.match(html, /id="work-isbn-input"/,
+  'portable work metadata can retain a user-entered ISBN');
+assert.match(
+  html,
+  /function validatedWorkIsbnInput\(\)[\s\S]*?normalizeIsbn\(submitted\)[\s\S]*?Enter a valid ISBN-10 or ISBN-13/,
+  'the editor rejects invalid ISBN check digits before changing portable metadata',
+);
+assert.match(html, /id="work-open-library-lookup"/,
+  'book details expose explicit per-work metadata lookup');
+assert.match(html, /id="work-metadata-results"/,
+  'metadata suggestions render inside the current work editor');
+assert.match(
+  html,
+  /Optional and on demand[\s\S]*?Never runs across the whole library/,
+  'Open Library disclosure says exactly what leaves the device and rejects bulk lookup',
+);
+assert.match(
+  html,
+  /workOpenLibraryLookup\.addEventListener\('click'[\s\S]*?lookupWorkMetadata/,
+  'Open Library network lookup starts only from an explicit click',
+);
+assert.match(
+  html,
+  /Apply missing metadata[\s\S]*?Use this cover/,
+  'metadata and cover adoption remain separate explicit actions',
+);
+assert.match(
+  html,
+  /View on Open Library ↗[\s\S]*?persistMetadataCandidate/,
+  'provider results retain a courtesy link and portable provenance',
+);
 assert.match(
   html,
   /updateWorkDetails\(latest, values\)[\s\S]*?portable-metadata-changed[\s\S]*?scheduleSemanticProcessing/,
