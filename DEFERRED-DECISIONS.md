@@ -12,8 +12,10 @@
   resulting production build can be inspected there. Wrangler is currently
   authenticated to a different Cloudflare account than the `naklitechie.com`
   Worker.
-- Inspect the production 40-book Browser library and save its processing report
-  after the Git deployment exposes the new in-app report surface.
+- Turn on Background Intelligence when ready to download the local embedding
+  model and build cross-book relationships. The production report is otherwise
+  healthy; relationships are currently zero because semantic embeddings are
+  disabled.
 - Grant a real Folder (and, separately, a sync-managed/network Folder) for the
   mutation, permission-loss, partial-write, and long-running soak matrix.
 

@@ -96,19 +96,25 @@ mode, reflowed it into 352 Native source references, and produced no console
 error. The candidate NakliOS regression also passed without a console error or
 user-visible export download.
 
+GitHub `main` deployed through the existing Cloudflare Git integration. The
+production in-app report records 40 available sources and 40 core-complete
+jobs; 20,910 passages, 636 concepts, 457 scenes, 636 source-grounded ideas,
+zero issues, and zero cross-book relationships while Background Intelligence
+and semantic embeddings are disabled.
+
 ## Deferred to the final access window
 
 1. Sign in to the Cloudflare dashboard's `naklitechie.com` account and enable
    local-file access for the Chrome extension when the disposable localhost
    import smoke is repeated.
-2. Capture the production 40-book processing report and real labeled
-   semantic queries.
+2. Enable Background Intelligence when its local model download is desired,
+   then capture real labeled semantic queries and relationship quality.
 3. Grant representative local and sync-managed/network folders for mutation,
    permission-loss, partial-write, and long-running reading/processing soaks.
 4. Run the official PaddleOCR.js corpus benchmark in the actual browser
    worker.
-5. Observe the Cloudflare Workers Git build and smoke the resulting
-   `https://books.naklitechie.com/` release.
+5. Inspect the successful Cloudflare Workers Git build in the dashboard once
+   that Chrome session is signed in.
 
 Product decisions remain separately consolidated in
 `DEFERRED-DECISIONS.md`; none blocks faithful reading, lexical search, or the

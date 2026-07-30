@@ -61,9 +61,10 @@ real collection rather than only fixtures.
 - [x] Run the live Chrome regression and confirm the Downloads count is
   unchanged before and after. The candidate host regression passed in Chrome
   without creating a `books-library*.json` file.
-- [ ] Capture a processing report for the current 40-book production
-  library: inventory, queued/running/failed jobs, stages completed, passage
-  counts, embeddings, ideas, and relationships.
+- [x] Capture a processing report for the current 40-book production library:
+  40 available sources and 40 core-complete jobs; 20,910 passages, 636
+  concepts, 457 scenes, 636 source-grounded ideas, zero issues, and zero
+  cross-book relationships while semantic embeddings are disabled.
 - [x] Ship a portable Folder-library report command and an in-app processing
   summary with per-book failures and safe retry.
 - [x] Exercise synthetic Folder mode at 1,000 and 10,000 books:
