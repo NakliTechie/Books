@@ -17,6 +17,38 @@ Without the trigger, the deferral is just an open question.
 
 ## Content / UX layers
 
+### Local concept metadata + AI-illustrated native reader
+
+**Status:** Pending future feature. Do not implement as part of the current
+standalone-reader work.
+
+This is intentionally split into two stages:
+
+1. **Concept extraction on import.** Every newly added book is parsed for its
+   key concepts. The resulting structured metadata is stored locally on the
+   user's machine alongside that book's other Books metadata. The eventual
+   schema should support both expository concepts and narrative elements such
+   as characters, settings, events, and key scenes.
+2. **Illustrated native reader.** Add a Books-native reading mode that reflows
+   the source text instead of merely presenting the authored EPUB or PDF
+   layout. It uses the extracted metadata to insert AI-generated illustrations
+   at meaningful points. For story books, the initial interpretation is to
+   illustrate selected key scenes rather than every concept.
+
+**Decisions deliberately left open:** illustration style and consistency,
+model/provider, on-device versus hosted generation, user controls and
+regeneration, image caching/storage, placement cadence, metadata versioning,
+and how this mode coexists with the faithful EPUB/PDF reader.
+
+**Why deferred:** It requires a durable extraction schema, format-independent
+text segmentation, a new native layout engine, and a separately designed image
+generation workflow. Those choices should not be smuggled into the current
+reader implementation.
+
+**Trigger to revisit:** After standalone and NakliOS reading are stable, and
+when there is a concrete design pass for the concept schema, native reader
+experience, and illustration-generation policy.
+
 ### Cover thumbnails — shipped in v1.2
 
 Delivered: Foliate package covers and PDF page-one thumbnails are resized,
