@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "wrangler dev",
-    "test": "node scripts/test-books-v1_1.mjs && node scripts/test-semantic-library.mjs && node scripts/test-semantic-processing.mjs && node scripts/test-semantic-ai.mjs && node scripts/test-security-contract.mjs && node scripts/test-deploy-contract.mjs",
+    "test": "node scripts/test-books-v1_1.mjs && node scripts/test-semantic-library.mjs && node scripts/test-semantic-processing.mjs && node scripts/test-semantic-ai.mjs && node scripts/test-local-ai-sidecar.mjs && node scripts/test-security-contract.mjs && node scripts/test-deploy-contract.mjs",
     "check:deploy": "npm run build && wrangler deploy --dry-run",
     "deploy": "npm run build && wrangler deploy"
   },

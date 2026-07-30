@@ -299,6 +299,9 @@ body { display: flex; flex-direction: column; }
 .reader-header .sidebar-toggle.is-active { background: var(--brand); color: var(--panel); border-color: var(--brand); }
 .reader-prefs-btn { font-size:13px; padding:6px 9px; }
 .reader-ai-btn { font-size:12px; padding:6px 9px; }
+.reader-ai-btn.is-active {
+  background:var(--brand); color:var(--panel); border-color:var(--brand);
+}
 .reader-mode-btn {
   background:transparent; color:var(--ink); border:1px solid var(--line);
   padding:6px 9px; border-radius:6px; cursor:pointer; font:12px/1 inherit;
@@ -371,6 +374,56 @@ body { display: flex; flex-direction: column; }
   min-width: 0;
   overflow: hidden;
 }
+.reader-ai-sidecar {
+  flex:0 0 360px; min-width:0; display:none; flex-direction:column;
+  background:var(--panel); border-left:1px solid var(--line); z-index:3;
+}
+.reader-ai-sidecar.is-open { display:flex; }
+.reader-ai-sidecar-head {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:12px 14px; border-bottom:1px solid var(--line);
+}
+.reader-ai-sidecar-head strong {
+  min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-size:12px;
+}
+.reader-ai-sidecar-close {
+  border:1px solid var(--line); border-radius:6px; padding:5px 8px;
+  background:transparent; color:var(--ink); cursor:pointer; font:13px/1 inherit;
+}
+.reader-ai-sidecar-body {
+  min-height:0; overflow:auto; padding:14px; display:flex; flex-direction:column; gap:11px;
+}
+.reader-ai-sidecar .books-ai-actions { margin:0; }
+.reader-ai-sidecar .books-dialog-text-field { margin:0; }
+.reader-ai-sidecar .books-ai-output {
+  min-height:180px; max-height:none; resize:none; flex:1 1 220px;
+}
+.reader-ai-sidecar-actions { display:flex; flex-wrap:wrap; gap:7px; }
+.reader-ai-sidecar-actions button {
+  border:1px solid var(--line); border-radius:6px; padding:7px 9px;
+  background:transparent; color:var(--ink); cursor:pointer; font:11px/1 inherit;
+}
+.reader-ai-sidecar-actions button.primary {
+  margin-left:auto; background:var(--brand); color:var(--panel); border-color:var(--brand);
+}
+.ai-local-card {
+  display:grid; gap:8px; padding:10px; border:1px solid var(--line);
+  border-radius:8px; background:var(--row);
+}
+.ai-local-card[hidden] { display:none; }
+.ai-local-card-head { display:flex; justify-content:space-between; gap:10px; }
+.ai-local-card strong { font-size:11px; }
+.ai-local-card small { color:var(--muted); font-size:9px; line-height:1.4; }
+.ai-local-load {
+  border:1px solid var(--brand); border-radius:6px; padding:6px 8px;
+  background:var(--panel); color:var(--brand); cursor:pointer; font:10px/1.2 inherit;
+}
+.ai-local-load:disabled { opacity:.55; cursor:default; }
+.ai-local-progress {
+  width:100%; height:5px; accent-color:var(--brand);
+}
+.ai-local-status { color:var(--muted); font-size:10px; line-height:1.4; }
 .reader-content { position: absolute; inset: 0; overflow: hidden; }
 .reader-content > * { position: absolute; inset: 0; }
 .pdf-page { position:relative; margin:8px auto; }
@@ -917,6 +970,10 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   .reader-open-file { text-align:left; }
   .reader-searchbar { grid-template-columns:minmax(120px,1fr) auto auto auto; }
   .reader-search-count { grid-column:1 / -1; text-align:left; }
+  .reader-ai-sidecar {
+    position:absolute; inset:0 0 0 auto; width:min(100%,390px); max-width:100%;
+    box-shadow:-8px 0 26px rgba(0,0,0,.16);
+  }
 }
 </style>
 </head>
@@ -963,7 +1020,8 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <button class="reader-mode-btn" id="reader-mode-btn" type="button" hidden
             aria-pressed="false" title="Switch between authored and Books-native reading">Native</button>
     <button class="reader-ai-btn" id="reader-ai-btn" type="button" hidden
-            title="Explain or summarize the current passage with NakliOS AI">✦ AI</button>
+            aria-expanded="false" aria-controls="reader-ai-sidecar"
+            title="Open the private AI reading companion">✦ AI</button>
     <button class="reader-prefs-btn" id="reader-prefs-btn" type="button" title="Reading appearance">Aa</button>
     <button class="reader-search-btn" id="reader-search-btn" type="button" hidden
             aria-expanded="false" aria-controls="reader-searchbar" title="Find in book (⌘F)">Find</button>
@@ -1005,6 +1063,52 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <div class="sidebar-section">
         <label class="sidebar-label" for="note-area">Note</label>
         <textarea class="note-area" id="note-area" placeholder="Your thoughts on this book…"></textarea>
+      </div>
+    </aside>
+    <aside class="reader-ai-sidecar" id="reader-ai-sidecar"
+           aria-labelledby="reader-ai-title" aria-hidden="true">
+      <div class="reader-ai-sidecar-head">
+        <strong id="reader-ai-title">✦ Private reading companion</strong>
+        <button class="reader-ai-sidecar-close" id="reader-ai-close"
+                type="button" aria-label="Close AI companion">×</button>
+      </div>
+      <div class="reader-ai-sidecar-body">
+        <div class="ai-local-card" id="reader-ai-local-card">
+          <div class="ai-local-card-head">
+            <div>
+              <strong>Gemma 4 E4B · WebGPU</strong>
+              <small>Transformers.js · about 4 GB once, cached by this browser</small>
+            </div>
+            <button class="ai-local-load" id="reader-ai-local-load"
+                    type="button">Load model</button>
+          </div>
+          <progress class="ai-local-progress" id="reader-ai-local-progress"
+                    max="100" value="0" hidden></progress>
+          <div class="ai-local-status" id="reader-ai-local-status">
+            Runs in a dedicated worker. Book text stays on this device.
+          </div>
+        </div>
+        <p id="reader-ai-context">Preparing the current passage…</p>
+        <div class="books-ai-actions">
+          <button type="button" data-reader-ai-action="explain">Explain simply</button>
+          <button type="button" data-reader-ai-action="summarize">Summarize</button>
+          <button type="button" data-reader-ai-action="key-points">Key points</button>
+        </div>
+        <div class="books-dialog-text-field">
+          <label for="reader-ai-question">Ask about this passage</label>
+          <input id="reader-ai-question" type="text" maxlength="500"
+                 placeholder="What does the author mean here?">
+        </div>
+        <textarea class="books-ai-output" id="reader-ai-output" readonly
+                  aria-label="AI response"></textarea>
+        <div class="books-ai-status" id="reader-ai-status" role="status"
+             aria-live="polite"></div>
+        <div class="reader-ai-sidecar-actions">
+          <button type="button" id="reader-ai-provider-settings">Other provider</button>
+          <button type="button" id="reader-ai-stop" hidden>Stop</button>
+          <button type="button" id="reader-ai-copy" disabled>Copy</button>
+          <button class="primary" type="button" id="reader-ai-ask">Ask</button>
+        </div>
       </div>
     </aside>
   </div>
@@ -1294,9 +1398,29 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 <dialog class="books-dialog books-ai-dialog" id="ai-provider-dialog"
         aria-labelledby="ai-provider-title">
   <form class="books-dialog-body" id="ai-provider-form">
-    <h3 id="ai-provider-title">Standalone AI provider</h3>
+    <h3 id="ai-provider-title">AI providers</h3>
     <p>
-      Configure an OpenAI-compatible local service or remote BYOK endpoint.
+      Books can run Gemma entirely in this browser. NakliOS AI remains the
+      first choice when the app is hosted. An OpenAI-compatible endpoint is an
+      optional fallback.
+    </p>
+    <div class="ai-local-card">
+      <div class="ai-local-card-head">
+        <div>
+          <strong>Built in · Gemma 4 E4B</strong>
+          <small>Transformers.js 4.2 · WebGPU · about 4 GB, cached locally</small>
+        </div>
+        <button class="ai-local-load" id="provider-ai-local-load"
+                type="button">Load model</button>
+      </div>
+      <progress class="ai-local-progress" id="provider-ai-local-progress"
+                max="100" value="0" hidden></progress>
+      <div class="ai-local-status" id="provider-ai-local-status">
+        No book text is uploaded. Model files are downloaded from Hugging Face.
+      </div>
+    </div>
+    <h4 style="margin:18px 0 6px;font-size:12px">Optional endpoint fallback</h4>
+    <p>
       The endpoint and model stay in this browser. The API key is session-only
       and is never written into a book, library export, or log.
     </p>
@@ -1372,33 +1496,6 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <button type="button" id="library-ask-stop" hidden>Stop</button>
       <button class="primary" type="button" id="library-ask-submit">Ask</button>
       <button type="button" data-close-dialog="library-ask-dialog">Close</button>
-    </div>
-  </div>
-</dialog>
-
-<dialog class="books-dialog books-ai-dialog" id="reader-ai-dialog"
-        aria-labelledby="reader-ai-title">
-  <div class="books-dialog-body">
-    <h3 id="reader-ai-title">NakliOS AI reading companion</h3>
-    <p id="reader-ai-context">Preparing the current passage…</p>
-    <div class="books-ai-actions">
-      <button type="button" data-reader-ai-action="explain">Explain simply</button>
-      <button type="button" data-reader-ai-action="summarize">Summarize</button>
-      <button type="button" data-reader-ai-action="key-points">Key points</button>
-    </div>
-    <div class="books-dialog-text-field">
-      <label for="reader-ai-question">Or ask about this passage</label>
-      <input id="reader-ai-question" type="text" maxlength="500"
-             placeholder="What does the author mean here?">
-    </div>
-    <textarea class="books-ai-output" id="reader-ai-output" readonly
-              aria-label="AI response"></textarea>
-    <div class="books-ai-status" id="reader-ai-status" role="status" aria-live="polite"></div>
-    <div class="books-dialog-actions">
-      <button type="button" id="reader-ai-stop" hidden>Stop</button>
-      <button type="button" id="reader-ai-copy" disabled>Copy</button>
-      <button type="button" id="reader-ai-ask">Ask</button>
-      <button type="button" data-close-dialog="reader-ai-dialog">Close</button>
     </div>
   </div>
 </dialog>
@@ -1960,6 +2057,10 @@ import {
   SEMANTIC_ENRICHMENT_PROMPT_VERSION,
   validateGroundedAnswer,
 } from './semantic-ai.js';
+import {
+  BrowserLocalAi,
+  LOCAL_AI_MODEL,
+} from './local-ai-sidecar.js';
 
 const VENDOR_FOLIATE = './vendor/foliate-js@1.0.1/';
 const VENDOR_PDFJS   = './vendor/pdfjs-dist@5.7.284/';
@@ -1973,6 +2074,7 @@ const AI_PROVIDER_CONFIG_KEY = 'books.aiProvider.v1';
 const AI_PROVIDER_CONSENT_KEY = 'books.aiConsent.v1';
 const AI_PROVIDER_SESSION_KEY = 'books.aiKey.session.v1';
 const AI_RUNS_PREFIX = 'semantic/ai-runs/';
+const browserLocalAi = new BrowserLocalAi();
 const ENGINE_BY_EXT = {
   epub:'foliate', mobi:'foliate', azw3:'foliate', fb2:'foliate',
   pdf:'pdf',
@@ -2073,6 +2175,9 @@ const aiRemoteConsentRow = document.getElementById('ai-remote-consent-row');
 const aiRemoteConsent = document.getElementById('ai-remote-consent');
 const aiRemoteConsentLabel = document.getElementById('ai-remote-consent-label');
 const aiProviderStatus = document.getElementById('ai-provider-status');
+const providerAiLocalLoad = document.getElementById('provider-ai-local-load');
+const providerAiLocalProgress = document.getElementById('provider-ai-local-progress');
+const providerAiLocalStatus = document.getElementById('provider-ai-local-status');
 const libraryAskDialog = document.getElementById('library-ask-dialog');
 const libraryAskBoundary = document.getElementById('library-ask-boundary');
 const libraryAskScope = document.getElementById('library-ask-scope');
@@ -2084,7 +2189,13 @@ const libraryAskSettings = document.getElementById('library-ask-settings');
 const libraryAskStop = document.getElementById('library-ask-stop');
 const libraryAskSubmit = document.getElementById('library-ask-submit');
 const readerAiBtn = document.getElementById('reader-ai-btn');
-const readerAiDialog = document.getElementById('reader-ai-dialog');
+const readerAiSidecar = document.getElementById('reader-ai-sidecar');
+const readerAiClose = document.getElementById('reader-ai-close');
+const readerAiLocalCard = document.getElementById('reader-ai-local-card');
+const readerAiLocalLoad = document.getElementById('reader-ai-local-load');
+const readerAiLocalProgress = document.getElementById('reader-ai-local-progress');
+const readerAiLocalStatus = document.getElementById('reader-ai-local-status');
+const readerAiProviderSettings = document.getElementById('reader-ai-provider-settings');
 const readerAiContext = document.getElementById('reader-ai-context');
 const readerAiQuestion = document.getElementById('reader-ai-question');
 const readerAiOutput = document.getElementById('reader-ai-output');
@@ -2092,6 +2203,10 @@ const readerAiStatus = document.getElementById('reader-ai-status');
 const readerAiStop = document.getElementById('reader-ai-stop');
 const readerAiCopy = document.getElementById('reader-ai-copy');
 const readerAiAsk = document.getElementById('reader-ai-ask');
+let readerAiPassage = null;
+let readerAiController = null;
+let readerAiRun = 0;
+let readerAiCacheChecked = false;
 const readerPrefsDialog = document.getElementById('reader-prefs-dialog');
 const readerFontSize = document.getElementById('reader-font-size');
 const readerLineHeight = document.getElementById('reader-line-height');
@@ -6576,6 +6691,77 @@ function standaloneAiCapability(capability = 'answerFromSources') {
   return providerCanRun(config, loadStandaloneAiConsent(), capability);
 }
 
+function aiCapabilityReady(capability = 'answerFromSources') {
+  if (naklios.capabilities.hosted && naklios.capabilities.ai) return true;
+  if (browserLocalAi.ready) return true;
+  return standaloneAiCapability(capability).allowed;
+}
+
+function updateLocalAiSurfaces(snapshot = browserLocalAi.snapshot()) {
+  const progress = snapshot.progress == null ? 0 : snapshot.progress;
+  for (const element of [readerAiLocalProgress, providerAiLocalProgress]) {
+    element.hidden = !snapshot.loading;
+    element.value = progress;
+  }
+  for (const button of [readerAiLocalLoad, providerAiLocalLoad]) {
+    button.disabled = !snapshot.supported || snapshot.loading || snapshot.ready;
+    button.textContent = snapshot.ready
+      ? 'Ready'
+      : snapshot.loading ? 'Loading…' : 'Load model';
+  }
+  const status = snapshot.error
+    ? snapshot.status + ' ' + snapshot.error
+    : snapshot.status;
+  readerAiLocalStatus.textContent = status;
+  providerAiLocalStatus.textContent = status;
+  readerAiLocalCard.hidden = Boolean(
+    naklios.capabilities.hosted && naklios.capabilities.ai
+  );
+  if (
+    readerAiSidecar.classList.contains('is-open')
+    && !(naklios.capabilities.hosted && naklios.capabilities.ai)
+    && (snapshot.ready || snapshot.loading)
+  ) {
+    readerAiSidecar.querySelector('#reader-ai-title').textContent =
+      'Books AI · ' + LOCAL_AI_MODEL.label;
+  }
+  if (
+    snapshot.ready
+    && readerAiPassage?.text
+    && !readerAiController
+    && readerAiSidecar.classList.contains('is-open')
+  ) {
+    readerAiStatus.textContent = 'Choose an action or ask a question.';
+    readerAiContext.textContent =
+      'Using the ' + (readerAiPassage.scope || 'current passage') +
+      ' (' + readerAiPassage.text.length.toLocaleString() + ' characters). ' +
+      describeAiBoundary() + ' It is not added to your notes.';
+  }
+  updateReaderAiButton();
+}
+
+async function loadBrowserLocalAi() {
+  try {
+    await browserLocalAi.load();
+    showToast('Gemma 4 E4B is ready in the private AI sidecar.', {
+      duration:5000,
+    });
+  } catch (error) {
+    showToast(
+      "Couldn't load Gemma 4 E4B: " + String(error?.message || error),
+      { error:true, duration:7000 },
+    );
+  }
+}
+
+providerAiLocalLoad.addEventListener('click', () => {
+  void loadBrowserLocalAi();
+});
+readerAiLocalLoad.addEventListener('click', () => {
+  void loadBrowserLocalAi();
+});
+browserLocalAi.subscribe(updateLocalAiSurfaces);
+
 function updateRemoteConsentSurface() {
   const remote = aiProviderClass.value === 'remote';
   aiRemoteConsentRow.hidden = !remote;
@@ -6592,7 +6778,7 @@ function updateRemoteConsentSurface() {
 }
 
 function openAiProviderSettings() {
-  if (naklios.capabilities.hosted) {
+  if (naklios.capabilities.hosted && naklios.capabilities.ai) {
     naklios.openSettings('ai');
     return;
   }
@@ -6706,6 +6892,13 @@ function resolveAiProvider(capability = 'answerFromSources') {
       consentClass:'host-mediated',
     };
   }
+  if (browserLocalAi.ready) {
+    return {
+      kind:'browser-local',
+      provider:browserLocalAi.descriptor(),
+      consentClass:'on-device-browser',
+    };
+  }
   const config = loadStandaloneAiConfig();
   const result = providerCanRun(
     config,
@@ -6714,10 +6907,10 @@ function resolveAiProvider(capability = 'answerFromSources') {
   );
   if (!result.allowed) {
     const messages = {
-      'provider-disabled':'The standalone AI provider is disabled.',
+      'provider-disabled':'Load Gemma 4 E4B or enable an endpoint provider.',
       'destination-consent-required':
         'Approve the configured remote destination in Provider settings first.',
-      'invalid-provider':'Configure a visible endpoint and model first.',
+      'invalid-provider':'Load Gemma 4 E4B or configure a visible endpoint and model.',
     };
     throw new Error(messages[result.reason] || 'Configure an AI provider first.');
   }
@@ -6755,6 +6948,14 @@ async function runAiMessages(providerRoute, messages, {
       model:naklios.capabilities.aiModelLabel || 'NakliOS AI',
       usage:null,
     };
+  }
+  if (providerRoute.kind === 'browser-local') {
+    return browserLocalAi.generate(messages, {
+      signal,
+      maxTokens,
+      onStatus,
+      onDelta,
+    });
   }
   onStatus('generating');
   const result = await callOpenAICompatible({
@@ -6847,8 +7048,11 @@ function describeAiBoundary() {
   if (naklios.capabilities.hosted && naklios.capabilities.ai) {
     return 'NakliOS mediates this request using its configured AI consent and destination.';
   }
+  if (browserLocalAi.ready) {
+    return 'Gemma 4 E4B runs in a dedicated WebGPU worker; book text stays on this device.';
+  }
   const config = loadStandaloneAiConfig();
-  if (!config?.enabled) return 'No standalone AI provider is enabled.';
+  if (!config?.enabled) return 'Load Gemma 4 E4B or configure another provider.';
   return config.providerClass === 'local'
     ? 'Retrieved excerpts are sent to the visible local service at ' +
       config.destination + '.'
@@ -6871,11 +7075,9 @@ function openLibraryAsk(scope = 'library') {
   libraryAskBoundary.textContent =
     'Books retrieves local passages first. ' + describeAiBoundary() +
     ' Answers must cite those passages as [S1], [S2], and so on.';
-  libraryAskStatus.textContent = (
-    naklios.capabilities.hosted && naklios.capabilities.ai
-  ) || standaloneAiCapability().allowed
+  libraryAskStatus.textContent = aiCapabilityReady()
     ? 'Ready. No source text is sent until you choose Ask.'
-    : 'Configure a provider to enable source-grounded answers.';
+    : 'Load Gemma 4 E4B or configure a provider to enable source-grounded answers.';
   libraryAskStop.hidden = true;
   libraryAskSubmit.disabled = false;
   libraryAskDialog.showModal();
@@ -8237,18 +8439,13 @@ readerPrefsBtn.addEventListener('click', () => {
   control.addEventListener('change', applyReaderPrefsFromDialog);
 });
 
-let readerAiPassage = null;
-let readerAiController = null;
-let readerAiRun = 0;
-
 function updateReaderAiButton() {
-  const providerReady = (
-    naklios.capabilities.hosted && naklios.capabilities.ai
-  ) || standaloneAiCapability().allowed;
   readerAiBtn.hidden = !(
-    providerReady
-    && activeEngine
+    activeEngine
     && typeof activeEngine.getContextText === 'function'
+  );
+  readerAiLocalCard.hidden = Boolean(
+    naklios.capabilities.hosted && naklios.capabilities.ai
   );
 }
 
@@ -8268,12 +8465,6 @@ function readerAiProgressLabel(status, progress) {
 
 async function openReaderAi() {
   if (!activeEngine) return;
-  try {
-    resolveAiProvider('answerFromSources');
-  } catch (_) {
-    openAiProviderSettings();
-    return;
-  }
   readerAiRun++;
   readerAiPassage = null;
   readerAiOutput.value = '';
@@ -8281,18 +8472,38 @@ async function openReaderAi() {
   readerAiCopy.disabled = true;
   readerAiStop.hidden = true;
   const standaloneConfig = loadStandaloneAiConfig();
-  readerAiDialog.querySelector('#reader-ai-title').textContent =
+  readerAiSidecar.querySelector('#reader-ai-title').textContent =
     'Books AI · ' + (
       naklios.capabilities.hosted && naklios.capabilities.ai
         ? naklios.capabilities.aiModelLabel || 'NakliOS provider'
-        : standaloneConfig?.model || 'reading companion'
+        : browserLocalAi.ready || browserLocalAi.loading
+          ? LOCAL_AI_MODEL.label
+          : standaloneConfig?.enabled
+            ? standaloneConfig.model
+            : 'private reading companion'
     );
   readerAiStatus.textContent = 'Reading the current passage…';
   readerAiContext.textContent = 'Preparing the current passage…';
-  if (!readerAiDialog.open) readerAiDialog.showModal();
+  readerAiSidecar.classList.add('is-open');
+  readerAiSidecar.setAttribute('aria-hidden', 'false');
+  readerAiBtn.classList.add('is-active');
+  readerAiBtn.setAttribute('aria-expanded', 'true');
+  if (
+    !naklios.capabilities.ai
+    && !browserLocalAi.ready
+    && !browserLocalAi.loading
+    && !readerAiCacheChecked
+  ) {
+    readerAiCacheChecked = true;
+    void browserLocalAi.hasCachedModel().then((cached) => {
+      if (cached && readerAiSidecar.classList.contains('is-open')) {
+        void loadBrowserLocalAi();
+      }
+    });
+  }
   try {
     const context = await activeEngine.getContextText(12000);
-    if (!readerAiDialog.open) return;
+    if (!readerAiSidecar.classList.contains('is-open')) return;
     if (!context?.text?.trim()) throw new Error('No readable text was found on the current page.');
     readerAiPassage = context;
     readerAiContext.textContent =
@@ -8300,10 +8511,22 @@ async function openReaderAi() {
       ' (' + context.text.length.toLocaleString() + ' characters). ' +
       describeAiBoundary() +
       ' It is not added to your notes.';
-    readerAiStatus.textContent = 'Choose an action or ask a question.';
+    readerAiStatus.textContent = aiCapabilityReady()
+      ? 'Choose an action or ask a question.'
+      : 'Load Gemma 4 E4B or choose another provider.';
   } catch (error) {
     readerAiStatus.textContent = error?.message || String(error);
   }
+}
+
+function closeReaderAiSidecar() {
+  readerAiController?.abort();
+  readerAiController = null;
+  readerAiRun++;
+  readerAiSidecar.classList.remove('is-open');
+  readerAiSidecar.setAttribute('aria-hidden', 'true');
+  readerAiBtn.classList.remove('is-active');
+  readerAiBtn.setAttribute('aria-expanded', 'false');
 }
 
 async function activeReaderAiSourceRef() {
@@ -8376,7 +8599,7 @@ async function runReaderAi(kind, customQuestion = '') {
   readerAiCopy.disabled = true;
   readerAiStop.hidden = false;
   readerAiAsk.disabled = true;
-  readerAiDialog.querySelectorAll('[data-reader-ai-action]').forEach((button) => {
+  readerAiSidecar.querySelectorAll('[data-reader-ai-action]').forEach((button) => {
     button.disabled = true;
   });
   readerAiStatus.textContent = 'Queued…';
@@ -8457,7 +8680,7 @@ async function runReaderAi(kind, customQuestion = '') {
       readerAiStop.hidden = true;
       readerAiAsk.disabled = false;
       readerAiCopy.disabled = !responseText.trim();
-      readerAiDialog.querySelectorAll('[data-reader-ai-action]').forEach((button) => {
+      readerAiSidecar.querySelectorAll('[data-reader-ai-action]').forEach((button) => {
         button.disabled = false;
       });
       updateReaderAiButton();
@@ -8465,8 +8688,13 @@ async function runReaderAi(kind, customQuestion = '') {
   }
 }
 
-readerAiBtn.addEventListener('click', () => { void openReaderAi(); });
-readerAiDialog.querySelectorAll('[data-reader-ai-action]').forEach((button) => {
+readerAiBtn.addEventListener('click', () => {
+  if (readerAiSidecar.classList.contains('is-open')) closeReaderAiSidecar();
+  else void openReaderAi();
+});
+readerAiClose.addEventListener('click', closeReaderAiSidecar);
+readerAiProviderSettings.addEventListener('click', openAiProviderSettings);
+readerAiSidecar.querySelectorAll('[data-reader-ai-action]').forEach((button) => {
   button.addEventListener('click', () => {
     void runReaderAi(button.getAttribute('data-reader-ai-action'));
   });
@@ -8491,12 +8719,6 @@ readerAiCopy.addEventListener('click', async () => {
     readerAiStatus.textContent = 'Select and copy the response.';
   }
 });
-readerAiDialog.addEventListener('close', () => {
-  readerAiController?.abort();
-  readerAiController = null;
-  readerAiRun++;
-});
-
 document.querySelectorAll('[data-close-dialog]').forEach((button) => {
   button.addEventListener('click', () => {
     const dialog = document.getElementById(button.getAttribute('data-close-dialog'));
@@ -8926,8 +9148,7 @@ function enterReaderView(filename) {
 }
 
 function teardownReaderView() {
-  readerAiController?.abort();
-  if (readerAiDialog.open) readerAiDialog.close();
+  closeReaderAiSidecar();
   resetReaderSearch();
   readerSearchbar.hidden = true;
   readerSearchBtn.hidden = true;
@@ -9174,6 +9395,7 @@ function boot() {
   // Flush pending sidecar writes on close
   window.addEventListener('beforeunload', flushPendingWritesSync);
   window.addEventListener('beforeunload', clearCoverObjectUrls);
+  window.addEventListener('beforeunload', () => browserLocalAi.dispose());
   naklios.beforeClose(flushPendingWritesSync);
 
   // Keyboard navigation in the reader view.
@@ -9189,6 +9411,11 @@ function boot() {
     if (e.key === 'Escape' && !readerSearchbar.hidden) {
       e.preventDefault();
       closeReaderSearch();
+      return;
+    }
+    if (e.key === 'Escape' && readerAiSidecar.classList.contains('is-open')) {
+      e.preventDefault();
+      closeReaderAiSidecar();
       return;
     }
     const t = e.target;

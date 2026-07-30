@@ -10,7 +10,21 @@ or deterministic index.
 ## Provider routes
 
 Inside NakliOS, Books sends model requests only through the host-mediated
-`naklios.ai` broker. The host owns provider selection and consent.
+`naklios.ai` broker when that capability is available. The host owns provider
+selection and consent, and remains the preferred route in hosted mode.
+
+Books also includes an on-device browser route modelled on VaultMind:
+
+- Transformers.js 4.2 runs `onnx-community/gemma-4-E4B-it-ONNX` with `q4f16`
+  weights and WebGPU in a dedicated module Worker.
+- The model is loaded only after the user chooses **Load model**. The roughly
+  4 GB download is cached by the browser; a cached model may be loaded when
+  the reader sidecar is opened.
+- Model files come from Hugging Face and the pinned Transformers.js module
+  comes from jsDelivr. Book text is passed only to the local Worker and is not
+  transmitted with those model-file requests.
+- Generated records use the public provider descriptor `browser-local`,
+  destination `browser-webgpu`, and consent class `on-device-browser`.
 
 Standalone Books supports an explicitly configured OpenAI-compatible endpoint:
 
@@ -37,7 +51,8 @@ destination-specific consent for `answerFromSources`.
 
 For the **reader companion**, the user explicitly chooses Explain, Summarize,
 Key points, or asks a question. Only the current selection/page/passage and the
-request are sent.
+request enter the chosen provider route. The companion remains open beside the
+book so it does not replace reading context.
 
 For **semantic enrichment**, the user explicitly chooses Enrich in a work's
 details. Books samples indexed passages across the work and requests bounded

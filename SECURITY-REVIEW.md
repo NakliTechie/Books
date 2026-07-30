@@ -72,6 +72,15 @@ library bytes.
 AI is optional. Reading, lexical search, annotations, concepts produced by
 deterministic extraction, and recovery work without a model.
 
+- The built-in route runs the pinned Gemma 4 E4B ONNX model in a dedicated
+  WebGPU Worker. The user explicitly starts the approximately 4 GB model
+  download; browser caching is enabled. Model-file requests go to Hugging
+  Face, and the pinned Transformers.js module loads from jsDelivr. Book text
+  is not included in either request.
+- The CSP permits only that named script origin for the Worker module and
+  permits `blob:` fetches required by both Foliate's generated EPUB sections
+  and the local module Worker. The existing `worker-src` and `frame-src`
+  restrictions remain in place.
 - Standalone configuration always shows the endpoint, model, and whether the
   destination is local or remote.
 - A remote provider must use HTTPS and requires consent tied to the exact
@@ -157,6 +166,11 @@ Cloudflare/GitHub linkage are environment- or control-plane-owned.
 7. **Embeddability:** any site may frame the public standalone shell. It does
    not gain the user's NakliOS capabilities, but a future authentication
    surface should add an explicit framing policy or host handshake.
+8. **On-device model supply chain:** the built-in route downloads executable
+   model runtime code from the explicitly allowlisted, pinned jsDelivr package
+   and model weights from the named Hugging Face repository. Pin updates,
+   upstream compromise, and cached artifact invalidation require release
+   review.
 
 ## Verification evidence
 

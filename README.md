@@ -24,8 +24,9 @@ passage indexing and concepts, Books-native reading, portable highlights,
 library-wide annotation memory, library validation, catalog rebuild, and
 conflict-safe portable export/import. Book removal now uses recoverable Trash;
 permanent deletion is a separate confirmed action. Source-grounded Ask works
-through NakliOS AI or a visible OpenAI-compatible local/BYOK endpoint, with
-passage citations and durable model-run provenance. Users can explicitly group
+through NakliOS AI, an on-device Gemma 4 E4B sidecar, or a visible
+OpenAI-compatible local/BYOK endpoint, with passage citations and durable
+model-run provenance. Users can explicitly group
 multiple source formats as one work and split them again without changing the
 originals or losing format-grounded annotations. Native mode now exposes
 stable references, time remaining, accessible landmarks, deeper typography,
@@ -44,9 +45,11 @@ through portable work-manifest overrides that survive derived-data rebuilds.
   paths as NakliOS storage, keeping one application path across environments.
 - Static Cloudflare Worker deployment at `books.naklitechie.com`, with GitHub
   Workers Builds deploying every update pushed to `main`.
-- Optional AI works through NakliOS's host-mediated broker or a standalone,
-  visible OpenAI-compatible local/BYOK endpoint. Remote book-content requests
-  require destination-specific consent; provider keys remain session-only.
+- Optional AI works through NakliOS's host-mediated broker, a built-in
+  Transformers.js 4.2 WebGPU worker running Gemma 4 E4B, or a visible
+  OpenAI-compatible local/BYOK endpoint. The reader companion is a persistent
+  sidecar, not a blocking dialog. Remote book-content requests require
+  destination-specific consent; provider keys remain session-only.
 
 ## v1.1 highlights
 
@@ -71,16 +74,17 @@ through portable work-manifest overrides that survive derived-data rebuilds.
   CFI-aware engine, PDF text page by page, and TXT/Markdown/HTML through the
   text adapter. Results cycle through one common accessible search bar.
 
-## v1.3 highlights
+## AI reading companion
 
-- A hosted-only NakliOS AI reading companion can explain, summarize, extract key
-  points, or answer a question about the current selection, PDF page, or text
-  passage.
-- Books uses the shared `naklios.ai` model service: it does not download or
-  manage a second model and never receives another app's prompts.
-- Responses stream into a cancellable, app-styled dialog and cannot alter the
-  book or its notes. Standalone can use a local/BYOK provider, while reading
-  and local lexical search remain fully usable without AI.
+- The reader sidecar can explain, summarize, extract key points, or answer a
+  question about the current selection, PDF page, or text passage.
+- Standalone and hosted Books can run Gemma 4 E4B on-device in a dedicated
+  WebGPU worker. The approximately 4 GB model downloads only after the user
+  chooses Load model and is cached by the browser.
+- NakliOS AI remains the preferred hosted route. A visible OpenAI-compatible
+  local or remote BYOK endpoint remains available as a fallback.
+- Responses stream into a cancellable sidecar and cannot alter the book or its
+  notes. Reading and lexical search remain fully usable without AI.
 
 ## How this fits in the repo
 

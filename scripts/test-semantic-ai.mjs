@@ -188,6 +188,28 @@ assert.equal(run.inputs[0].passageId, 'passage_a');
 assert.equal(run.output.text, 'Grounded response [S1].');
 assert.doesNotMatch(JSON.stringify(run), /session-secret/);
 
+const browserLocalRun = makeAiRunRecord({
+  runId:'airun_browser_local',
+  capability:'answerFromSources',
+  provider:{
+    providerClass:'browser-local',
+    model:'onnx-community/gemma-4-E4B-it-ONNX',
+  },
+  consentClass:'on-device-browser',
+  promptVersion:READER_PROMPT_VERSION,
+  promptHash,
+  sourceRefs:grounded.sourceRefs.slice(0, 1),
+  output:{ text:'On-device response.' },
+  validation:{ grounded:true },
+  now:() => '2026-07-30T12:00:02.000Z',
+});
+assert.deepEqual(browserLocalRun.provider, {
+  providerClass:'browser-local',
+  destination:'browser-webgpu',
+  endpoint:null,
+  model:'onnx-community/gemma-4-E4B-it-ONNX',
+});
+
 const enrichmentPassages = [{
   passageId:'passage_a',
   workId:'work_a',

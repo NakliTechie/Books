@@ -203,7 +203,8 @@ assert.match(html, /id="reader-library-list"/, 'reader sidebar includes the libr
 assert.match(html, /id="reader-open-file"/, 'reader includes an explicit file-open control');
 assert.match(html, /id="reader-searchbar"/, 'reader includes an in-book search surface');
 assert.match(html, /id="reader-ai-btn"/, 'reader exposes Local AI only in reading mode');
-assert.match(html, /id="reader-ai-dialog"/, 'reader has an app-styled Local AI review dialog');
+assert.match(html, /id="reader-ai-sidecar"/,
+  'reader has a persistent app-styled Local AI sidecar');
 assert.match(html, /id="ai-provider-dialog"/,
   'standalone mode has a visible local/BYOK provider configuration surface');
 assert.match(html, /id="library-ask-dialog"/,

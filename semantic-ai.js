@@ -74,14 +74,23 @@ export function publicProviderDescriptor(config) {
 }
 
 function aiProviderDescriptor(provider) {
-  return provider.providerClass === 'naklios'
-    ? {
-        providerClass:'naklios',
-        destination:'naklios-host-broker',
-        endpoint:null,
-        model:safeText(provider.model, 300),
-      }
-    : publicProviderDescriptor(provider);
+  if (provider.providerClass === 'naklios') {
+    return {
+      providerClass:'naklios',
+      destination:'naklios-host-broker',
+      endpoint:null,
+      model:safeText(provider.model, 300),
+    };
+  }
+  if (provider.providerClass === 'browser-local') {
+    return {
+      providerClass:'browser-local',
+      destination:'browser-webgpu',
+      endpoint:null,
+      model:safeText(provider.model, 300),
+    };
+  }
+  return publicProviderDescriptor(provider);
 }
 
 export function makeProviderConsent(

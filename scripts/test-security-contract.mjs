@@ -6,6 +6,7 @@ const read = (relative) =>
 
 const index = read('index.html');
 const ai = read('semantic-ai.js');
+const localAi = read('local-ai-sidecar.js');
 const library = read('semantic-library.js');
 const headers = read('_headers');
 
@@ -39,6 +40,21 @@ assert.doesNotMatch(
   index,
   /localStorage\.setItem\(AI_PROVIDER_SESSION_KEY/,
   'standalone API keys are never persisted in localStorage',
+);
+assert.match(
+  localAi,
+  /transformers@' \+\s*TRANSFORMERS_JS_VERSION \+ '\/\+esm'/,
+  'the browser AI runtime uses a pinned Transformers.js module version',
+);
+assert.match(
+  localAi,
+  /env\.allowLocalModels = false;[\s\S]*?env\.useBrowserCache = true;/,
+  'the sidecar downloads only the visible model and uses browser caching',
+);
+assert.match(
+  localAi,
+  /new this\.scope\.Worker\(this\.workerUrl, \{ type:'module' \}\)/,
+  'local generation runs outside the UI thread in a dedicated module worker',
 );
 
 assert.match(
@@ -77,6 +93,7 @@ assert.match(headers, /Content-Security-Policy:/);
 assert.match(headers, /object-src 'none'/);
 assert.match(headers, /base-uri 'none'/);
 assert.match(headers, /form-action 'self'/);
+assert.match(headers, /connect-src[^;]*\bblob:/);
 assert.doesNotMatch(
   headers,
   /frame-ancestors|X-Frame-Options/i,

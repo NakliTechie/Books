@@ -152,8 +152,9 @@ model-backed features may degrade when no approved inference route exists.
 
 No passage, metadata field, annotation, or image leaves the current device
 unless the user has approved that provider and destination. NakliOS AI
-continues to use host-mediated consent. Standalone provider support requires a
-separate consent design.
+continues to use host-mediated consent. The built-in Gemma sidecar is
+on-device and user-started; standalone remote providers use the shipped,
+destination-specific consent design.
 
 ### P5. Intelligence is traceable and disposable
 

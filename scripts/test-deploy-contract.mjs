@@ -14,6 +14,7 @@ for (const asset of [
   'semantic-library.js',
   'semantic-processing.js',
   'semantic-ai.js',
+  'local-ai-sidecar.js',
   '_headers',
 ]) {
   assert.match(
@@ -48,6 +49,16 @@ assert.match(headers, /object-src 'none'/);
 assert.match(headers, /base-uri 'none'/);
 assert.match(headers, /X-Content-Type-Options:\s*nosniff/);
 assert.match(headers, /Permissions-Policy:/);
+assert.match(
+  headers,
+  /connect-src[^;]*\bblob:/,
+  'production CSP permits Foliate to fetch generated EPUB section URLs',
+);
+assert.match(
+  headers,
+  /script-src[^;]*https:\/\/cdn\.jsdelivr\.net/,
+  'the pinned Transformers.js worker module has an explicit CSP source',
+);
 assert.match(headers, /workers\.dev\/\*[\s\S]*?X-Robots-Tag:\s*noindex/);
 
 assert.match(workflow, /npm ci/);

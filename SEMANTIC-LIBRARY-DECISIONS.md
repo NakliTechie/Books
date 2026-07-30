@@ -104,11 +104,14 @@ segmentation, and lexical indexing are deterministic local stages. Concepts,
 entities, scenes, summaries, and illustrations may use a local or BYOK
 provider through one capability interface.
 
-Local/BYOK inference is assumed available for product planning, with these
+Local/BYOK inference is available through NakliOS, the built-in Gemma 4 E4B
+WebGPU sidecar, or a visible OpenAI-compatible endpoint, with these
 boundaries:
 
 - No content leaves the active device or origin silently.
-- A local on-device route may be enabled once its endpoint and model are
+- The built-in model is visible and starts downloading only after an explicit
+  Load model action; it runs in a dedicated browser Worker.
+- A local endpoint route may be enabled once its endpoint and model are
   visible to the user.
 - A remote BYOK route requires provider-specific consent before book content
   is sent.
