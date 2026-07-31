@@ -35,13 +35,16 @@ This document owns execution order.
 | 0 | Release hygiene and real-library proof | Books 2.0 | Local Folder proof passed; sync-folder/soak checks pending |
 | 1 | OCR Adopt / Adapt / Reject decision | Batch 0 corpus and evidence | Defaults accepted; runtime corpus gate pending |
 | 2 | Semantic quality and ingestion operations | Batch 0 evidence | Production intelligence enabled; labeled real queries pending |
+| 2A | Echoes: source-grounded reader connections | Batch 2 labeled quality gate | Planned |
 | 3 | Folder durability at collection scale | Batch 0 evidence | Local restore-after-gap gate passed; sync-folder gate pending |
 | 4 | Source-grounded illustration vertical slice | Batch 2 quality gate; Batch 1 where OCR is required | Product hold |
 | 5 | Private continuity and mobile handoff | Batch 3 storage/conflict gate | Product hold |
 | 6 | Reader depth and accessibility | Batch 0; may run beside Batches 1–3 | Demand-ranked |
 | 7 | New formats and Calibre-shaped bets | Dedicated approval and corpus | Parked |
 
-After Batch 0, Batches 1 and 2 may run in parallel. Batch 3 may also begin
+After Batch 0, Batches 1 and 2 may run in parallel. Batch 2A turns the proven
+semantic foundation into paragraph-level, cross-genre reader connections and
+starts only after the labeled Batch 2 quality gate. Batch 3 may also begin
 once the Folder evidence in Batch 0 is complete. Batch 6 is independent but
 must be ranked against observed demand. Batches 4, 5, and 7 remain closed
 until their explicit product gates are opened.
@@ -180,6 +183,30 @@ real library.
 - Browser and native executors agree on schemas, identity, and evidence
   anchors.
 - User curation survives regeneration of all derived semantic data.
+
+---
+
+## Batch 2A — Echoes: source-grounded reader connections
+
+**Outcome:** Turn the library-level graph into discreet, optional connections
+at the point of reading, including nonfiction↔nonfiction,
+fiction↔fiction, and fiction↔nonfiction relationships.
+
+The approved product direction is in [ECHOES-VISION.md](ECHOES-VISION.md).
+Paragraph anchors, typed semantic units, graph v2, materialized reader
+connections, Native-reader indicators, optional audio, executor parity, and
+rollout gates are sequenced in [ECHOES-WORKPLAN.md](ECHOES-WORKPLAN.md).
+
+### Gate
+
+- Begin schema and fixture work immediately after the relation contract is
+  locked.
+- Do not enable inline indicators by default until the real-library Batch 2
+  labels establish a stricter reader-quality threshold.
+- Every Echo must retain evidence in both works, respect spoiler controls, and
+  disappear safely when its derived artifact is missing.
+- Reading, lexical search, and authored text remain independent of Echoes and
+  generative AI.
 
 ---
 

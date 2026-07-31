@@ -29,7 +29,10 @@ choices in
 execution sequence and complete pending-item map in
 [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md). The
 dependency-aware sequence for the work that remains is in
-[BATCHED-ROADMAP.md](BATCHED-ROADMAP.md).
+[BATCHED-ROADMAP.md](BATCHED-ROADMAP.md). The next product horizon—discreet,
+source-grounded concept, scene, plot, and cross-genre connections while
+reading—is defined in [ECHOES-VISION.md](ECHOES-VISION.md) and sequenced in
+[ECHOES-WORKPLAN.md](ECHOES-WORKPLAN.md).
 
 The approved name, Living Book mark, palette, asset usage, and compatibility
 rules are recorded in [BRAND.md](BRAND.md).
@@ -169,6 +172,8 @@ naklios-universe/
     ├── BATCHED-ROADMAP.md        ← dependency-aware post-2.0 execution batches
     ├── ROADMAP-EXECUTION-REPORT.md ← delivered evidence and final access queue
     ├── LIBRARY-INTELLIGENCE-WORKPLAN.md ← completed v2 ingestion/ideas plan
+    ├── ECHOES-VISION.md           ← cross-book and cross-genre reader vision
+    ├── ECHOES-WORKPLAN.md         ← paragraph-level connection execution plan
     ├── FOLDER-LIBRARY-FORMAT.md ← durable `.books/` sidecar and executor contract
     ├── OCR-DECISION.md          ← accepted local-first OCR routes and artifact gate
     ├── BENCHMARKS.md            ← reproducible Folder and semantic quality evidence
@@ -264,6 +269,10 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
   MiniLM/lexical/hybrid retrieval evidence
 - [SEMANTIC-QUALITY-GATE.md](SEMANTIC-QUALITY-GATE.md) — named browser/native
   quality defaults, thresholds, evidence requirements, and recalibration gate
+- [ECHOES-VISION.md](ECHOES-VISION.md) — source-grounded concept, scene,
+  plot, and cross-genre connections at the point of reading
+- [ECHOES-WORKPLAN.md](ECHOES-WORKPLAN.md) — paragraph anchors, typed semantic
+  units, graph v2, Native-reader indicators, quality gates, and rollout
 - [LIBRARY-MOVEMENT-CONTRACT.md](LIBRARY-MOVEMENT-CONTRACT.md) — proposed
   two-phase Copy/Move, rollback, and multiple-root ownership semantics
 - [DEFERRED-DECISIONS.md](DEFERRED-DECISIONS.md) — access checks and product
