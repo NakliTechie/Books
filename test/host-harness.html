@@ -1653,7 +1653,11 @@
     scaleMode ? runScaleRegression : runEpubRegression,
   );
   if (new URLSearchParams(location.search).get('autorun') === '1') {
-    frame.addEventListener('load', () => setTimeout(runEpubRegression, 0), { once: true });
+    frame.addEventListener(
+      'load',
+      () => setTimeout(scaleMode ? runScaleRegression : runEpubRegression, 0),
+      { once:true },
+    );
   }
 })();
 </script>

@@ -327,6 +327,7 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
 ```sh
 npm install
 npm test
+npm run test:browser # real Chrome: hosted semantic journey + 60-work journey
 npm run dev
 npm run report -- /path/to/library
 npm run benchmark:indexer -- 1000
