@@ -265,6 +265,26 @@ assert.deepEqual(browserLocalRun.provider, {
   model:'onnx-community/gemma-4-E4B-it-ONNX',
 });
 
+const browserWasmRun = makeAiRunRecord({
+  runId:'airun_browser_wasm',
+  capability:'answerFromSources',
+  provider:{
+    providerClass:'browser-local',
+    destination:'browser-wasm',
+    model:
+      'https://huggingface.co/LiquidAI/LFM2.5-230M-GGUF/resolve/main/' +
+      'LFM2.5-230M-Q5_K_M.gguf',
+  },
+  consentClass:'on-device-browser',
+  promptVersion:READER_PROMPT_VERSION,
+  promptHash,
+  sourceRefs:grounded.sourceRefs.slice(0, 1),
+  output:{ text:'On-device WASM response.' },
+  validation:{ grounded:true },
+  now:() => '2026-07-30T12:00:03.000Z',
+});
+assert.equal(browserWasmRun.provider.destination, 'browser-wasm');
+
 const enrichmentPassages = [{
   passageId:'passage_a',
   workId:'work_a',

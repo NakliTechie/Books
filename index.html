@@ -429,6 +429,18 @@ body { display: flex; flex-direction: column; }
   width:100%; height:5px; accent-color:var(--brand);
 }
 .ai-local-status { color:var(--muted); font-size:10px; line-height:1.4; }
+.ai-local-recovery { display:flex; flex-wrap:wrap; gap:6px; }
+.ai-local-recovery[hidden] { display:none; }
+.ai-local-recovery button {
+  border:1px solid var(--line); border-radius:6px; padding:6px 8px;
+  background:var(--panel); color:var(--ink); cursor:pointer; font:9px/1.2 inherit;
+}
+.ai-local-diagnostics { color:var(--muted); font-size:9px; }
+.ai-local-diagnostics[hidden] { display:none; }
+.ai-local-diagnostics code {
+  display:block; margin-top:5px; max-height:90px; overflow:auto;
+  white-space:pre-wrap; overflow-wrap:anywhere; color:var(--ink);
+}
 .reader-content { position: absolute; inset: 0; overflow: hidden; }
 .reader-content > * { position: absolute; inset: 0; }
 .pdf-page { position:relative; margin:8px auto; }
@@ -1182,12 +1194,28 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
           <select class="ai-local-model" id="reader-ai-local-model">
             <option value="gemma-4-e2b">Gemma 4 E2B · smaller, recommended</option>
             <option value="gemma-4-e4b">Gemma 4 E4B · higher quality</option>
+            <option value="lfm2-230m-wasm">
+              LFM2.5 230M · Firefox/CPU fallback
+            </option>
           </select>
           <progress class="ai-local-progress" id="reader-ai-local-progress"
                     max="100" value="0" hidden></progress>
           <div class="ai-local-status" id="reader-ai-local-status">
             Runs in a dedicated worker. Book text stays on this device.
           </div>
+          <div class="ai-local-recovery" data-ai-local-recovery hidden>
+            <button type="button" data-ai-local-clear>Clear model cache</button>
+            <button type="button" data-ai-local-use-wasm>
+              Use smaller CPU model
+            </button>
+            <button type="button" data-ai-local-endpoint>
+              Use Ollama / LM Studio
+            </button>
+          </div>
+          <details class="ai-local-diagnostics" data-ai-local-diagnostics hidden>
+            <summary>Technical details</summary>
+            <code></code>
+          </details>
         </div>
         <p id="reader-ai-context">Preparing the current passage…</p>
         <div class="books-ai-actions">
@@ -1566,9 +1594,9 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   <form class="books-dialog-body" id="ai-provider-form">
     <h3 id="ai-provider-title">AI providers</h3>
     <p>
-      Books can run Gemma entirely in this browser. NakliOS AI remains the
-      first choice when the app is hosted. An OpenAI-compatible endpoint is an
-      optional fallback.
+      Books can run a private model entirely in this browser. NakliOS AI
+      remains the first choice when the app is hosted. An OpenAI-compatible
+      endpoint is an optional fallback.
     </p>
     <div class="ai-local-card">
       <div class="ai-local-card-head">
@@ -1587,12 +1615,25 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <select class="ai-local-model" id="provider-ai-local-model">
         <option value="gemma-4-e2b">Gemma 4 E2B · smaller, recommended</option>
         <option value="gemma-4-e4b">Gemma 4 E4B · higher quality</option>
+        <option value="lfm2-230m-wasm">
+          LFM2.5 230M · Firefox/CPU fallback
+        </option>
       </select>
       <progress class="ai-local-progress" id="provider-ai-local-progress"
                 max="100" value="0" hidden></progress>
       <div class="ai-local-status" id="provider-ai-local-status">
         No book text is uploaded. Model files are downloaded from Hugging Face.
       </div>
+      <div class="ai-local-recovery" data-ai-local-recovery hidden>
+        <button type="button" data-ai-local-clear>Clear model cache</button>
+        <button type="button" data-ai-local-use-wasm>
+          Use smaller CPU model
+        </button>
+      </div>
+      <details class="ai-local-diagnostics" data-ai-local-diagnostics hidden>
+        <summary>Technical details</summary>
+        <code></code>
+      </details>
     </div>
     <h4 style="margin:18px 0 6px;font-size:12px">Endpoint or BYOK</h4>
     <p>
@@ -2633,6 +2674,8 @@ import {
 import {
   BrowserLocalAi,
   DEFAULT_LOCAL_AI_MODEL_KEY,
+  FIREFOX_LOCAL_AI_MODEL_KEY,
+  localAiModel,
 } from './local-ai-sidecar.js';
 import {
   BrowserSemanticEncoder,
@@ -8683,18 +8726,28 @@ function selectBrowserLocalAiModel(modelKey) {
 
 function updateLocalAiSurfaces(snapshot = browserLocalAi.snapshot()) {
   const progress = snapshot.progress == null ? 0 : snapshot.progress;
-  const approximateGigabytes =
-    (snapshot.model.approximateDownloadBytes / 1_000_000_000).toFixed(1);
-  readerAiLocalTitle.textContent = snapshot.model.label + ' · WebGPU';
+  const approximateSize = snapshot.model.approximateDownloadBytes < 1_000_000_000
+    ? Math.round(snapshot.model.approximateDownloadBytes / 1_000_000) + ' MB'
+    : (snapshot.model.approximateDownloadBytes / 1_000_000_000).toFixed(1) +
+      ' GB';
+  const runtimeLabel = snapshot.model.runtime === 'wllama-cpu'
+    ? 'CPU/WebAssembly'
+    : 'WebGPU';
+  readerAiLocalTitle.textContent = snapshot.model.label + ' · ' + runtimeLabel;
   providerAiLocalTitle.textContent = 'Built in · ' + snapshot.model.label;
   for (const detail of [readerAiLocalDetail, providerAiLocalDetail]) {
-    detail.textContent =
-      'Transformers.js 4.2 · WebGPU · about ' + approximateGigabytes +
-      ' GB, cached locally';
+    detail.textContent = snapshot.model.runtime === 'wllama-cpu'
+      ? 'wllama · CPU/WebAssembly · about ' + approximateSize +
+        ' per cold load'
+      : 'Transformers.js 4.2 · WebGPU · about ' + approximateSize +
+        ', cached locally';
   }
   for (const select of [readerAiLocalModel, providerAiLocalModel]) {
     select.value = snapshot.model.key;
     select.disabled = snapshot.loading;
+    for (const option of select.options) {
+      option.disabled = !browserLocalAi.supportsModel(localAiModel(option.value));
+    }
   }
   for (const element of [readerAiLocalProgress, providerAiLocalProgress]) {
     element.hidden = !snapshot.loading;
@@ -8706,29 +8759,55 @@ function updateLocalAiSurfaces(snapshot = browserLocalAi.snapshot()) {
       ? 'Ready'
       : snapshot.loading ? 'Loading…' : 'Load ' + snapshot.model.shortLabel;
   }
-  const status = snapshot.error
-    ? snapshot.status + ' ' + snapshot.error
-    : snapshot.status;
-  readerAiLocalStatus.textContent = status;
-  providerAiLocalStatus.textContent = status;
+  readerAiLocalStatus.textContent = snapshot.status;
+  providerAiLocalStatus.textContent = snapshot.status;
+  const actions = new Set(snapshot.diagnostic?.actions || []);
+  for (const recovery of document.querySelectorAll('[data-ai-local-recovery]')) {
+    recovery.hidden = !snapshot.diagnostic || !(
+      actions.has('clear-cache')
+      || actions.has('use-wasm')
+      || (
+        actions.has('endpoint')
+        && recovery.querySelector('[data-ai-local-endpoint]')
+      )
+    );
+  }
+  for (const button of document.querySelectorAll('[data-ai-local-clear]')) {
+    button.hidden = !actions.has('clear-cache');
+    button.disabled = snapshot.loading;
+  }
+  for (const button of document.querySelectorAll('[data-ai-local-use-wasm]')) {
+    button.hidden =
+      snapshot.model.key === FIREFOX_LOCAL_AI_MODEL_KEY
+      || !actions.has('use-wasm');
+    button.disabled = snapshot.loading;
+  }
+  for (const button of document.querySelectorAll('[data-ai-local-endpoint]')) {
+    button.hidden = !actions.has('endpoint');
+    button.disabled = snapshot.loading;
+  }
+  for (const details of document.querySelectorAll('[data-ai-local-diagnostics]')) {
+    details.hidden = !snapshot.error;
+    details.querySelector('code').textContent = snapshot.error || '';
+  }
   readerAiLocalCard.hidden = Boolean(
     naklios.capabilities.hosted && naklios.capabilities.ai
   );
   if (
     readerAiSidecar.classList.contains('is-open')
     && !(naklios.capabilities.hosted && naklios.capabilities.ai)
-    && (snapshot.ready || snapshot.loading)
   ) {
     readerAiSidecar.querySelector('#reader-ai-title').textContent =
       'Books AI · ' + snapshot.model.label;
   }
   if (
-    snapshot.ready
-    && readerAiPassage?.text
+    readerAiPassage?.text
     && !readerAiController
     && readerAiSidecar.classList.contains('is-open')
   ) {
-    readerAiStatus.textContent = 'Choose an action or ask a question.';
+    readerAiStatus.textContent = aiCapabilityReady()
+      ? 'Choose an action or ask a question.'
+      : 'Load ' + snapshot.model.label + ' or choose another provider.';
     readerAiContext.textContent =
       'Using the ' + (readerAiPassage.scope || 'current passage') +
       ' (' + readerAiPassage.text.length.toLocaleString() + ' characters). ' +
@@ -8752,6 +8831,25 @@ async function loadBrowserLocalAi() {
   }
 }
 
+async function clearBrowserLocalAiCache() {
+  const label = selectedLocalAiLabel();
+  try {
+    const result = await browserLocalAi.clearCachedModel();
+    readerAiCacheChecked = false;
+    showToast(
+      result.deleted
+        ? 'Cleared ' + label + ' model cache. Load it again for a clean download.'
+        : 'No cached ' + label + ' files were found.',
+      { duration:5500 },
+    );
+  } catch (error) {
+    showToast(
+      "Couldn't clear the model cache: " + String(error?.message || error),
+      { error:true, duration:6500 },
+    );
+  }
+}
+
 providerAiLocalLoad.addEventListener('click', () => {
   void loadBrowserLocalAi();
 });
@@ -8761,9 +8859,27 @@ readerAiLocalLoad.addEventListener('click', () => {
 for (const select of [readerAiLocalModel, providerAiLocalModel]) {
   select.addEventListener('change', () => {
     selectBrowserLocalAiModel(select.value);
+    void browserLocalAi.checkCompatibility();
+  });
+}
+for (const button of document.querySelectorAll('[data-ai-local-clear]')) {
+  button.addEventListener('click', () => {
+    void clearBrowserLocalAiCache();
+  });
+}
+for (const button of document.querySelectorAll('[data-ai-local-use-wasm]')) {
+  button.addEventListener('click', () => {
+    selectBrowserLocalAiModel(FIREFOX_LOCAL_AI_MODEL_KEY);
+    void browserLocalAi.checkCompatibility().then(() => loadBrowserLocalAi());
+  });
+}
+for (const button of document.querySelectorAll('[data-ai-local-endpoint]')) {
+  button.addEventListener('click', () => {
+    openAiProviderSettings();
   });
 }
 browserLocalAi.subscribe(updateLocalAiSurfaces);
+void browserLocalAi.checkCompatibility();
 
 const AI_PROVIDER_PRESETS = Object.freeze({
   ollama:{
@@ -9166,8 +9282,11 @@ function describeAiBoundary() {
     return 'NakliOS mediates this request using its configured AI consent and destination.';
   }
   if (browserLocalAi.ready) {
-    return selectedLocalAiLabel() +
-      ' runs in a dedicated WebGPU worker; book text stays on this device.';
+    const runtime = browserLocalAi.snapshot().model.runtime === 'wllama-cpu'
+      ? 'CPU/WebAssembly'
+      : 'WebGPU';
+    return selectedLocalAiLabel() + ' runs in a dedicated ' + runtime +
+      ' worker; book text stays on this device.';
   }
   const config = loadStandaloneAiConfig();
   if (!config?.enabled) {

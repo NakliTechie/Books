@@ -32,9 +32,9 @@ passage indexing and concepts, Books-native reading, portable highlights,
 library-wide annotation memory, library validation, catalog rebuild, and
 conflict-safe portable export/import. Book removal now uses recoverable Trash;
 permanent deletion is a separate confirmed action. Source-grounded Ask works
-through NakliOS AI, an on-device Gemma 4 E2B/E4B sidecar, or a visible
-OpenAI-compatible local/BYOK endpoint, with passage citations and durable
-model-run provenance. Users can explicitly group
+through NakliOS AI, on-device Gemma 4 E2B/E4B or CPU/WebAssembly sidecars, or
+a visible OpenAI-compatible local/BYOK endpoint, with passage citations and
+durable model-run provenance. Users can explicitly group
 multiple source formats as one work and split them again without changing the
 originals or losing format-grounded annotations. Native mode now exposes
 stable references, time remaining, accessible landmarks, deeper typography,
@@ -95,10 +95,11 @@ implementation plan in
 - Static Cloudflare Worker deployment at `books.naklitechie.com`, with GitHub
   Workers Builds deploying every update pushed to `main`.
 - Optional AI works through NakliOS's host-mediated broker, a built-in
-  Transformers.js 4.2 WebGPU worker running Gemma 4 E2B or E4B, or a visible
-  OpenAI-compatible local/BYOK endpoint. The reader companion is a persistent
-  sidecar, not a blocking dialog. Remote book-content requests require
-  destination-specific consent; provider keys remain session-only.
+  Transformers.js 4.2 WebGPU worker running Gemma 4 E2B or E4B, a small
+  wllama CPU/WebAssembly fallback, or a visible OpenAI-compatible local/BYOK
+  endpoint. The reader companion is a persistent sidecar, not a blocking
+  dialog. Remote book-content requests require destination-specific consent;
+  provider keys remain session-only.
 
 ## v1.1 highlights
 
@@ -131,6 +132,14 @@ implementation plan in
   dedicated WebGPU worker. E2B is the recommended smaller download at about
   3.4 GB; E4B is the higher-quality option at about 5.2 GB. A model downloads
   only after the user chooses Load and is cached by the browser.
+- Firefox is detected before download. Because ONNX Runtime does not support
+  its WebGPU execution provider there, Books selects LFM2.5 230M Q5_K_M
+  (about 170 MB) through wllama on single-thread CPU/WebAssembly. It is slower
+  and less capable than Gemma, but runs entirely in the tab without WebGPU.
+- Chromium runs an adapter and `shader-f16` capability preflight before Gemma
+  starts. Load failures are translated into actionable memory, download/cache,
+  or GPU diagnostics. “Clear model cache” removes only requests belonging to
+  the selected model; library files and indexes are untouched.
 - NakliOS AI remains the preferred hosted route. A visible OpenAI-compatible
   local or remote BYOK endpoint remains available as a fallback. Presets cover
   Ollama and LM Studio, and Test connection discovers their installed model

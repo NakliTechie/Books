@@ -85,7 +85,9 @@ function aiProviderDescriptor(provider) {
   if (provider.providerClass === 'browser-local') {
     return {
       providerClass:'browser-local',
-      destination:'browser-webgpu',
+      destination:provider.destination === 'browser-wasm'
+        ? 'browser-wasm'
+        : 'browser-webgpu',
       endpoint:null,
       model:safeText(provider.model, 300),
     };

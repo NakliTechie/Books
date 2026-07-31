@@ -73,10 +73,18 @@ AI is optional. Reading, lexical search, annotations, concepts produced by
 deterministic extraction, and recovery work without a model.
 
 - The built-in route runs a pinned Gemma 4 E2B or E4B ONNX model in a
-  dedicated WebGPU Worker. The user explicitly starts the selected model
-  download; browser caching is enabled. Model-file requests go to Hugging
-  Face, and the pinned Transformers.js module loads from jsDelivr. Book text
-  is not included in either request.
+  dedicated WebGPU Worker. Firefox instead defaults to the pinned LFM2.5 230M
+  Q5_K_M GGUF in wllama's single-thread CPU/WebAssembly worker. The user
+  explicitly starts the selected model download; Transformers.js model
+  caching is enabled, while the wllama fallback makes no durable-cache
+  guarantee. Model-file requests go to Hugging Face, and the pinned
+  Transformers.js or wllama module loads from jsDelivr. Book text is not
+  included in either request.
+- Compatibility routing checks the browser, Worker/WebAssembly primitives,
+  the WebGPU adapter, and `shader-f16` before model download. Model cache
+  recovery enumerates CacheStorage requests and deletes only URLs matching
+  the selected model; it never clears a whole cache, IndexedDB, library
+  storage, or semantic indexes.
 - The CSP permits only that named script and Worker origin for the module
   import graph and permits `blob:` fetches required by both Foliate's
   generated EPUB sections and the local module Worker. `wasm-unsafe-eval` is
