@@ -243,8 +243,13 @@ const index = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 assert.match(index, /from '\.\/local-ai-sidecar\.js'/);
 assert.match(index, /id="reader-ai-sidecar"/);
 assert.match(index, /aria-controls="reader-ai-sidecar"/);
-assert.match(index, /id="reader-ai-local-load"/);
-assert.match(index, /id="reader-ai-local-model"/);
+assert.doesNotMatch(index, /id="reader-ai-local-load"/,
+  'reader keeps model loading out of the task-first AI surface');
+assert.doesNotMatch(index, /id="reader-ai-local-model"/,
+  'reader keeps model selection in provider settings');
+assert.match(index, /id="reader-ai-provider-summary"/);
+assert.match(index, /id="reader-ai-context-bar"/);
+assert.match(index, /id="provider-ai-local-load"/);
 assert.match(index, /id="provider-ai-local-model"/);
 assert.match(index, /value="lfm2-230m-wasm"/);
 assert.match(index, /data-ai-local-clear/);

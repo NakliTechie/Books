@@ -394,11 +394,26 @@ body { display: flex; flex-direction: column; }
 .reader-ai-sidecar-body {
   min-height:0; overflow:auto; padding:14px; display:flex; flex-direction:column; gap:11px;
 }
+.reader-ai-context-bar {
+  display:flex; align-items:center; gap:7px; min-height:24px;
+  padding:0 2px; color:var(--muted); font-size:10px; line-height:1.35;
+}
+.reader-ai-context-dot,
+.reader-ai-provider-dot {
+  width:7px; height:7px; flex:0 0 7px; border-radius:50%;
+  background:var(--brand);
+}
+.reader-ai-context-bar[data-state="loading"] .reader-ai-context-dot {
+  animation:reader-ai-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes reader-ai-pulse { to { opacity:.35; } }
 .reader-ai-sidecar .books-ai-actions { margin:0; }
 .reader-ai-sidecar .books-dialog-text-field { margin:0; }
+.reader-ai-sidecar .books-ai-status:empty { display:none; }
 .reader-ai-sidecar .books-ai-output {
   min-height:180px; max-height:none; resize:none; flex:1 1 220px;
 }
+.reader-ai-sidecar .books-ai-output[hidden] { display:none; }
 .reader-ai-sidecar-actions { display:flex; flex-wrap:wrap; gap:7px; }
 .reader-ai-sidecar-actions button {
   border:1px solid var(--line); border-radius:6px; padding:7px 9px;
@@ -406,6 +421,27 @@ body { display: flex; flex-direction: column; }
 }
 .reader-ai-sidecar-actions button.primary {
   margin-left:auto; background:var(--brand); color:var(--panel); border-color:var(--brand);
+}
+.reader-ai-provider-bar {
+  display:flex; align-items:center; gap:7px; margin-top:auto;
+  padding-top:10px; border-top:1px solid var(--line);
+}
+.reader-ai-provider-bar[data-state="loading"] .reader-ai-provider-dot {
+  animation:reader-ai-pulse 1s ease-in-out infinite alternate;
+}
+.reader-ai-provider-bar[data-state="attention"] .reader-ai-provider-dot,
+.reader-ai-provider-bar[data-state="setup"] .reader-ai-provider-dot {
+  background:var(--muted);
+}
+.reader-ai-provider-settings {
+  min-width:0; flex:1 1 auto; display:flex; align-items:center;
+  justify-content:space-between; gap:8px; padding:4px 0;
+  border:0; background:transparent; color:var(--muted); cursor:pointer;
+  font:10px/1.35 inherit; text-align:left;
+}
+.reader-ai-provider-settings:hover { color:var(--brand); }
+.reader-ai-provider-settings span:first-child {
+  min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .ai-local-card {
   display:grid; gap:8px; padding:10px; border:1px solid var(--line);
@@ -1116,8 +1152,8 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 <div class="reader" id="reader" aria-hidden="true">
   <div class="reader-header">
     <button class="back" id="back-btn" type="button">← Library</button>
-    <button class="nav-btn" id="prev-btn" type="button" hidden aria-label="Previous" title="Previous (←)">◀</button>
-    <button class="nav-btn" id="next-btn" type="button" hidden aria-label="Next" title="Next (→ or Space)">▶</button>
+    <button class="nav-btn" id="prev-btn" type="button" hidden aria-label="Previous" title="Previous (←; Page Up or Alt/Option+← while typing)">◀</button>
+    <button class="nav-btn" id="next-btn" type="button" hidden aria-label="Next" title="Next (→ or Space; Page Down or Alt/Option+→ while typing)">▶</button>
     <div class="reader-title" id="reader-title">…</div>
     <div class="status" id="reader-status" role="status" aria-live="polite"></div>
     <button class="storage-btn" id="reader-storage-btn" type="button" hidden>Storage</button>
@@ -1172,52 +1208,16 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <aside class="reader-ai-sidecar" id="reader-ai-sidecar"
            aria-labelledby="reader-ai-title" aria-hidden="true">
       <div class="reader-ai-sidecar-head">
-        <strong id="reader-ai-title">✦ Private reading companion</strong>
+        <strong id="reader-ai-title">Books AI</strong>
         <button class="reader-ai-sidecar-close" id="reader-ai-close"
                 type="button" aria-label="Close AI companion">×</button>
       </div>
       <div class="reader-ai-sidecar-body">
-        <div class="ai-local-card" id="reader-ai-local-card">
-          <div class="ai-local-card-head">
-            <div>
-              <strong id="reader-ai-local-title">Gemma 4 E2B · WebGPU</strong>
-              <small id="reader-ai-local-detail">
-                Transformers.js · about 3.4 GB once, cached by this browser
-              </small>
-            </div>
-            <button class="ai-local-load" id="reader-ai-local-load"
-                    type="button">Load E2B</button>
-          </div>
-          <label class="sr-only" for="reader-ai-local-model">
-            On-device model
-          </label>
-          <select class="ai-local-model" id="reader-ai-local-model">
-            <option value="gemma-4-e2b">Gemma 4 E2B · smaller, recommended</option>
-            <option value="gemma-4-e4b">Gemma 4 E4B · higher quality</option>
-            <option value="lfm2-230m-wasm">
-              LFM2.5 230M · Firefox/CPU fallback
-            </option>
-          </select>
-          <progress class="ai-local-progress" id="reader-ai-local-progress"
-                    max="100" value="0" hidden></progress>
-          <div class="ai-local-status" id="reader-ai-local-status">
-            Runs in a dedicated worker. Book text stays on this device.
-          </div>
-          <div class="ai-local-recovery" data-ai-local-recovery hidden>
-            <button type="button" data-ai-local-clear>Clear model cache</button>
-            <button type="button" data-ai-local-use-wasm>
-              Use smaller CPU model
-            </button>
-            <button type="button" data-ai-local-endpoint>
-              Use Ollama / LM Studio
-            </button>
-          </div>
-          <details class="ai-local-diagnostics" data-ai-local-diagnostics hidden>
-            <summary>Technical details</summary>
-            <code></code>
-          </details>
+        <div class="reader-ai-context-bar" id="reader-ai-context-bar"
+             data-state="loading" role="status" aria-live="polite">
+          <span class="reader-ai-context-dot" aria-hidden="true"></span>
+          <span id="reader-ai-context">Preparing the current page…</span>
         </div>
-        <p id="reader-ai-context">Preparing the current passage…</p>
         <div class="books-ai-actions">
           <button type="button" data-reader-ai-action="explain">Explain simply</button>
           <button type="button" data-reader-ai-action="summarize">Summarize</button>
@@ -1226,17 +1226,26 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
         <div class="books-dialog-text-field">
           <label for="reader-ai-question">Ask about this passage</label>
           <input id="reader-ai-question" type="text" maxlength="500"
-                 placeholder="What does the author mean here?">
+                 placeholder="What does the author mean here?"
+                 title="Use Page Up/Down or Option+Left/Right to turn pages while typing">
         </div>
-        <textarea class="books-ai-output" id="reader-ai-output" readonly
+        <textarea class="books-ai-output" id="reader-ai-output" readonly hidden
                   aria-label="AI response"></textarea>
         <div class="books-ai-status" id="reader-ai-status" role="status"
              aria-live="polite"></div>
         <div class="reader-ai-sidecar-actions">
-          <button type="button" id="reader-ai-provider-settings">Other provider</button>
           <button type="button" id="reader-ai-stop" hidden>Stop</button>
-          <button type="button" id="reader-ai-copy" disabled>Copy</button>
+          <button type="button" id="reader-ai-copy" disabled hidden>Copy</button>
           <button class="primary" type="button" id="reader-ai-ask">Ask</button>
+        </div>
+        <div class="reader-ai-provider-bar" id="reader-ai-provider-bar"
+             data-state="setup">
+          <span class="reader-ai-provider-dot" aria-hidden="true"></span>
+          <button class="reader-ai-provider-settings"
+                  id="reader-ai-provider-settings" type="button">
+            <span id="reader-ai-provider-summary">AI setup required</span>
+            <span aria-hidden="true">Settings ›</span>
+          </button>
         </div>
       </div>
     </aside>
@@ -2892,14 +2901,10 @@ const libraryAskSubmit = document.getElementById('library-ask-submit');
 const readerAiBtn = document.getElementById('reader-ai-btn');
 const readerAiSidecar = document.getElementById('reader-ai-sidecar');
 const readerAiClose = document.getElementById('reader-ai-close');
-const readerAiLocalCard = document.getElementById('reader-ai-local-card');
-const readerAiLocalLoad = document.getElementById('reader-ai-local-load');
-const readerAiLocalProgress = document.getElementById('reader-ai-local-progress');
-const readerAiLocalStatus = document.getElementById('reader-ai-local-status');
-const readerAiLocalTitle = document.getElementById('reader-ai-local-title');
-const readerAiLocalDetail = document.getElementById('reader-ai-local-detail');
-const readerAiLocalModel = document.getElementById('reader-ai-local-model');
 const readerAiProviderSettings = document.getElementById('reader-ai-provider-settings');
+const readerAiProviderBar = document.getElementById('reader-ai-provider-bar');
+const readerAiProviderSummary = document.getElementById('reader-ai-provider-summary');
+const readerAiContextBar = document.getElementById('reader-ai-context-bar');
 const readerAiContext = document.getElementById('reader-ai-context');
 const readerAiQuestion = document.getElementById('reader-ai-question');
 const readerAiOutput = document.getElementById('reader-ai-output');
@@ -2911,6 +2916,10 @@ let readerAiPassage = null;
 let readerAiController = null;
 let readerAiRun = 0;
 let readerAiCacheChecked = false;
+let readerAiContextRequest = 0;
+let readerAiContextTimer = null;
+let readerAiContextSignature = '';
+let readerAiContextQuietUntil = 0;
 const readerPrefsDialog = document.getElementById('reader-prefs-dialog');
 const readerFontSize = document.getElementById('reader-font-size');
 const readerLineHeight = document.getElementById('reader-line-height');
@@ -5802,6 +5811,12 @@ class FoliateEngine {
     for (const { doc } of contents) {
       const selected = doc?.getSelection?.()?.toString?.().trim();
       if (selected) return { text:selected.slice(0, maxChars), scope:'selection' };
+    }
+    const visible = this.view?.lastLocation?.range?.toString?.()
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (visible) {
+      return { text:visible.slice(0, maxChars), scope:'current page' };
     }
     const text = contents
       .map(({ doc }) => doc?.body?.innerText || doc?.body?.textContent || '')
@@ -8724,42 +8739,94 @@ function selectBrowserLocalAiModel(modelKey) {
   browserLocalAi.selectModel(modelKey);
 }
 
+function readerAiProviderPresentation(snapshot = browserLocalAi.snapshot()) {
+  if (naklios.capabilities.hosted && naklios.capabilities.ai) {
+    return {
+      state:'ready',
+      label:'NakliOS AI · Ready',
+      detail:naklios.capabilities.aiModelLabel || 'Managed by NakliOS',
+    };
+  }
+  if (snapshot.ready) {
+    return {
+      state:'ready',
+      label:'On device · Ready',
+      detail:snapshot.model.label + ' · ' + (
+        snapshot.model.runtime === 'wllama-cpu' ? 'CPU/WebAssembly' : 'WebGPU'
+      ),
+    };
+  }
+  if (snapshot.loading) {
+    const suffix = snapshot.progress == null
+      ? '' : ' · ' + Math.round(snapshot.progress) + '%';
+    return {
+      state:'loading',
+      label:'On-device AI · Loading' + suffix,
+      detail:snapshot.model.label,
+    };
+  }
+  const config = loadStandaloneAiConfig();
+  if (standaloneAiCapability().allowed) {
+    return {
+      state:'ready',
+      label:config.providerClass === 'remote'
+        ? 'Remote provider · Ready'
+        : 'Local endpoint · Ready',
+      detail:config.model + ' · ' + config.destination,
+    };
+  }
+  if (snapshot.error) {
+    return {
+      state:'attention',
+      label:'AI needs attention',
+      detail:snapshot.error,
+    };
+  }
+  return {
+    state:'setup',
+    label:'AI setup required',
+    detail:'Choose on-device AI, Ollama, LM Studio, or remote BYOK.',
+  };
+}
+
+function updateReaderAiProviderSummary(snapshot = browserLocalAi.snapshot()) {
+  const presentation = readerAiProviderPresentation(snapshot);
+  readerAiProviderBar.dataset.state = presentation.state;
+  readerAiProviderSummary.textContent = presentation.label;
+  readerAiProviderSettings.title = presentation.detail;
+}
+
 function updateLocalAiSurfaces(snapshot = browserLocalAi.snapshot()) {
   const progress = snapshot.progress == null ? 0 : snapshot.progress;
   const approximateSize = snapshot.model.approximateDownloadBytes < 1_000_000_000
     ? Math.round(snapshot.model.approximateDownloadBytes / 1_000_000) + ' MB'
     : (snapshot.model.approximateDownloadBytes / 1_000_000_000).toFixed(1) +
       ' GB';
-  const runtimeLabel = snapshot.model.runtime === 'wllama-cpu'
-    ? 'CPU/WebAssembly'
-    : 'WebGPU';
-  readerAiLocalTitle.textContent = snapshot.model.label + ' · ' + runtimeLabel;
   providerAiLocalTitle.textContent = 'Built in · ' + snapshot.model.label;
-  for (const detail of [readerAiLocalDetail, providerAiLocalDetail]) {
+  for (const detail of [providerAiLocalDetail]) {
     detail.textContent = snapshot.model.runtime === 'wllama-cpu'
       ? 'wllama · CPU/WebAssembly · about ' + approximateSize +
         ' per cold load'
       : 'Transformers.js 4.2 · WebGPU · about ' + approximateSize +
         ', cached locally';
   }
-  for (const select of [readerAiLocalModel, providerAiLocalModel]) {
+  for (const select of [providerAiLocalModel]) {
     select.value = snapshot.model.key;
     select.disabled = snapshot.loading;
     for (const option of select.options) {
       option.disabled = !browserLocalAi.supportsModel(localAiModel(option.value));
     }
   }
-  for (const element of [readerAiLocalProgress, providerAiLocalProgress]) {
+  for (const element of [providerAiLocalProgress]) {
     element.hidden = !snapshot.loading;
     element.value = progress;
   }
-  for (const button of [readerAiLocalLoad, providerAiLocalLoad]) {
+  for (const button of [providerAiLocalLoad]) {
     button.disabled = !snapshot.supported || snapshot.loading || snapshot.ready;
     button.textContent = snapshot.ready
       ? 'Ready'
       : snapshot.loading ? 'Loading…' : 'Load ' + snapshot.model.shortLabel;
   }
-  readerAiLocalStatus.textContent = snapshot.status;
   providerAiLocalStatus.textContent = snapshot.status;
   const actions = new Set(snapshot.diagnostic?.actions || []);
   for (const recovery of document.querySelectorAll('[data-ai-local-recovery]')) {
@@ -8790,28 +8857,13 @@ function updateLocalAiSurfaces(snapshot = browserLocalAi.snapshot()) {
     details.hidden = !snapshot.error;
     details.querySelector('code').textContent = snapshot.error || '';
   }
-  readerAiLocalCard.hidden = Boolean(
-    naklios.capabilities.hosted && naklios.capabilities.ai
-  );
-  if (
-    readerAiSidecar.classList.contains('is-open')
-    && !(naklios.capabilities.hosted && naklios.capabilities.ai)
-  ) {
-    readerAiSidecar.querySelector('#reader-ai-title').textContent =
-      'Books AI · ' + snapshot.model.label;
-  }
+  updateReaderAiProviderSummary(snapshot);
   if (
     readerAiPassage?.text
     && !readerAiController
     && readerAiSidecar.classList.contains('is-open')
   ) {
-    readerAiStatus.textContent = aiCapabilityReady()
-      ? 'Choose an action or ask a question.'
-      : 'Load ' + snapshot.model.label + ' or choose another provider.';
-    readerAiContext.textContent =
-      'Using the ' + (readerAiPassage.scope || 'current passage') +
-      ' (' + readerAiPassage.text.length.toLocaleString() + ' characters). ' +
-      describeAiBoundary() + ' It is not added to your notes.';
+    renderReaderAiContext(readerAiPassage);
   }
   updateReaderAiButton();
 }
@@ -8853,10 +8905,7 @@ async function clearBrowserLocalAiCache() {
 providerAiLocalLoad.addEventListener('click', () => {
   void loadBrowserLocalAi();
 });
-readerAiLocalLoad.addEventListener('click', () => {
-  void loadBrowserLocalAi();
-});
-for (const select of [readerAiLocalModel, providerAiLocalModel]) {
+for (const select of [providerAiLocalModel]) {
   select.addEventListener('change', () => {
     selectBrowserLocalAiModel(select.value);
     void browserLocalAi.checkCompatibility();
@@ -10341,6 +10390,7 @@ async function openBookFromFile(file, persistInfo) {
         activeSidecar.lastOpened = new Date().toISOString();
         writeSidecarDebounced(activeBookId, activeSidecar);
       }
+      scheduleReaderAiContextRefresh();
     });
     readerStatus.textContent = describePosition(key, activeEngine.getPosition());
 
@@ -10367,6 +10417,7 @@ async function openBookFromFile(file, persistInfo) {
       await loadActiveAnnotations();
       await switchToNativeMode();
     }
+    scheduleReaderAiContextRefresh();
   } catch (err) {
     if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
     readerSearchBtn.hidden = true;
@@ -10466,6 +10517,7 @@ async function switchToNativeMode() {
       activeSidecar.lastOpened = new Date().toISOString();
       readerStatus.textContent = describePosition('native', position);
       writeSidecarDebounced(activeBookId, activeSidecar);
+      scheduleReaderAiContextRefresh();
     });
     activeEngine.onSource((passage) => {
       void switchToFaithfulMode(passage);
@@ -10479,6 +10531,7 @@ async function switchToNativeMode() {
     readerStatus.textContent = describePosition('native', activeEngine.getPosition());
     writeSidecarDebounced(activeBookId, activeSidecar);
     updateReaderAiButton();
+    scheduleReaderAiContextRefresh();
     await updateReaderModeAvailability();
   } catch (error) {
     showToast("Couldn't open native mode: " + String(error?.message || error), {
@@ -10700,9 +10753,104 @@ function updateReaderAiButton() {
     activeEngine
     && typeof activeEngine.getContextText === 'function'
   );
-  readerAiLocalCard.hidden = Boolean(
-    naklios.capabilities.hosted && naklios.capabilities.ai
-  );
+  updateReaderAiProviderSummary();
+}
+
+function readerAiIdleStatus(prefix = '') {
+  return prefix;
+}
+
+function renderReaderAiContext(context) {
+  const raw = String(context?.scope || 'current passage').trim();
+  const label = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Current passage';
+  readerAiContextBar.dataset.state = 'ready';
+  readerAiContext.textContent = label;
+  readerAiContextBar.title =
+    'AI uses this reading context and updates it automatically as you move.';
+}
+
+function resetReaderAiAnswerForContextChange({ announce = true } = {}) {
+  const wasGenerating = Boolean(readerAiController);
+  const hadAnswer = Boolean(readerAiOutput.value.trim());
+  readerAiController?.abort();
+  readerAiController = null;
+  readerAiRun++;
+  readerAiOutput.value = '';
+  readerAiOutput.hidden = true;
+  readerAiCopy.disabled = true;
+  readerAiCopy.hidden = true;
+  readerAiStop.hidden = true;
+  readerAiAsk.disabled = false;
+  readerAiSidecar.querySelectorAll('[data-reader-ai-action]').forEach((button) => {
+    button.disabled = false;
+  });
+  if (announce) {
+    const prefix = wasGenerating
+      ? 'Page changed; the previous answer was stopped.'
+      : hadAnswer ? 'Page changed; the previous answer was cleared.' : 'Page changed.';
+    readerAiStatus.textContent = readerAiIdleStatus(prefix);
+  } else {
+    readerAiStatus.textContent = '';
+  }
+}
+
+async function refreshReaderAiContext({ initial = false } = {}) {
+  if (
+    !readerAiSidecar.classList.contains('is-open')
+    || !activeEngine
+    || typeof activeEngine.getContextText !== 'function'
+  ) return;
+  const engine = activeEngine;
+  const request = ++readerAiContextRequest;
+  readerAiContextBar.dataset.state = 'loading';
+  readerAiContext.textContent = initial
+    ? 'Preparing the current page…'
+    : 'Updating context…';
+  try {
+    const context = await engine.getContextText(12000);
+    if (
+      request !== readerAiContextRequest
+      || engine !== activeEngine
+      || !readerAiSidecar.classList.contains('is-open')
+    ) return;
+    if (!context?.text?.trim()) {
+      throw new Error('No readable text was found on the current page.');
+    }
+    const signature = String(context.scope || '') + '\u001f' + context.text;
+    const changed = Boolean(
+      readerAiContextSignature
+      && readerAiContextSignature !== signature
+    );
+    if (changed) {
+      resetReaderAiAnswerForContextChange({
+        announce:Date.now() >= readerAiContextQuietUntil,
+      });
+    }
+    readerAiPassage = context;
+    readerAiContextSignature = signature;
+    renderReaderAiContext(context);
+    if (
+      !readerAiController
+      && (initial || changed || !readerAiOutput.value.trim())
+    ) {
+      readerAiStatus.textContent = changed
+        ? readerAiStatus.textContent
+        : readerAiIdleStatus();
+    }
+  } catch (error) {
+    if (request !== readerAiContextRequest) return;
+    readerAiContextBar.dataset.state = 'attention';
+    readerAiContext.textContent = 'Context unavailable';
+    readerAiStatus.textContent = error?.message || String(error);
+  }
+}
+
+function scheduleReaderAiContextRefresh() {
+  if (!readerAiSidecar.classList.contains('is-open')) return;
+  clearTimeout(readerAiContextTimer);
+  readerAiContextTimer = setTimeout(() => {
+    void refreshReaderAiContext();
+  }, 160);
 }
 
 function readerAiProgressLabel(status, progress) {
@@ -10722,28 +10870,25 @@ function readerAiProgressLabel(status, progress) {
 async function openReaderAi() {
   if (!activeEngine) return;
   readerAiRun++;
+  readerAiContextRequest++;
+  readerAiContextSignature = '';
+  readerAiContextQuietUntil = Date.now() + 750;
   readerAiPassage = null;
   readerAiOutput.value = '';
+  readerAiOutput.hidden = true;
   readerAiQuestion.value = '';
   readerAiCopy.disabled = true;
+  readerAiCopy.hidden = true;
   readerAiStop.hidden = true;
-  const standaloneConfig = loadStandaloneAiConfig();
-  readerAiSidecar.querySelector('#reader-ai-title').textContent =
-    'Books AI · ' + (
-      naklios.capabilities.hosted && naklios.capabilities.ai
-        ? naklios.capabilities.aiModelLabel || 'NakliOS provider'
-        : browserLocalAi.ready || browserLocalAi.loading
-          ? selectedLocalAiLabel()
-          : standaloneConfig?.enabled
-            ? standaloneConfig.model
-            : 'private reading companion'
-    );
-  readerAiStatus.textContent = 'Reading the current passage…';
-  readerAiContext.textContent = 'Preparing the current passage…';
+  readerAiSidecar.querySelector('#reader-ai-title').textContent = 'Books AI';
+  readerAiStatus.textContent = 'Reading the current page…';
+  readerAiContextBar.dataset.state = 'loading';
+  readerAiContext.textContent = 'Preparing the current page…';
   readerAiSidecar.classList.add('is-open');
   readerAiSidecar.setAttribute('aria-hidden', 'false');
   readerAiBtn.classList.add('is-active');
   readerAiBtn.setAttribute('aria-expanded', 'true');
+  updateReaderAiProviderSummary();
   if (
     !naklios.capabilities.ai
     && !browserLocalAi.ready
@@ -10757,28 +10902,17 @@ async function openReaderAi() {
       }
     });
   }
-  try {
-    const context = await activeEngine.getContextText(12000);
-    if (!readerAiSidecar.classList.contains('is-open')) return;
-    if (!context?.text?.trim()) throw new Error('No readable text was found on the current page.');
-    readerAiPassage = context;
-    readerAiContext.textContent =
-      'Using the ' + (context.scope || 'current passage') +
-      ' (' + context.text.length.toLocaleString() + ' characters). ' +
-      describeAiBoundary() +
-      ' It is not added to your notes.';
-    readerAiStatus.textContent = aiCapabilityReady()
-      ? 'Choose an action or ask a question.'
-      : 'Load ' + selectedLocalAiLabel() + ' or choose another provider.';
-  } catch (error) {
-    readerAiStatus.textContent = error?.message || String(error);
-  }
+  await refreshReaderAiContext({ initial:true });
 }
 
 function closeReaderAiSidecar() {
+  const restoreFocus = readerAiSidecar.contains(document.activeElement);
+  clearTimeout(readerAiContextTimer);
+  readerAiContextRequest++;
   readerAiController?.abort();
   readerAiController = null;
   readerAiRun++;
+  if (restoreFocus) readerAiBtn.focus();
   readerAiSidecar.classList.remove('is-open');
   readerAiSidecar.setAttribute('aria-hidden', 'true');
   readerAiBtn.classList.remove('is-active');
@@ -10837,6 +10971,11 @@ async function runReaderAi(kind, customQuestion = '') {
     readerAiStatus.textContent = 'The current passage is not ready yet.';
     return;
   }
+  if (!aiCapabilityReady()) {
+    readerAiStatus.textContent = 'Choose how Books should run AI.';
+    openAiProviderSettings();
+    return;
+  }
   const prompts = {
     explain:'Explain this passage in clear, simple language. Preserve important nuance.',
     summarize:'Summarize this passage concisely.',
@@ -10852,7 +10991,9 @@ async function runReaderAi(kind, customQuestion = '') {
   const controller = new AbortController();
   readerAiController = controller;
   readerAiOutput.value = '';
+  readerAiOutput.hidden = false;
   readerAiCopy.disabled = true;
+  readerAiCopy.hidden = true;
   readerAiStop.hidden = false;
   readerAiAsk.disabled = true;
   readerAiSidecar.querySelectorAll('[data-reader-ai-action]').forEach((button) => {
@@ -10929,6 +11070,7 @@ async function runReaderAi(kind, customQuestion = '') {
       readerAiStatus.textContent = controller.signal.aborted
         ? 'Stopped.'
         : error?.message || String(error);
+      if (!readerAiOutput.value.trim()) readerAiOutput.hidden = true;
     }
   } finally {
     if (run === readerAiRun) {
@@ -10936,6 +11078,8 @@ async function runReaderAi(kind, customQuestion = '') {
       readerAiStop.hidden = true;
       readerAiAsk.disabled = false;
       readerAiCopy.disabled = !responseText.trim();
+      readerAiCopy.hidden = !responseText.trim();
+      readerAiOutput.hidden = !responseText.trim();
       readerAiSidecar.querySelectorAll('[data-reader-ai-action]').forEach((button) => {
         button.disabled = false;
       });
@@ -11481,6 +11625,7 @@ function queueReaderNavigation(method) {
     .then(async () => {
       if (!engine || engine !== activeEngine) return;
       await engine[method]?.();
+      scheduleReaderAiContextRefresh();
     });
   return readerNavigationTail;
 }
@@ -11995,11 +12140,12 @@ function boot() {
     });
   }
 
-  // Keyboard navigation in the reader view.
-  // Skipped while focus is in an input/textarea/contentEditable so typing notes
-  // and bookmark labels doesn't trigger page flips.
+  // Keyboard navigation in the reader view. Plain arrows stay available unless
+  // the user is editing text. Option/Alt + arrows always turn the reading page,
+  // including while the AI question field has focus.
   window.addEventListener('keydown', async (e) => {
     if (!reader.classList.contains('is-open')) return;
+    if (document.querySelector('dialog[open]')) return;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
       e.preventDefault();
       openReaderSearch();
@@ -12016,7 +12162,26 @@ function boot() {
       return;
     }
     const t = e.target;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (
+      readerAiSidecar.contains(t)
+      && (e.key === 'PageDown' || e.key === 'PageUp')
+    ) {
+      e.preventDefault();
+      await queueReaderNavigation(e.key === 'PageDown' ? 'next' : 'prev');
+      return;
+    }
+    if (e.altKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+      e.preventDefault();
+      await queueReaderNavigation(e.key === 'ArrowRight' ? 'next' : 'prev');
+      return;
+    }
+    const editingText = t && (
+      (t.tagName === 'INPUT' && !t.readOnly)
+      || (t.tagName === 'TEXTAREA' && !t.readOnly)
+      || t.tagName === 'SELECT'
+      || t.isContentEditable
+    );
+    if (editingText) return;
     if (e.key === 'ArrowRight' || e.code === 'Space' || e.key === ' ') {
       e.preventDefault();
       await queueReaderNavigation('next');

@@ -277,6 +277,31 @@ assert.match(
 assert.match(html, /id="reader-ai-btn"/, 'reader exposes Local AI only in reading mode');
 assert.match(html, /id="reader-ai-sidecar"/,
   'reader has a persistent app-styled Local AI sidecar');
+assert.match(
+  html,
+  /id="reader-ai-context-bar"[\s\S]*?id="reader-ai-provider-summary"/,
+  'reader AI leads with compact reading context and defers provider details',
+);
+assert.doesNotMatch(
+  html,
+  /id="reader-ai-local-(?:load|model)"/,
+  'reader AI does not spend its task surface on model infrastructure',
+);
+assert.match(
+  html,
+  /function refreshReaderAiContext[\s\S]*?engine\.getContextText\(12000\)[\s\S]*?resetReaderAiAnswerForContextChange\(/,
+  'reader AI refreshes context and invalidates an answer when the page changes',
+);
+assert.match(
+  html,
+  /class FoliateEngine[\s\S]*?lastLocation\?\.range\?\.toString\?\.\(\)[\s\S]*?scope:'current page'/,
+  'EPUB AI context is the visible pagination range rather than the whole spine section',
+);
+assert.match(
+  html,
+  /e\.altKey && \(e\.key === 'ArrowRight' \|\| e\.key === 'ArrowLeft'\)[\s\S]*?queueReaderNavigation/,
+  'AI text entry retains an explicit page-navigation shortcut',
+);
 assert.match(html, /id="ai-provider-dialog"/,
   'standalone mode has a visible local/BYOK provider configuration surface');
 assert.match(html, /id="library-ask-dialog"/,
