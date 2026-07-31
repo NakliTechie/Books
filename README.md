@@ -1,10 +1,14 @@
-# books
+# Lorewell
 
 > **Lifecycle:** `living` — private semantic-library foundation.
 
-Books is a single-file, browser-native reader for ePub, PDF, MOBI, AZW3, FB2, TXT, Markdown, and HTML. It works as a standalone application at `https://books.naklitechie.com/` and as the `books` app inside NakliOS.
+Lorewell is a private semantic library and browser-native reader for ePub,
+PDF, MOBI, AZW3, FB2, TXT, Markdown, and HTML. It works standalone at
+`https://lorewell.naklitechie.com/` and as the stable `books` app inside
+NakliOS. The former `https://books.naklitechie.com/` address permanently
+redirects to the canonical Lorewell URL.
 
-Standalone Books now offers both a permission-free Browser library in
+Standalone Lorewell offers both a permission-free Browser library in
 origin-scoped IndexedDB and an optional Folder library that reads a recursive
 collection in place. Folder metadata lives beside the books in `.books/`, so
 browser-site-data loss does not erase its reading history. Inside NakliOS,
@@ -27,8 +31,11 @@ execution sequence and complete pending-item map in
 dependency-aware sequence for the work that remains is in
 [BATCHED-ROADMAP.md](BATCHED-ROADMAP.md).
 
+The approved name, Living Book mark, palette, asset usage, and compatibility
+rules are recorded in [BRAND.md](BRAND.md).
+
 The foundation now includes work/edition/asset identity, resumable local
-passage indexing and concepts, Books-native reading, portable highlights,
+passage indexing and concepts, Lorewell native reading, portable highlights,
 library-wide annotation memory, library validation, catalog rebuild, and
 conflict-safe portable export/import. Book removal now uses recoverable Trash;
 permanent deletion is a separate confirmed action. Source-grounded Ask works
@@ -47,7 +54,7 @@ through portable work-manifest overrides that survive derived-data rebuilds.
 
 ## v2.0 highlights — library intelligence
 
-- Open an existing directory as a standalone library. Books recursively finds
+- Open an existing directory as a standalone library. Lorewell recursively finds
   supported formats, opens known books from its cached inventory immediately,
   and reconciles additions, changes, moves, renames, and missing files in the
   background.
@@ -61,7 +68,7 @@ through portable work-manifest overrides that survive derived-data rebuilds.
   compact Float32 shards avoid JSON-vector bloat. Optional Gemma, NakliOS AI,
   Ollama, LM Studio, or remote BYOK enrichment produces source-grounded ideas
   with provider and model provenance.
-- Books matches ideas across works with bounded nearest-neighbour candidates,
+- Lorewell matches ideas across works with bounded nearest-neighbour candidates,
   typed relationships, confidence, and passage evidence. Hybrid library search
   combines lexical passages and semantic ideas, and book details expose
   evidence-linked connections into other books.
@@ -92,7 +99,8 @@ implementation plan in
   covers, preferences, filtering, search, removal, and orphan recovery.
 - Browser storage uses the same virtual `library/`, `notes/`, and `covers/`
   paths as NakliOS storage, keeping one application path across environments.
-- Static Cloudflare Worker deployment at `books.naklitechie.com`, with GitHub
+- Static Cloudflare Worker deployment at `lorewell.naklitechie.com`, with the
+  previous `books.naklitechie.com` hostname retained as a permanent redirect and GitHub
   Workers Builds deploying every update pushed to `main`.
 - Optional AI works through NakliOS's host-mediated broker, a built-in
   Transformers.js 4.2 WebGPU worker running Gemma 4 E2B or E4B, a small
@@ -118,7 +126,7 @@ implementation plan in
 - Library rows and Continue Reading show cached cover thumbnails. Foliate
   formats use the package cover, PDFs use page one, and unreadable/missing
   covers retain a typographic fallback without blocking the book.
-- Cover files stay inside the active Books Folder or Crate namespace and are
+- Cover files stay inside the active Lorewell Folder or Crate namespace and are
   never reused across a storage switch.
 - Find-in-book (`Cmd/Ctrl+F`) searches EPUB/MOBI/AZW3/FB2 through Foliate's
   CFI-aware engine, PDF text page by page, and TXT/Markdown/HTML through the
@@ -128,12 +136,12 @@ implementation plan in
 
 - The reader sidecar can explain, summarize, extract key points, or answer a
   question about the current selection, PDF page, or text passage.
-- Standalone and hosted Books can run Gemma 4 E2B or E4B on-device in a
+- Standalone and hosted Lorewell can run Gemma 4 E2B or E4B on-device in a
   dedicated WebGPU worker. E2B is the recommended smaller download at about
   3.4 GB; E4B is the higher-quality option at about 5.2 GB. A model downloads
   only after the user chooses Load and is cached by the browser.
 - Firefox is detected before download. Because ONNX Runtime does not support
-  its WebGPU execution provider there, Books selects LFM2.5 230M Q5_K_M
+  its WebGPU execution provider there, Lorewell selects LFM2.5 230M Q5_K_M
   (about 170 MB) through wllama on single-thread CPU/WebAssembly. It is slower
   and less capable than Gemma, but runs entirely in the tab without WebGPU.
 - Chromium runs an adapter and `shader-f16` capability preflight before Gemma
@@ -152,8 +160,8 @@ implementation plan in
 ```
 naklios-universe/
 ├── naklOS/                       ← the launcher (registry, sdk, mirror tree)
-│   ├── sdk/naklios.js            ← SDK Books vendors inline
-│   └── index.html                ← Books registry entry + storage host
+│   ├── sdk/naklios.js            ← SDK Lorewell vendors inline
+│   └── index.html                ← Lorewell registry entry + storage host
 └── Books/                        ← THIS INITIATIVE
     ├── SPEC.md                   ← shipped v1.4 architectural decisions
     ├── SEMANTIC-LIBRARY-SPEC.md  ← active product and architecture contract
@@ -201,7 +209,7 @@ naklios-universe/
 - [x] Phase 2 — Engine adapter + 3 readers (foliate-js + pdf.js + TextEngine, vendored)
 - [x] Phase 3 — Persistence + reopen-flow (sidecar JSON, debounced writes)
 - [x] Phase 4 — Bookmarks + per-book note (sidebar UI)
-- [x] Launcher hand-off — NakliOS points at `books.naklitechie.com`
+- [x] Launcher hand-off — NakliOS points at `lorewell.naklitechie.com`
 - [x] Stage 6 — Security sweep
 - [x] Stage 7 — Frontend walkthrough documented
 - [x] v1.1 — Folder/Crate switching, library management, and reader preferences
@@ -237,7 +245,7 @@ See [SPEC.md §"Build sequence"](SPEC.md) for the ordered steps.
 - [walkthroughs.md](walkthroughs.md)
 - [DEFERRED.md](DEFERRED.md)
 - [BATCHED-ROADMAP.md](BATCHED-ROADMAP.md) — dependency-aware execution plan
-  for the work remaining after Books 2.0
+  for the work remaining after Lorewell 2.0
 - [ROADMAP-EXECUTION-REPORT.md](ROADMAP-EXECUTION-REPORT.md) — delivered
   autonomous roadmap evidence and the final access-dependent release queue
 - [CALIBRE-RESEARCH.md](CALIBRE-RESEARCH.md) — official feature inventory and

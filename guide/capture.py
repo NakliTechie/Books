@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture the generated Books guide from the real production browser surface."""
+"""Capture the generated Lorewell guide from the real production browser surface."""
 
 from __future__ import annotations
 
@@ -532,7 +532,7 @@ def capture_guide(playwright: Playwright, base: str, plans: tuple[RolePlan, ...]
         if message["type"] == "warning"
     )
     log = [
-        "# Books guide capture log",
+        "# Lorewell guide capture log",
         "",
         f"{ok_count}/{len(results)} routes rendered ok · "
         f"{errors} console errors · {warnings} console warnings",

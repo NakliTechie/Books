@@ -587,7 +587,7 @@ assert.match(html, /scope:`page \$\{this\.currentPage \|\| 1\}`/, 'PDF context n
 assert.match(html, /window\.getSelection\?\.\(\)/, 'text context prefers the visible selection');
 assert.match(
   html,
-  /You are the private reading companion inside Books[\s\S]*?untrusted quoted[\s\S]*?do not[\s\S]*?claim to have read the rest of the book/,
+  /You are the private reading companion inside Lorewell[\s\S]*?untrusted quoted[\s\S]*?do not[\s\S]*?claim to have read the rest of the book/,
   'reading prompts are passage-scoped, injection-aware, and disclose model limits',
 );
 assert.match(html, /readerAiController\?\.abort\(\)/, 'reader generation can be cancelled');

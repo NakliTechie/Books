@@ -82,7 +82,7 @@ export function makeFolderLibraryManifest({
     schemaVersion:FOLDER_LIBRARY_SCHEMA_VERSION,
     recordType:'books.folder-library',
     libraryId:String(libraryId),
-    rootName:String(rootName || 'Books'),
+    rootName:String(rootName || 'Lorewell'),
     sidecarDirectory:FOLDER_SIDECAR_DIRECTORY,
     sourcePolicy:'read-in-place',
     canonicalMetadata:'sidecar',

@@ -1263,7 +1263,7 @@ export function validatePortableBundle(bundle) {
   if (!bundle || bundle.recordType !== PORTABLE_BUNDLE_TYPE) {
     errors.push({
       code: 'invalid-bundle-type',
-      message: 'This is not a Books portable-library bundle.',
+      message: 'This is not a Lorewell portable-library bundle.',
     });
   }
   if (bundle?.bundleVersion !== PORTABLE_BUNDLE_VERSION) {

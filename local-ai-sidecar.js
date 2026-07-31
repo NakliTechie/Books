@@ -148,7 +148,7 @@ export async function preflightBrowserLocalAi(
       runtime:model.runtime,
       browser:isFirefoxBrowser(scope) ? 'firefox' : 'other',
       message:isFirefoxBrowser(scope)
-        ? 'Firefox detected. Books will use the smaller CPU/WebAssembly model.'
+        ? 'Firefox detected. Lorewell will use the smaller CPU/WebAssembly model.'
         : 'The CPU/WebAssembly model is available.',
     };
   }
@@ -829,7 +829,7 @@ export class BrowserLocalAi {
   } = {}) {
     if (!this.ready || !this.worker) {
       return Promise.reject(new Error(
-        'Load ' + this.model.label + ' before asking Books AI.',
+        'Load ' + this.model.label + ' before asking Lorewell AI.',
       ));
     }
     if (this.pending.size) {

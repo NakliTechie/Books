@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the Books HTML guide from authored section and caption data."""
+"""Build the Lorewell HTML guide from authored section and caption data."""
 
 from __future__ import annotations
 
@@ -13,11 +13,11 @@ GUIDE = ROOT / "guide"
 CAPTIONS = {
     "private-start": (
         "Private from the first screen",
-        "Books has no account gate: an anonymous visitor starts with a local, empty library and a clear statement of what stays on this device.",
+        "Lorewell has no account gate: an anonymous visitor starts with a local, empty library and a clear statement of what stays on this device.",
     ),
     "add-your-library": (
         "Add a book or an entire folder",
-        "Start with individual files, drag-and-drop, or grant a folder so Books can discover supported formats recursively.",
+        "Start with individual files, drag-and-drop, or grant a folder so Lorewell can discover supported formats recursively.",
     ),
     "choose-library-location": (
         "Choose where the library lives",
@@ -41,7 +41,7 @@ CAPTIONS = {
     ),
     "ask-the-library": (
         "Ask across your own sources",
-        "Books retrieves passages locally first and requires the answer to cite the exact excerpts supplied to the chosen provider.",
+        "Lorewell retrieves passages locally first and requires the answer to cite the exact excerpts supplied to the chosen provider.",
     ),
     "ai-providers": (
         "Local AI, local endpoints, or BYOK",
@@ -52,7 +52,7 @@ CAPTIONS = {
         "The primary reader preserves the book’s own structure on a full canvas while keeping the library available from the top bar.",
     ),
     "native-reader": (
-        "A Books-native reflow",
+        "A Lorewell native reflow",
         "Native mode reflows indexed passages into an accessible reading surface with stable references and source-grounded concepts.",
     ),
     "find-in-book": (
@@ -73,7 +73,7 @@ CAPTIONS = {
     ),
     "hosted-library": (
         "The same app inside NakliOS",
-        "Books keeps its standalone reading model when hosted, while storage, theme, and AI capabilities arrive through the NakliOS boundary.",
+        "Lorewell keeps its standalone reading model when hosted, while storage, theme, and AI capabilities arrive through the NakliOS boundary.",
     ),
     "isolated-storage": (
         "Folder and Crate stay separate",
@@ -85,7 +85,7 @@ SECTIONS = (
     (
         "visitor",
         "Anonymous visitor",
-        "Books is useful before sign-in because there is no sign-in. The browser is the private boundary.",
+        "Lorewell is useful before sign-in because there is no sign-in. The browser is the private boundary.",
         ("private-start",),
     ),
     (
@@ -123,7 +123,7 @@ SECTIONS = (
     (
         "naklios-reader",
         "NakliOS reader",
-        "Inside NakliOS, Books adopts host capabilities without losing the standalone product or crossing storage boundaries.",
+        "Inside NakliOS, Lorewell adopts host capabilities without losing the standalone product or crossing storage boundaries.",
         ("hosted-library", "isolated-storage"),
     ),
 )
@@ -157,7 +157,7 @@ def build() -> str:
                   <a class="shot-link" href="{html.escape(screenshot)}"
                      aria-label="Open full-size screenshot: {html.escape(feature_title)}">
                     <img src="{html.escape(screenshot)}"
-                         alt="{html.escape(feature_title)} in Books"
+                         alt="{html.escape(feature_title)} in Lorewell"
                          loading="lazy" width="1400" height="900">
                   </a>
                   <div class="feature-copy">
@@ -186,8 +186,8 @@ def build() -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="A searchable, role-driven visual guide to Books.">
-<title>Books — Visual Guide</title>
+<meta name="description" content="A searchable, role-driven visual guide to Lorewell.">
+<title>Lorewell — Visual Guide</title>
 <style>
 :root {{
   --body:#e8d9b3; --panel:#f3e7c4; --ink:#2c3e3a; --brand:#b85c3a;
@@ -210,7 +210,7 @@ a {{ color:inherit; }}
   border-bottom:1px solid var(--line); position:relative; overflow:hidden;
 }}
 .hero::after {{
-  content:"B"; position:absolute; right:-.04em; top:-.28em;
+  content:"L"; position:absolute; right:-.04em; top:-.28em;
   font:900 min(70vw,720px)/1 Georgia,serif; color:rgba(184,92,58,.075);
   pointer-events:none;
 }}
@@ -273,9 +273,9 @@ footer {{ border-top:1px solid var(--line); padding:26px clamp(28px,6vw,84px) 50
 <body>
 <header class="hero">
   <div class="hero-inner">
-    <p class="kicker">Books · visual product guide</p>
+    <p class="kicker">Lorewell · visual product guide</p>
     <h1>Your files. An active private library.</h1>
-    <p class="lede">The modern take is not “Calibre in a browser.” Books helps
+    <p class="lede">The modern take is not “Calibre in a browser.” Lorewell helps
     you read, understand, connect, and remember what is inside—without taking
     ownership away from you.</p>
     <div class="hero-meta"><span>5 usage contexts</span><span>{total} feature screens</span><span>Standalone + NakliOS</span><span>Local-first AI</span></div>
@@ -283,14 +283,14 @@ footer {{ border-top:1px solid var(--line); padding:26px clamp(28px,6vw,84px) 50
 </header>
 <div class="search-wrap">
   <label><span hidden>Search the guide</span><input id="guide-search" type="search" placeholder="Search roles, features, and captions…" autocomplete="off"><kbd>/</kbd></label>
-  <a class="app-link" href="../index.html">Open Books →</a>
+  <a class="app-link" href="../index.html">Open Lorewell →</a>
 </div>
 <main>
   <nav class="toc" aria-label="Guide contents">{''.join(toc)}</nav>
   <div id="no-matches" class="no-matches"><h2>No matching screens</h2><p>Try “AI”, “notes”, “storage”, “Native”, or a reader context.</p></div>
   {''.join(sections_markup)}
 </main>
-<footer>Generated from <code>guide/capture.py</code> and <code>guide/build_index.py</code>. Screens show the production Books surface with a fictional local library.</footer>
+<footer>Generated from <code>guide/capture.py</code> and <code>guide/build_index.py</code>. Screens show the production Lorewell surface with a fictional local library.</footer>
 <script>
 (() => {{
   const input = document.getElementById('guide-search');

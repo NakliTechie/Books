@@ -11,6 +11,12 @@ await mkdir(resolve(outputDir, 'guide'), { recursive: true });
 await Promise.all([
   cp(resolve(projectRoot, 'index.html'), resolve(outputDir, 'index.html')),
   cp(resolve(projectRoot, 'favicon.svg'), resolve(outputDir, 'favicon.svg')),
+  cp(resolve(projectRoot, 'logo-mark.svg'), resolve(outputDir, 'logo-mark.svg')),
+  cp(resolve(projectRoot, 'logo-lockup.svg'), resolve(outputDir, 'logo-lockup.svg')),
+  cp(resolve(projectRoot, 'site.webmanifest'), resolve(outputDir, 'site.webmanifest')),
+  cp(resolve(projectRoot, 'apple-touch-icon.png'), resolve(outputDir, 'apple-touch-icon.png')),
+  cp(resolve(projectRoot, 'icon-192.png'), resolve(outputDir, 'icon-192.png')),
+  cp(resolve(projectRoot, 'icon-512.png'), resolve(outputDir, 'icon-512.png')),
   cp(resolve(projectRoot, 'guide', 'index.html'), resolve(outputDir, 'guide', 'index.html')),
   cp(
     resolve(projectRoot, 'guide', 'screenshots'),

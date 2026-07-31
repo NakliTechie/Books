@@ -1,4 +1,4 @@
-# Books guide capture log
+# Lorewell guide capture log
 
 17/17 routes rendered ok · 0 console errors · 0 console warnings
 
