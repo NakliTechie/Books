@@ -53,7 +53,7 @@ CAPTIONS = {
     ),
     "native-reader": (
         "A Lorewell native reflow",
-        "Native mode reflows indexed passages into an accessible reading surface with stable references and source-grounded concepts.",
+        "Native mode reflows indexed passages into an accessible reading surface with stable references and source-grounded concepts. A quiet optional Echo indicator can reveal grounded connections to another book, conceal spoilers, speak on request, open the exact related paragraph, and return you here.",
     ),
     "find-in-book": (
         "One search gesture across formats",
@@ -78,6 +78,18 @@ CAPTIONS = {
     "isolated-storage": (
         "Folder and Crate stay separate",
         "Hosted readers can switch between connected backends after pending reading state is saved; neither library is merged implicitly.",
+    ),
+}
+
+SEARCH_TERMS = {
+    "native-reader": "echoes connections concepts scenes plots",
+}
+
+SEARCH_COPY = {
+    "native-reader": (
+        "Native mode reflows indexed passages into an accessible reading "
+        "surface with stable references, source-grounded concepts, and "
+        "optional cross-book Echoes."
     ),
 }
 
@@ -149,7 +161,13 @@ def build() -> str:
         for slug in slugs:
             feature_title, caption = CAPTIONS[slug]
             screenshot = screenshot_for(role, slug)
-            search = f"{title} {feature_title} {caption} {slug}".lower()
+            search = " ".join(filter(None, (
+                title,
+                feature_title,
+                SEARCH_TERMS.get(slug),
+                SEARCH_COPY.get(slug, caption),
+                slug,
+            ))).lower()
             cards.append(
                 f"""
                 <article class="feature-card" id="{html.escape(slug)}"
@@ -187,6 +205,7 @@ def build() -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="A searchable, role-driven visual guide to Lorewell.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
 <title>Lorewell — Visual Guide</title>
 <style>
 :root {{

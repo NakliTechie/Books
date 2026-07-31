@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const harness = readFileSync(new URL('../test/host-harness.html', import.meta.url), 'utf8');
+const guide = readFileSync(new URL('../guide/index.html', import.meta.url), 'utf8');
 const paginator = readFileSync(
   new URL('../vendor/foliate-js@1.0.1/paginator.js', import.meta.url),
   'utf8',
@@ -18,6 +19,12 @@ for (const [index, match] of [...html.matchAll(/<script(?:\s+type="module")?>([\
 for (const [index, match] of [...harness.matchAll(/<script>([\s\S]*?)<\/script>/g)].entries()) {
   assert.doesNotThrow(() => new Function(match[1]), `host harness script ${index + 1} parses`);
 }
+
+assert.match(
+  guide,
+  /<link rel="icon" href="\.\.\/favicon\.svg" type="image\/svg\+xml">/,
+  'visual guide uses the deployed Lorewell favicon instead of requesting a missing favicon.ico',
+);
 
 assert.match(
   html,
