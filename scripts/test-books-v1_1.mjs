@@ -438,8 +438,16 @@ assert.doesNotMatch(
 assert.match(html, /Find in book \(⌘F\)/, 'reader advertises the standard search shortcut');
 assert.match(html, /id="welcome-dialog"[\s\S]*?A private semantic library/,
   'first run explains the private semantic library thesis');
-assert.match(html, /href="guide\/"[\s\S]*?href="guide\/#active-reader"/,
-  'Help links the library and reader to the shipped guide');
+assert.match(
+  html,
+  /id="help-dialog"[\s\S]*?id="help-guide-link" href="guide\/"/,
+  'the Help modal links to the shipped guide',
+);
+assert.match(
+  html,
+  /function showHelpDialog\(context = 'library'\)[\s\S]*?guide\/#active-reader[\s\S]*?helpDialog\.showModal\(\)/,
+  'Help opens a context-aware guide link for the library and reader',
+);
 assert.match(html, /<main class="main"[\s\S]*?<main class="reader-stage"/,
   'library and reader expose visible-state main landmarks');
 assert.match(html, /rel="icon" href="favicon\.svg"/,

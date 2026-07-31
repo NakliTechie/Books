@@ -32,5 +32,6 @@ fi
 
 BOOKS_GUIDE_BASE="${guide_origin}/dist/" python3 guide/capture.py "$@"
 python3 guide/build_index.py
+python3 guide/verify.py --base "${guide_origin}/guide/"
 
 echo "Guide ready at ${guide_origin}/guide/"

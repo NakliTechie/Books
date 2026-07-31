@@ -257,6 +257,20 @@ async function runChrome(chromePath, url, profilePath, mode = 'harness') {
         'the standalone library shell',
       );
       await evaluate(`localStorage.setItem('books.welcomeSeen.v1', 'release-verifier')`);
+      await evaluate(`(() => {
+        const welcome = document.getElementById('welcome-dialog');
+        if (welcome?.open) welcome.close();
+        document.getElementById('help-btn').click();
+        return true;
+      })()`);
+      await waitForValue(`(() => {
+        const dialog = document.getElementById('help-dialog');
+        const link = document.getElementById('help-guide-link');
+        return dialog?.open && new URL(link.href).pathname.endsWith('/guide/')
+          ? { href:link.href }
+          : null;
+      })()`, 'the library Help modal and guide link');
+      await evaluate(`document.getElementById('help-dialog').close()`);
       await evaluate(`(async () => {
         const response = await fetch('/demo/seed/The%20Library%20Within.txt');
         if (!response.ok) throw new Error('Could not load the standalone text fixture.');
@@ -285,6 +299,15 @@ async function runChrome(chromePath, url, profilePath, mode = 'harness') {
           : null;
       })()`, 'a standalone book to persist and open', 60000);
       if (opened.error) throw new Error(opened.error);
+      await evaluate(`document.getElementById('reader-help-btn').click()`);
+      await waitForValue(`(() => {
+        const dialog = document.getElementById('help-dialog');
+        const link = document.getElementById('help-guide-link');
+        return dialog?.open && new URL(link.href).hash === '#active-reader'
+          ? { href:link.href }
+          : null;
+      })()`, 'the reader Help modal and reader guide link');
+      await evaluate(`document.getElementById('help-dialog').close()`);
       await evaluate(`document.getElementById('reader-ai-btn').click()`);
       const firstContext = await waitForValue(`(() => {
         const sidecar = document.getElementById('reader-ai-sidecar');
@@ -332,7 +355,7 @@ async function runChrome(chromePath, url, profilePath, mode = 'harness') {
       if (reopened.error) throw new Error(reopened.error);
       return {
         state:'pass',
-        status:'standalone persistence, reading, AI-sidecar navigation, and reopen',
+        status:'standalone persistence, reading, AI-sidecar navigation, and reopen; context-aware Help',
         observed:observedSummary(cdp.observed),
       };
     }

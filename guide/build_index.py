@@ -47,6 +47,10 @@ CAPTIONS = {
         "Local AI, local endpoints, or BYOK",
         "Use the built-in on-device model, Ollama, LM Studio, or an explicit remote endpoint with session-only keys and destination-specific consent.",
     ),
+    "ideas-and-connections": (
+        "Build ideas and connections quietly",
+        "Opt into local semantic indexing, inspect each queued book, and add richer provider-assisted concepts only when you choose; originals and authored metadata remain independent.",
+    ),
     "faithful-reader": (
         "Read the authored source faithfully",
         "The primary reader preserves the book’s own structure on a full canvas while keeping the library available from the top bar.",
@@ -71,6 +75,10 @@ CAPTIONS = {
         "A private passage sidecar",
         "Explain, summarize, extract key points, or ask a question about the current passage without turning AI into a blocking reader modal.",
     ),
+    "source-grounded-echo": (
+        "Hear when another book answers",
+        "A discreet paragraph indicator opens an evidence card with both source excerpts, relationship direction, spoiler controls, feedback, and an exact route into the related work.",
+    ),
     "hosted-library": (
         "The same app inside NakliOS",
         "Lorewell keeps its standalone reading model when hosted, while storage, theme, and AI capabilities arrive through the NakliOS boundary.",
@@ -83,6 +91,8 @@ CAPTIONS = {
 
 SEARCH_TERMS = {
     "native-reader": "echoes connections concepts scenes plots",
+    "ideas-and-connections": "semantic indexing ingestion embeddings graph concepts scenes processing queue",
+    "source-grounded-echo": "echoes cross-book fiction nonfiction concepts plot snippets related passage",
 }
 
 SEARCH_COPY = {
@@ -117,6 +127,7 @@ SECTIONS = (
             "safety-and-portability",
             "ask-the-library",
             "ai-providers",
+            "ideas-and-connections",
         ),
     ),
     (
@@ -130,6 +141,7 @@ SECTIONS = (
             "notes-and-bookmarks",
             "reading-appearance",
             "ai-reading-companion",
+            "source-grounded-echo",
         ),
     ),
     (
@@ -209,8 +221,8 @@ def build() -> str:
 <title>Lorewell — Visual Guide</title>
 <style>
 :root {{
-  --body:#e8d9b3; --panel:#f3e7c4; --ink:#2c3e3a; --brand:#b85c3a;
-  --row:#ddc89a; --muted:#705d47; --line:#c9b582;
+  --body:#e8d9b3; --panel:#f3e7c4; --ink:#2c3e3a; --brand:#99472f;
+  --row:#ddc89a; --muted:#6d5944; --line:#c9b582;
   --shadow:0 20px 55px rgba(44,62,58,.13);
 }}
 * {{ box-sizing:border-box; }}

@@ -37,6 +37,14 @@
   const harnessParams = new URLSearchParams(location.search);
   const scaleMode = harnessParams.get('scale') === '1';
   const localAiMode = harnessParams.get('local-ai') === '1';
+  const requestedApp = harnessParams.get('app');
+  if (requestedApp) {
+    const appUrl = new URL(requestedApp, location.href);
+    if (appUrl.origin !== location.origin) {
+      throw new Error('The host harness app override must stay on this origin.');
+    }
+    frame.src = appUrl.href;
+  }
 
   function concatBytes(chunks) {
     const output = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));

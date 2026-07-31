@@ -63,6 +63,7 @@ ROLE_PLANS = (
             Capture(4, "safety-and-portability", "standalone:tools", "tools", 900),
             Capture(5, "ask-the-library", "standalone:ask", "ask"),
             Capture(6, "ai-providers", "standalone:providers", "providers"),
+            Capture(7, "ideas-and-connections", "standalone:intelligence", "intelligence", 900),
         ),
     ),
     RolePlan(
@@ -75,6 +76,7 @@ ROLE_PLANS = (
             Capture(4, "notes-and-bookmarks", "reader:notes", "reader-notes"),
             Capture(5, "reading-appearance", "reader:appearance", "appearance"),
             Capture(6, "ai-reading-companion", "reader:ai", "reader-ai", 1200),
+            Capture(7, "source-grounded-echo", "reader:echo", "reader-echo", 900),
         ),
     ),
     RolePlan(
@@ -325,6 +327,16 @@ def show_tools(page: Page, base: str) -> None:
     page.wait_for_timeout(500)
 
 
+def show_intelligence(page: Page, base: str) -> None:
+    close_dialogs(page)
+    if page.locator("#main .library .row").count() == 0:
+        seed_library(page, base)
+    open_library_options(page)
+    page.locator("#library-intelligence-btn").click()
+    page.locator("#library-tools-dialog[open]").wait_for(state="visible")
+    page.locator("#background-intelligence-enabled").wait_for(state="visible")
+
+
 def show_ask(page: Page, base: str) -> None:
     close_dialogs(page)
     open_library_options(page)
@@ -403,9 +415,139 @@ def show_reader_ai(page: Page, base: str) -> None:
     page.wait_for_timeout(800)
 
 
+def stage_reader_echo(page: Page) -> None:
+    result = page.evaluate(
+        """async () => {
+          const db = await new Promise((resolve, reject) => {
+            const request = indexedDB.open('naklios-books-library-v1', 2);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+          const read = path => new Promise((resolve, reject) => {
+            const tx = db.transaction('files', 'readonly');
+            const request = tx.objectStore('files').get(path);
+            request.onsuccess = () => {
+              const stored = request.result;
+              if (!stored) return resolve(null);
+              try { resolve(JSON.parse(stored.data)); }
+              catch (error) { reject(error); }
+            };
+            request.onerror = () => reject(request.error);
+          });
+          const catalog = await read('catalog/catalog.json');
+          const sourceWorkId = catalog?.aliases?.sourceFilenames?.['Seeing Systems.md'];
+          const targetWorkId = catalog?.aliases?.sourceFilenames?.['The Library Within.txt'];
+          if (!sourceWorkId || !targetWorkId) {
+            db.close();
+            return { ready:false, reason:'work identities are not ready' };
+          }
+          const sourceRecord = await read('semantic/' + sourceWorkId + '/passages.json');
+          const targetRecord = await read('semantic/' + targetWorkId + '/passages.json');
+          const sourceParagraph = sourceRecord?.passages?.flatMap(
+            passage => passage.paragraphs || []
+          ).find(paragraph => paragraph.text.includes('tentative connections'));
+          const targetParagraph = targetRecord?.passages?.flatMap(
+            passage => passage.paragraphs || []
+          ).find(paragraph => paragraph.text.includes('two books are speaking'));
+          if (!sourceParagraph || !targetParagraph) {
+            db.close();
+            return { ready:false, reason:'paragraph anchors are not ready' };
+          }
+          const sourcePassage = sourceRecord.passages.find(
+            passage => passage.passageId === sourceParagraph.passageId
+          );
+          const targetPassage = targetRecord.passages.find(
+            passage => passage.passageId === targetParagraph.passageId
+          );
+          const connection = {
+            connectionId:'echo_guide_private_connections',
+            linkId:'echo-link-guide-private-connections',
+            source:{
+              workId:sourceWorkId,
+              unitId:'unit_seeing_systems_private_tools',
+              paragraphId:sourceParagraph.paragraphId,
+              passageId:sourcePassage.passageId,
+              excerpt:sourceParagraph.text,
+              label:'Tentative connections stay close to the reader',
+              kind:'principle',
+            },
+            target:{
+              workId:targetWorkId,
+              unitId:'unit_library_within_speaking_books',
+              paragraphId:targetParagraph.paragraphId,
+              passageId:targetPassage.passageId,
+              excerpt:targetParagraph.text,
+              label:'Two books speaking to each other',
+              kind:'concept',
+              workTitle:'The Library Within',
+              positionFraction:0.2,
+            },
+            relation:'supports',
+            direction:'forward',
+            score:0.91,
+            confidence:0.93,
+            explanation:'The Library Within supports the principle that tentative connections can remain private until the reader is ready to make a claim.',
+            teaser:'A source-grounded supporting connection is available from another book.',
+            spoiler:{ risk:'low', reason:null },
+            evidence:{
+              sourceQuoteHash:sourceParagraph.anchor?.quoteHash || null,
+              targetQuoteHash:targetParagraph.anchor?.quoteHash || null,
+            },
+            generatedBy:{
+              graph:'library-echo-links-v2',
+              model:'guide-fixture',
+              relationMethod:'source-grounded-guide-fixture',
+            },
+            userState:{ hidden:false, rating:null, spoiler:false },
+          };
+          const record = {
+            schemaVersion:1,
+            recordType:'books.reader-connections',
+            indexVersion:'reader-connections-v2',
+            workId:sourceWorkId,
+            graphVersion:'library-echo-links-v2',
+            connectionCount:1,
+            connections:[connection],
+            updatedAt:'2026-08-01T00:00:00.000Z',
+          };
+          await new Promise((resolve, reject) => {
+            const tx = db.transaction('files', 'readwrite');
+            tx.objectStore('files').put({
+              kind:'text',
+              data:JSON.stringify(record, null, 2),
+            }, 'semantic/' + sourceWorkId + '/reader-connections.json');
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+          });
+          db.close();
+          return { ready:true };
+        }"""
+    )
+    if not result.get("ready"):
+        raise RuntimeError(f"Echo guide fixture unavailable: {result.get('reason')}")
+
+
+def show_reader_echo(page: Page, base: str) -> None:
+    close_dialogs(page)
+    if not page.locator("#reader.is-open").count():
+        open_reader(page, base)
+    stage_reader_echo(page)
+    page.locator("#reader-prefs-btn").click()
+    page.locator("#reader-prefs-dialog[open]").wait_for(state="visible")
+    page.locator("#reader-echo-mode").select_option("indicators")
+    page.locator('[data-close-dialog="reader-prefs-dialog"]').click()
+    if page.locator("#reader-mode-btn").get_attribute("aria-pressed") != "true":
+        page.locator("#reader-mode-btn").click()
+    indicator = page.locator(".native-echo-indicator")
+    indicator.wait_for(state="visible", timeout=15000)
+    indicator.click()
+    page.locator("#reader-echo-sidecar.is-open").wait_for(state="visible")
+
+
 def hosted_page(page: Page, base: str) -> Page:
     root = base.rsplit("/dist/", 1)[0]
-    hosted_url = root + "/test/host-harness.html?autorun=1"
+    hosted_url = root + "/test/host-harness.html?autorun=1&app=/dist/index.html"
     if not page.url.startswith(hosted_url):
         page.goto(hosted_url, wait_until="load")
     frame = page.frame_locator("#books")
@@ -431,6 +573,7 @@ ACTIONS: dict[str, Callable[[Page, str], None]] = {
     "views": show_views,
     "details": show_details,
     "tools": show_tools,
+    "intelligence": show_intelligence,
     "ask": show_ask,
     "providers": show_providers,
     "reader": open_reader,
@@ -439,6 +582,7 @@ ACTIONS: dict[str, Callable[[Page, str], None]] = {
     "reader-notes": show_reader_notes,
     "appearance": show_appearance,
     "reader-ai": show_reader_ai,
+    "reader-echo": show_reader_echo,
     "hosted": hosted_page,
     "hosted-storage": show_hosted_storage,
 }

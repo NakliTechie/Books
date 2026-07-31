@@ -1011,7 +1011,8 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 .books-dialog p { margin:0 0 16px; color:var(--muted); line-height:1.5; font-size:13px; }
 .books-dialog-list { display:flex; flex-direction:column; gap:7px; }
 .books-dialog-choice {
-  width:100%; text-align:left; background:var(--row); color:var(--ink);
+  display:block; box-sizing:border-box; width:100%; text-align:left;
+  text-decoration:none; background:var(--row); color:var(--ink);
   border:1px solid var(--line); border-radius:8px; padding:11px 12px; cursor:pointer;
 }
 .books-dialog-choice:hover { border-color:var(--brand); }
@@ -1294,7 +1295,8 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   <div class="title"><img class="brand-mark" src="favicon.svg" alt="">Lorewell</div>
   <div class="topbar-actions">
     <div class="status" id="topbar-status">Loading…</div>
-    <a class="help-link" href="guide/" target="_blank" rel="noopener">Help</a>
+    <button class="help-link" id="help-btn" type="button"
+            aria-haspopup="dialog" aria-controls="help-dialog">Help</button>
     <button class="storage-btn" id="storage-btn" type="button" hidden>Storage</button>
   </div>
 </div>
@@ -1323,8 +1325,9 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <button class="reader-search-btn" id="reader-search-btn" type="button" hidden
             aria-expanded="false" aria-controls="reader-searchbar" title="Find in book (⌘F)">Find</button>
     <button class="sidebar-toggle" id="sidebar-toggle" type="button" hidden aria-label="Notes &amp; bookmarks">≡</button>
-    <a class="help-link" href="guide/#active-reader" target="_blank" rel="noopener"
-       aria-label="Open the Lorewell reader guide">?</a>
+    <button class="help-link" id="reader-help-btn" type="button"
+            aria-haspopup="dialog" aria-controls="help-dialog"
+            aria-label="Open Lorewell help">?</button>
   </div>
   <form class="reader-searchbar" id="reader-searchbar" role="search" hidden>
     <input id="reader-search-input" type="search" autocomplete="off"
@@ -1474,6 +1477,26 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     </div>
     <p class="welcome-guide"><a class="guide-link" href="guide/" target="_blank"
        rel="noopener" id="welcome-guide-link">See the 2-minute guide</a></p>
+  </div>
+</dialog>
+
+<dialog class="books-dialog" id="help-dialog" aria-labelledby="help-dialog-title">
+  <div class="books-dialog-body">
+    <h3 id="help-dialog-title">Help with Lorewell</h3>
+    <p id="help-dialog-intro">Find your way around the library, storage,
+      reading tools, private AI, and ideas across your books.</p>
+    <div class="books-dialog-list">
+      <a class="books-dialog-choice" id="help-guide-link" href="guide/"
+         target="_blank" rel="noopener">
+        <strong>Open the Lorewell guide ↗</strong>
+        <small id="help-guide-context">Start with the visual walkthrough.</small>
+      </a>
+    </div>
+    <p>Lorewell works without an account. Your books and local AI context stay
+      on this device unless you explicitly choose a connected provider.</p>
+    <div class="books-dialog-actions">
+      <button type="button" data-close-dialog="help-dialog">Close</button>
+    </div>
   </div>
 </dialog>
 
@@ -3242,6 +3265,11 @@ const welcomeFolderPath = document.getElementById('welcome-folder-path');
 const welcomeGuideLink = document.getElementById('welcome-guide-link');
 const welcomeAddFolder = document.getElementById('welcome-add-folder');
 const welcomeAddBook = document.getElementById('welcome-add-book');
+const helpBtn = document.getElementById('help-btn');
+const readerHelpBtn = document.getElementById('reader-help-btn');
+const helpDialog = document.getElementById('help-dialog');
+const helpGuideLink = document.getElementById('help-guide-link');
+const helpGuideContext = document.getElementById('help-guide-context');
 readerProfile.options[0].textContent = naklios.capabilities.hosted
   ? 'NakliOS theme' : 'System theme';
 
@@ -11010,6 +11038,20 @@ welcomeDialog.addEventListener('keydown', (event) => {
     first.focus();
   }
 });
+
+function showHelpDialog(context = 'library') {
+  const inReader = context === 'reader';
+  helpGuideLink.href = inReader ? 'guide/#active-reader' : 'guide/';
+  helpGuideContext.textContent = inReader
+    ? 'Jump to the reader, navigation, notes, AI, and Echo walkthrough.'
+    : 'Start with the visual walkthrough for adding, organizing, and searching books.';
+  if (!helpDialog.open) helpDialog.showModal();
+  helpGuideLink.focus();
+}
+
+helpBtn.addEventListener('click', () => showHelpDialog('library'));
+readerHelpBtn.addEventListener('click', () => showHelpDialog('reader'));
+helpGuideLink.addEventListener('click', () => helpDialog.close());
 
 function openLibraryFilePicker() {
   libraryFileInput.click();
