@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Books — Private browser-native reader</title>
 <meta name="description" content="A private browser-native library and reader for ePub, PDF, MOBI, AZW3, FB2 and plain text.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <style>
 /* Mumbai art deco — Marine Drive cream + teal-black + burnt sienna.
    Host theme via naklios.theme.onChange can override at runtime. */
@@ -14,7 +15,7 @@
   --ink:   #2c3e3a;  /* deep teal-black */
   --brand: #b85c3a;  /* burnt sienna */
   --row:   #ddc89a;  /* warmer cream, for rows */
-  --muted: #7a6850;  /* warm gray-brown */
+  --muted: #705d47;  /* warm gray-brown; AA on the light panel */
   --line:  #c9b582;  /* earthen */
 }
 * {
@@ -62,12 +63,20 @@ body { display: flex; flex-direction: column; }
 .topbar .title .glyph { font-size: 18px; }
 .topbar .status { font-size: 11px; color: var(--muted); }
 .topbar-actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
-.storage-btn, .reader-prefs-btn, .reader-ai-btn {
+.storage-btn, .reader-prefs-btn, .reader-ai-btn, .help-link,
+.reader-library-toggle {
   max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   background:transparent; color:var(--ink); border:1px solid var(--line);
   padding:6px 10px; border-radius:6px; cursor:pointer; font:11px inherit;
 }
-.storage-btn:hover, .reader-prefs-btn:hover, .reader-ai-btn:hover { background:var(--row); border-color:var(--brand); }
+.help-link {
+  display:inline-flex; align-items:center; justify-content:center;
+  text-decoration:none;
+}
+.storage-btn:hover, .reader-prefs-btn:hover, .reader-ai-btn:hover,
+.help-link:hover, .reader-library-toggle:hover {
+  background:var(--row); border-color:var(--brand);
+}
 .storage-btn:disabled { cursor:default; opacity:.55; }
 
 .main {
@@ -146,6 +155,8 @@ body { display: flex; flex-direction: column; }
   flex: 1 1 auto;
   min-width: 0;
   padding-right: 14px;
+  border:0; background:transparent; color:inherit; text-align:left;
+  cursor:pointer; font:inherit;
 }
 .book-cover {
   position:relative; flex:0 0 auto;
@@ -259,6 +270,12 @@ body { display: flex; flex-direction: column; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .reader-header .status { font-size: 11px; color: var(--muted); }
+.reader-library-toggle {
+  font-size:12px; padding:6px 10px;
+}
+.reader-library-toggle[aria-expanded="true"] {
+  background:var(--brand); color:var(--panel); border-color:var(--brand);
+}
 .reader-header .sidebar-toggle {
   background: transparent; color: var(--ink); border: 1px solid var(--line);
   padding: 6px 10px; border-radius: 6px; cursor: pointer;
@@ -321,12 +338,13 @@ body { display: flex; flex-direction: column; }
 .reader-library {
   flex: 0 0 248px;
   min-width: 0;
-  display: flex;
+  display: none;
   flex-direction: column;
   background: var(--panel);
   border-right: 1px solid var(--line);
-  z-index: 1;
+  z-index: 4;
 }
+.reader-library.is-open { display:flex; }
 .reader-library-head {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 12px;
@@ -678,17 +696,47 @@ body { display: flex; flex-direction: column; }
 }
 .toc .toc-item:hover { background: var(--row); color: var(--brand); }
 
-/* Library header — "+ Add book" affordance above the row list */
+/* Library hierarchy — reading and discovery first, organization on demand. */
 .library-header {
-  display: flex; align-items: center; justify-content: space-between; gap:8px; flex-wrap:wrap;
+  display:grid; grid-template-columns:minmax(220px,1fr) auto auto;
+  align-items:center; gap:8px;
   margin-bottom: 12px;
 }
-.library-tools { display:flex; align-items:center; gap:7px; flex:1; min-width:220px; }
+.library-search { min-width:0; }
+.library-search input {
+  width:100%; min-width:0; min-height:40px;
+  background:var(--panel); color:var(--ink); border:1px solid var(--line);
+  border-radius:7px; padding:9px 11px; font:12px inherit;
+}
+.library-search input:focus {
+  outline:2px solid color-mix(in srgb,var(--brand) 42%,transparent);
+  outline-offset:-1px;
+}
+.library-options { position:relative; }
+.library-options > summary {
+  list-style:none; display:flex; align-items:center; min-height:40px;
+  border:1px solid var(--line); border-radius:7px; padding:7px 11px;
+  background:var(--panel); color:var(--ink); cursor:pointer; font:12px inherit;
+}
+.library-options > summary::-webkit-details-marker { display:none; }
+.library-options > summary::after { content:'⌄'; margin-left:7px; color:var(--muted); }
+.library-options[open] > summary { border-color:var(--brand); background:var(--row); }
+.library-options-panel {
+  position:absolute; top:calc(100% + 7px); right:0; z-index:8;
+  width:min(620px,calc(100vw - 40px)); padding:12px;
+  border:1px solid var(--line); border-radius:10px; background:var(--panel);
+  box-shadow:0 16px 38px rgba(44,62,58,.18);
+  display:grid; gap:10px;
+}
+.library-options-heading {
+  margin:0; color:var(--muted); font-size:10px; font-weight:700;
+  letter-spacing:.08em; text-transform:uppercase;
+}
+.library-tools { display:flex; align-items:center; flex-wrap:wrap; gap:7px; }
 .library-filter, .library-sort, .library-view-select {
   min-width:0; background:var(--panel); color:var(--ink); border:1px solid var(--line);
   border-radius:6px; padding:7px 9px; font:12px inherit;
 }
-.library-filter { flex:1; }
 .library-sort, .library-view-select { flex:0 0 auto; max-width:190px; }
 .library-view-action {
   flex:0 0 auto; border:1px solid var(--line); border-radius:6px; padding:7px 9px;
@@ -696,16 +744,6 @@ body { display: flex; flex-direction: column; }
 }
 .library-view-action:hover { border-color:var(--brand); background:var(--row); }
 .library-view-action:disabled { opacity:.45; cursor:not-allowed; }
-.semantic-search {
-  width:100%; margin-bottom:10px; display:flex; align-items:center; gap:8px;
-}
-.semantic-search input {
-  width:100%; min-width:0; background:var(--panel); color:var(--ink);
-  border:1px solid var(--line); border-radius:7px; padding:9px 11px; font:12px inherit;
-}
-.semantic-search input:focus {
-  outline:2px solid color-mix(in srgb,var(--brand) 42%,transparent); outline-offset:-1px;
-}
 .semantic-search-results {
   margin:0 0 16px; padding:10px; border:1px solid var(--line); border-radius:9px;
   background:color-mix(in srgb,var(--panel) 88%,var(--row)); display:grid; gap:7px;
@@ -822,7 +860,7 @@ body { display: flex; flex-direction: column; }
 }
 .add-btn:hover { opacity: 0.92; }
 .add-btn.compact { padding: 7px 12px; font-size: 12px; }
-.library-header-actions { display:flex; align-items:center; gap:7px; }
+.library-header-actions { display:flex; align-items:center; flex-wrap:wrap; gap:7px; }
 .library-header-action {
   border:1px solid var(--line); border-radius:6px; padding:7px 10px;
   background:var(--panel); color:var(--ink); cursor:pointer; font:12px inherit;
@@ -915,6 +953,28 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   border-radius:6px; padding:7px 12px; cursor:pointer;
 }
 .books-dialog-actions button.primary { background:var(--brand); color:var(--panel); border-color:var(--brand); }
+.welcome-dialog { width:min(660px,calc(100vw - 28px)) !important; }
+.welcome-dialog .books-dialog-body { padding:clamp(22px,5vw,38px); }
+.welcome-kicker {
+  margin:0 0 9px; color:var(--brand); font-size:10px; font-weight:750;
+  letter-spacing:.12em; text-transform:uppercase;
+}
+.welcome-dialog h2 {
+  margin:0 0 10px; max-width:560px; font:700 clamp(25px,4vw,38px)/1.06 Georgia,serif;
+}
+.welcome-dialog .welcome-thesis { color:var(--ink); font-size:15px; }
+.welcome-paths {
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px;
+  margin:20px 0 0;
+}
+.welcome-path {
+  padding:13px; border:1px solid var(--line); border-radius:9px;
+  background:var(--body); color:var(--muted); font-size:12px; line-height:1.45;
+}
+.welcome-path strong { display:block; margin-bottom:4px; color:var(--ink); }
+.welcome-actions { align-items:center; flex-wrap:wrap; }
+.welcome-actions .guide-link { margin-right:auto; }
+.guide-link { color:var(--brand); font-weight:650; text-underline-offset:3px; }
 .books-dialog-field { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; margin:10px 0; }
 .books-dialog-field label { font-size:12px; color:var(--muted); }
 .books-dialog-field input,.books-dialog-field select {
@@ -1098,21 +1158,38 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 .metadata-candidate-actions {
   display:flex; flex-wrap:wrap; gap:5px; margin-top:3px;
 }
+@media (max-width:900px) {
+  .reader-library.is-open {
+    position:absolute; inset:0 auto 0 0; width:min(82vw,300px);
+    box-shadow:8px 0 26px rgba(0,0,0,.16);
+  }
+}
 @media (max-width:600px) {
   .topbar { gap:8px; padding:10px 12px; }
   .topbar-actions { min-width:0; }
   .storage-btn { max-width:150px; }
   .main { padding:12px; }
-  .library-header { align-items:stretch; }
+  .library-header { grid-template-columns:minmax(0,1fr) auto; align-items:stretch; }
+  .library-options { grid-column:1 / -1; }
+  .library-options > summary { justify-content:center; }
+  .library-options-panel { position:static; width:100%; margin-top:7px; box-shadow:none; }
   .library-tools { width:100%; }
-  .reader-library { flex-basis:168px; }
   .reader-library-head { align-items:stretch; flex-direction:column; }
   .reader-open-file { text-align:left; }
+  .welcome-paths { grid-template-columns:1fr; }
+  .reader-header { gap:7px; padding:8px; }
+  .reader-library-toggle-label { display:none; }
   .reader-searchbar { grid-template-columns:minmax(120px,1fr) auto auto auto; }
   .reader-search-count { grid-column:1 / -1; text-align:left; }
   .reader-ai-sidecar {
     position:absolute; inset:0 0 0 auto; width:min(100%,390px); max-width:100%;
     box-shadow:-8px 0 26px rgba(0,0,0,.16);
+  }
+}
+@media (pointer:coarse), (max-width:600px) {
+  button, summary, a.help-link, .library-search input,
+  .library-filter, .library-sort, .library-view-select {
+    min-height:44px;
   }
 }
 </style>
@@ -1143,15 +1220,19 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   <div class="title"><span class="glyph">📖</span> Books</div>
   <div class="topbar-actions">
     <div class="status" id="topbar-status">Loading…</div>
+    <a class="help-link" href="guide/" target="_blank" rel="noopener">Help</a>
     <button class="storage-btn" id="storage-btn" type="button" hidden>Storage</button>
   </div>
 </div>
 
-<div class="main" id="main"><!-- view rendered by JS --></div>
+<main class="main" id="main"><!-- view rendered by JS --></main>
 
 <div class="reader" id="reader" aria-hidden="true">
   <div class="reader-header">
-    <button class="back" id="back-btn" type="button">← Library</button>
+    <button class="back" id="back-btn" type="button">← All books</button>
+    <button class="reader-library-toggle" id="reader-library-toggle" type="button"
+            aria-expanded="false" aria-controls="reader-library"
+            title="Show or hide the library pane">☰ <span class="reader-library-toggle-label">Library</span></button>
     <button class="nav-btn" id="prev-btn" type="button" hidden aria-label="Previous" title="Previous (←; Page Up or Alt/Option+← while typing)">◀</button>
     <button class="nav-btn" id="next-btn" type="button" hidden aria-label="Next" title="Next (→ or Space; Page Down or Alt/Option+→ while typing)">▶</button>
     <div class="reader-title" id="reader-title">…</div>
@@ -1166,6 +1247,8 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <button class="reader-search-btn" id="reader-search-btn" type="button" hidden
             aria-expanded="false" aria-controls="reader-searchbar" title="Find in book (⌘F)">Find</button>
     <button class="sidebar-toggle" id="sidebar-toggle" type="button" hidden aria-label="Notes &amp; bookmarks">≡</button>
+    <a class="help-link" href="guide/#active-reader" target="_blank" rel="noopener"
+       aria-label="Open the Books reader guide">?</a>
   </div>
   <form class="reader-searchbar" id="reader-searchbar" role="search" hidden>
     <input id="reader-search-input" type="search" autocomplete="off"
@@ -1177,16 +1260,17 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div class="reader-search-excerpt" id="reader-search-excerpt"></div>
   </form>
   <div class="reader-body">
-    <aside class="reader-library" id="reader-library" aria-label="Library">
+    <aside class="reader-library" id="reader-library" aria-label="Library"
+           aria-hidden="true" inert>
       <div class="reader-library-head">
         <strong>Library</strong>
         <button class="reader-open-file" id="reader-open-file" type="button">Open file…</button>
       </div>
       <div class="reader-library-list" id="reader-library-list"></div>
     </aside>
-    <div class="reader-stage">
+    <main class="reader-stage">
       <div class="reader-content" id="reader-content"><!-- engine renders here --></div>
-    </div>
+    </main>
     <aside class="sidebar" id="sidebar" aria-hidden="true">
       <div class="sidebar-section" id="toc-section" hidden>
         <label class="sidebar-label">Contents</label>
@@ -1251,6 +1335,34 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     </aside>
   </div>
 </div>
+
+<dialog class="books-dialog welcome-dialog" id="welcome-dialog"
+        aria-labelledby="welcome-title">
+  <div class="books-dialog-body">
+    <p class="welcome-kicker">Welcome to Books</p>
+    <h2 id="welcome-title">A private semantic library for the books you own.</h2>
+    <p class="welcome-thesis">Your files stay yours. Books helps you read,
+      understand, connect, and remember what is inside—without requiring an
+      account or uploading your collection.</p>
+    <div class="welcome-paths">
+      <div class="welcome-path">
+        <strong>Add one book · fastest</strong>
+        Start immediately. Reading position and notes stay in this library.
+      </div>
+      <div class="welcome-path" id="welcome-folder-path">
+        <strong>Open a folder · most durable</strong>
+        Read recursively and keep portable metadata beside your collection.
+      </div>
+    </div>
+    <div class="books-dialog-actions welcome-actions">
+      <a class="guide-link" href="guide/" target="_blank" rel="noopener"
+         id="welcome-guide-link">See the 2-minute guide</a>
+      <button type="button" id="welcome-dismiss">Explore first</button>
+      <button type="button" id="welcome-add-folder">Open a folder</button>
+      <button class="primary" type="button" id="welcome-add-book">Add a book</button>
+    </div>
+  </div>
+</dialog>
 
 <dialog class="books-dialog" id="storage-dialog">
   <div class="books-dialog-body">
@@ -2769,6 +2881,7 @@ const readerContent = document.getElementById('reader-content');
 const readerLibrary = document.getElementById('reader-library');
 const readerLibraryList = document.getElementById('reader-library-list');
 const readerOpenFileBtn = document.getElementById('reader-open-file');
+const readerLibraryToggle = document.getElementById('reader-library-toggle');
 const readerTitle = document.getElementById('reader-title');
 const readerStatus = document.getElementById('reader-status');
 const backBtn = document.getElementById('back-btn');
@@ -2936,6 +3049,12 @@ const readerSearchNext = document.getElementById('reader-search-next');
 const readerSearchCount = document.getElementById('reader-search-count');
 const readerSearchClose = document.getElementById('reader-search-close');
 const readerSearchExcerpt = document.getElementById('reader-search-excerpt');
+const welcomeDialog = document.getElementById('welcome-dialog');
+const welcomeFolderPath = document.getElementById('welcome-folder-path');
+const welcomeGuideLink = document.getElementById('welcome-guide-link');
+const welcomeDismiss = document.getElementById('welcome-dismiss');
+const welcomeAddFolder = document.getElementById('welcome-add-folder');
+const welcomeAddBook = document.getElementById('welcome-add-book');
 
 bookmarkLabelInput.addEventListener('keydown', (event) => {
   if (event.key !== 'Enter' || event.isComposing) return;
@@ -2950,6 +3069,10 @@ let activeSourceFilename = null;
 let activeReaderMode = 'faithful';
 let activeNativePassageRecord = null;
 let readerNavigationTail = Promise.resolve();
+const READER_LIBRARY_OPEN_KEY = 'books.readerLibraryOpen.v1';
+const WELCOME_SEEN_KEY = 'books.welcomeSeen.v1';
+let readerLibraryOpen = localStorage.getItem(READER_LIBRARY_OPEN_KEY) === 'true';
+let welcomeQueued = false;
 let activeAnnotationRecord = null;
 let pendingHighlightTarget = null;
 let libraryAnnotationRows = [];
@@ -3168,7 +3291,14 @@ async function hydrateCoverImages(scope = document) {
       cover.appendChild(image);
       cover.classList.add('is-loaded');
     } catch (error) {
-      console.warn('Books: cover load failed for', path, error);
+      const message = String(error?.message || error || '').toLocaleLowerCase();
+      if (/not found|does not exist|enoent/.test(message)) {
+        // Covers are rebuildable derived data. A stale path after an explicit
+        // derived-data clear should quietly fall back to the title card.
+        cover.removeAttribute('data-cover-path');
+      } else {
+        console.warn('Books: cover load failed for', path, error);
+      }
     } finally {
       cover.classList.remove('is-loading');
     }
@@ -6964,6 +7094,7 @@ function renderStandaloneStorageUnavailable() {
       '<h2>📖 Books</h2>' +
       '<p>This browser has disabled the persistent storage Books needs. Enable site data for this site, then reload.</p>' +
     '</div></div>';
+  maybeShowWelcome(0);
 }
 
 function renderHostedNoStorage() {
@@ -6977,13 +7108,14 @@ function renderHostedNoStorage() {
   document.getElementById('open-storage-settings')?.addEventListener('click', () => {
     naklios.openSettings('storage');
   });
+  maybeShowWelcome(0);
 }
 
 function renderLibraryEmpty() {
   topbarStatus.textContent = 'Library empty · ' + backendLabel(activeBackendId());
   const backend = activeBackendId();
   const folderAction = !naklios.capabilities.hosted && globalThis.showDirectoryPicker
-    ? '<button class="add-btn-secondary" id="add-folder-btn-empty" type="button">＋ Add folder…</button>'
+    ? '<button class="add-btn-secondary" id="add-folder-btn-empty" type="button">Open a folder library · durable</button>'
     : '';
   const sideload = backend === 'fsa'
     ? " You can also place files in <code>apps/books/library/</code> inside the mounted Folder; they'll appear when this window is focused."
@@ -6994,8 +7126,8 @@ function renderLibraryEmpty() {
   root.innerHTML =
     '<div class="center"><div class="card">' +
       '<h2>📖 Your library is empty</h2>' +
-      '<p>Add books from your computer to start reading. Supported: <code>.epub</code>, <code>.pdf</code>, <code>.mobi</code>, <code>.azw3</code>, <code>.fb2</code>, <code>.txt</code>, <code>.md</code>, <code>.html</code>.</p>' +
-      '<button class="add-btn-secondary" id="add-book-btn-empty" type="button">＋ Add book…</button>' +
+      '<p>Add one book for the fastest start, or open a folder to keep portable metadata beside a durable collection. Supported: <code>.epub</code>, <code>.pdf</code>, <code>.mobi</code>, <code>.azw3</code>, <code>.fb2</code>, <code>.txt</code>, <code>.md</code>, <code>.html</code>.</p>' +
+      '<button class="add-btn" id="add-book-btn-empty" type="button">＋ Add one book · fastest</button>' +
       folderAction +
       '<p style="font-size:11px; margin-top:18px;">Or drag files onto this window.' + sideload + storageNote + '</p>' +
     '</div></div>';
@@ -7005,6 +7137,7 @@ function renderLibraryEmpty() {
     'click',
     () => void connectStandaloneFolder(),
   );
+  maybeShowWelcome(0);
 }
 
 function workCenteredLibraryEntries(entries = libraryCache) {
@@ -7294,10 +7427,10 @@ function renderLibraryRows() {
     const lastRead = (sidecar && sidecar.lastOpened) ? formatRelativeTime(sidecar.lastOpened) : '';
     return '<div class="row" data-filename="' + escapeHtml(filename) + '">' +
              coverMarkup(sidecar, title) +
-             '<div class="row-text">' +
+             '<button class="row-text" type="button" data-action="open">' +
                '<div class="name">' + escapeHtml(title) + '</div>' +
                (author ? '<div class="author">' + escapeHtml(author) + '</div>' : '') +
-             '</div>' +
+             '</button>' +
              '<div class="row-details">' +
                '<div class="row-meta">' +
                  (lastRead ? '<div class="last-read">' + escapeHtml(lastRead) + '</div>' : '') +
@@ -9617,40 +9750,48 @@ async function removeSelectedLibraryView() {
 
 function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   libraryCache = decorated.slice();
+  semanticLibraryQuery = libraryFilter;
   renderReaderLibrary();
   root.innerHTML =
     '<section class="continue-section" id="continue-section" aria-label="Continue Reading"></section>' +
     '<div class="library-header">' +
-      '<div class="library-tools">' +
-        '<select class="library-view-select" id="library-view-select" aria-label="Library view">' +
-          libraryViewOptionsMarkup() +
-        '</select>' +
-        '<input class="library-filter" id="library-filter" type="search" placeholder="Filter library…" value="' + escapeHtml(libraryFilter) + '">' +
-        '<select class="library-sort" id="library-sort" aria-label="Sort library">' +
-          '<option value="recent"' + (librarySort === 'recent' ? ' selected' : '') + '>Recently read</option>' +
-          '<option value="title"' + (librarySort === 'title' ? ' selected' : '') + '>Title</option>' +
-          '<option value="author"' + (librarySort === 'author' ? ' selected' : '') + '>Author</option>' +
-        '</select>' +
-        '<button class="library-view-action" id="library-view-save" type="button">Save view</button>' +
-        '<button class="library-view-action" id="library-view-remove" type="button"' +
-          (activeLibraryView() ? '' : ' disabled') + '>Delete view</button>' +
-      '</div>' +
-      '<div class="library-header-actions">' +
-        '<button class="library-header-action" id="library-ask-btn" type="button">Ask library</button>' +
-        '<button class="library-header-action" id="library-tools-btn" type="button">Library tools</button>' +
-        '<button class="library-header-action" id="annotations-browser-btn" type="button">Annotations</button>' +
-        (!naklios.capabilities.hosted && globalThis.showDirectoryPicker
-          ? '<button class="library-header-action" id="add-folder-btn" type="button">＋ Add folder…</button>'
-          : '') +
-        '<button class="add-btn compact" id="add-book-btn" type="button">＋ Add book…</button>' +
-      '</div>' +
+      '<label class="library-search">' +
+        '<span class="sr-only">Search titles, authors, and indexed book text</span>' +
+        '<input id="library-filter" type="search" autocomplete="off" ' +
+          'aria-label="Search titles, authors, and inside books" ' +
+          'placeholder="Search titles, authors, and inside books…" value="' +
+          escapeHtml(libraryFilter) + '">' +
+      '</label>' +
+      '<button class="add-btn compact" id="add-book-btn" type="button">＋ Add book</button>' +
+      '<details class="library-options" id="library-options">' +
+        '<summary>Library options</summary>' +
+        '<div class="library-options-panel">' +
+          '<p class="library-options-heading">Organize</p>' +
+          '<div class="library-tools">' +
+            '<select class="library-view-select" id="library-view-select" aria-label="Library view">' +
+              libraryViewOptionsMarkup() +
+            '</select>' +
+            '<select class="library-sort" id="library-sort" aria-label="Sort library">' +
+              '<option value="recent"' + (librarySort === 'recent' ? ' selected' : '') + '>Recently read</option>' +
+              '<option value="title"' + (librarySort === 'title' ? ' selected' : '') + '>Title</option>' +
+              '<option value="author"' + (librarySort === 'author' ? ' selected' : '') + '>Author</option>' +
+            '</select>' +
+            '<button class="library-view-action" id="library-view-save" type="button">Save current view</button>' +
+            '<button class="library-view-action" id="library-view-remove" type="button"' +
+              (activeLibraryView() ? '' : ' disabled') + '>Delete saved view</button>' +
+          '</div>' +
+          '<p class="library-options-heading">Understand and maintain</p>' +
+          '<div class="library-header-actions">' +
+            '<button class="library-header-action" id="library-ask-btn" type="button">Ask library</button>' +
+            '<button class="library-header-action" id="annotations-browser-btn" type="button">Annotations</button>' +
+            '<button class="library-header-action" id="library-tools-btn" type="button">Safety &amp; portability</button>' +
+            (!naklios.capabilities.hosted && globalThis.showDirectoryPicker
+              ? '<button class="library-header-action" id="add-folder-btn" type="button">Open folder library…</button>'
+              : '') +
+          '</div>' +
+        '</div>' +
+      '</details>' +
     '</div>' +
-    '<label class="semantic-search">' +
-      '<span class="sr-only">Search inside every indexed book</span>' +
-      '<input id="semantic-search-input" type="search" autocomplete="off" ' +
-        'placeholder="Search inside every book…" value="' +
-        escapeHtml(semanticLibraryQuery) + '">' +
-    '</label>' +
     '<section class="semantic-search-results" id="semantic-search-results" ' +
       'aria-live="polite" aria-label="Library passage search results" hidden></section>' +
     '<div class="library"></div>' +
@@ -9679,18 +9820,23 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   const viewSelect = document.getElementById('library-view-select');
   const saveView = document.getElementById('library-view-save');
   const removeView = document.getElementById('library-view-remove');
-  const semanticInput = document.getElementById('semantic-search-input');
   viewSelect.addEventListener('change', () => {
     libraryViewSelection = viewSelect.value;
     const saved = activeLibraryView();
     if (saved) {
       libraryFilter = saved.query;
+      semanticLibraryQuery = libraryFilter;
       librarySort = saved.sort;
       filter.value = libraryFilter;
       sort.value = librarySort;
     }
     refreshLibraryViewControl();
     renderLibraryRows();
+    clearTimeout(semanticSearchTimer);
+    semanticSearchTimer = setTimeout(
+      () => void runSemanticLibrarySearch(semanticLibraryQuery),
+      0,
+    );
   });
   saveView.addEventListener('click', openSavedViewDialog);
   removeView.addEventListener('click', () => {
@@ -9698,20 +9844,18 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   });
   filter.addEventListener('input', () => {
     libraryFilter = filter.value;
+    semanticLibraryQuery = filter.value;
     renderLibraryRows();
-  });
-  sort.addEventListener('change', () => {
-    librarySort = sort.value;
-    localStorage.setItem('books.librarySort.v1', librarySort);
-    renderLibraryRows();
-  });
-  semanticInput.addEventListener('input', () => {
-    semanticLibraryQuery = semanticInput.value;
     clearTimeout(semanticSearchTimer);
     semanticSearchTimer = setTimeout(
       () => void runSemanticLibrarySearch(semanticLibraryQuery),
       180,
     );
+  });
+  sort.addEventListener('change', () => {
+    librarySort = sort.value;
+    localStorage.setItem('books.librarySort.v1', librarySort);
+    renderLibraryRows();
   });
   root.querySelector('#semantic-search-results').addEventListener('click', (event) => {
     const result = event.target.closest('[data-semantic-result]');
@@ -9753,6 +9897,7 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
       0,
     );
   }
+  maybeShowWelcome(workCenteredLibraryEntries(decorated).length);
 }
 
 // ============================================================
@@ -9783,6 +9928,69 @@ function showToast(message, opts = {}) {
   }, opts.duration || 3200);
 }
 
+function rememberWelcomeSeen(reason = 'dismissed') {
+  localStorage.setItem(WELCOME_SEEN_KEY, reason);
+}
+
+function syncWelcomeStoragePath() {
+  if (naklios.capabilities.hosted) {
+    welcomeFolderPath.innerHTML =
+      '<strong>Inside NakliOS · storage stays isolated</strong>' +
+      'Books uses the Folder or Crate selected by the host without silently merging libraries.';
+    welcomeAddFolder.hidden = true;
+    return;
+  }
+  const folderAvailable = typeof globalThis.showDirectoryPicker === 'function';
+  welcomeFolderPath.innerHTML = folderAvailable
+    ? '<strong>Open a folder · most durable</strong>' +
+      'Read recursively and keep portable metadata beside your collection.'
+    : '<strong>Browser library · private on this device</strong>' +
+      'This browser cannot grant folder access, but your local library remains available.';
+  welcomeAddFolder.hidden = !folderAvailable;
+}
+
+function maybeShowWelcome(bookCount = 0) {
+  if (localStorage.getItem(WELCOME_SEEN_KEY) || welcomeDialog.open || welcomeQueued) return;
+  if (bookCount > 0) {
+    // Do not interrupt established libraries when the welcome feature ships.
+    rememberWelcomeSeen('existing-library');
+    return;
+  }
+  welcomeQueued = true;
+  setTimeout(() => {
+    welcomeQueued = false;
+    if (
+      localStorage.getItem(WELCOME_SEEN_KEY)
+      || welcomeDialog.open
+      || reader.classList.contains('is-open')
+      || document.querySelector('dialog[open]')
+    ) return;
+    syncWelcomeStoragePath();
+    welcomeDialog.showModal();
+    welcomeAddBook.focus();
+  }, 220);
+}
+
+welcomeDismiss.addEventListener('click', () => {
+  rememberWelcomeSeen();
+  welcomeDialog.close();
+});
+welcomeAddBook.addEventListener('click', () => {
+  rememberWelcomeSeen('add-book');
+  welcomeDialog.close();
+  openLibraryFilePicker();
+});
+welcomeAddFolder.addEventListener('click', () => {
+  rememberWelcomeSeen('open-folder');
+  welcomeDialog.close();
+  void connectStandaloneFolder();
+});
+welcomeGuideLink.addEventListener('click', () => {
+  rememberWelcomeSeen('opened-guide');
+  welcomeDialog.close();
+});
+welcomeDialog.addEventListener('cancel', () => rememberWelcomeSeen());
+
 function openLibraryFilePicker() {
   libraryFileInput.click();
 }
@@ -9803,6 +10011,35 @@ async function requestStandalonePersistence() {
     // when the browser declines it.
   }
 }
+
+function setReaderLibraryOpen(open, { persist = true, focus = false } = {}) {
+  const next = !!open;
+  if (!next && readerLibrary.contains(document.activeElement)) {
+    readerLibraryToggle.focus();
+  }
+  readerLibraryOpen = next;
+  readerLibrary.classList.toggle('is-open', next);
+  readerLibrary.setAttribute('aria-hidden', next ? 'false' : 'true');
+  readerLibrary.toggleAttribute('inert', !next);
+  readerLibraryToggle.setAttribute('aria-expanded', String(next));
+  readerLibraryToggle.setAttribute(
+    'aria-label',
+    next ? 'Hide library pane' : 'Show library pane',
+  );
+  if (persist) {
+    localStorage.setItem(READER_LIBRARY_OPEN_KEY, String(next));
+  }
+  if (next && focus) {
+    requestAnimationFrame(() => {
+      (readerLibraryList.querySelector('[aria-current="true"]')
+        || readerOpenFileBtn).focus();
+    });
+  }
+}
+
+readerLibraryToggle.addEventListener('click', () => {
+  setReaderLibraryOpen(!readerLibraryOpen, { focus:!readerLibraryOpen });
+});
 
 function renderReaderLibrary() {
   if (!readerLibraryList) return;
@@ -9846,7 +10083,10 @@ readerLibraryList.addEventListener('click', (event) => {
   const item = event.target.closest('.reader-library-item[data-filename]');
   if (!item || bookOpenInProgress) return;
   const filename = item.getAttribute('data-filename');
-  if (filename && filename !== activeSourceFilename) void openBookFromLibrary(filename);
+  if (filename && filename !== activeSourceFilename) {
+    setReaderLibraryOpen(false);
+    void openBookFromLibrary(filename);
+  }
 });
 
 async function handlePickedFiles(fileList) {
@@ -11575,6 +11815,7 @@ function enterReaderView(filename) {
   readerStatus.textContent = '';
   reader.classList.add('is-open');
   reader.setAttribute('aria-hidden', 'false');
+  setReaderLibraryOpen(readerLibraryOpen, { persist:false });
   topbar.style.display = 'none';
   root.style.display = 'none';
   renderReaderLibrary();
@@ -11584,6 +11825,7 @@ function enterReaderView(filename) {
 }
 
 function teardownReaderView() {
+  const returnFilename = activeSourceFilename;
   closeReaderAiSidecar();
   resetReaderSearch();
   readerSearchbar.hidden = true;
@@ -11611,10 +11853,21 @@ function teardownReaderView() {
   nextBtn.hidden = true; nextBtn.onclick = null;
   renderTOC(null);
   deactivateSidebar();
-  reader.classList.remove('is-open');
-  reader.setAttribute('aria-hidden', 'true');
   topbar.style.display = '';
   root.style.display = '';
+  if (reader.contains(document.activeElement)) {
+    const returnRow = Array.from(
+      root.querySelectorAll('.row[data-filename]'),
+    ).find((row) => row.dataset.filename === returnFilename);
+    const returnTarget = returnRow?.querySelector('[data-action="open"]');
+    if (returnTarget) returnTarget.focus();
+    else {
+      root.tabIndex = -1;
+      root.focus();
+    }
+  }
+  reader.classList.remove('is-open');
+  reader.setAttribute('aria-hidden', 'true');
   naklios.title('Books');
 }
 
@@ -12159,6 +12412,11 @@ function boot() {
     if (e.key === 'Escape' && readerAiSidecar.classList.contains('is-open')) {
       e.preventDefault();
       closeReaderAiSidecar();
+      return;
+    }
+    if (e.key === 'Escape' && readerLibraryOpen) {
+      e.preventDefault();
+      setReaderLibraryOpen(false);
       return;
     }
     const t = e.target;

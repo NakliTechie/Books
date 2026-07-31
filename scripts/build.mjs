@@ -7,8 +7,16 @@ const outputDir = resolve(projectRoot, 'dist');
 
 await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
+await mkdir(resolve(outputDir, 'guide'), { recursive: true });
 await Promise.all([
   cp(resolve(projectRoot, 'index.html'), resolve(outputDir, 'index.html')),
+  cp(resolve(projectRoot, 'favicon.svg'), resolve(outputDir, 'favicon.svg')),
+  cp(resolve(projectRoot, 'guide', 'index.html'), resolve(outputDir, 'guide', 'index.html')),
+  cp(
+    resolve(projectRoot, 'guide', 'screenshots'),
+    resolve(outputDir, 'guide', 'screenshots'),
+    { recursive: true },
+  ),
   cp(resolve(projectRoot, 'semantic-library.js'), resolve(outputDir, 'semantic-library.js')),
   cp(resolve(projectRoot, 'semantic-processing.js'), resolve(outputDir, 'semantic-processing.js')),
   cp(resolve(projectRoot, 'semantic-ai.js'), resolve(outputDir, 'semantic-ai.js')),

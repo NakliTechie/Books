@@ -68,7 +68,11 @@ try {
   );
   const renameMs = runIndexer();
   assert.equal(inventory().counts.added, 1);
-  assert.equal(inventory().counts.missing, 1);
+  assert.equal(
+    inventory().counts.missing,
+    0,
+    'a fingerprint-matched move must not leave a missing source behind',
+  );
   assert.equal(
     catalog().aliases.sourceFilenames['Moved/Book-1.md'],
     beforeRename,

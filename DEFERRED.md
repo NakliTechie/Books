@@ -21,7 +21,7 @@ Without the trigger, the deferral is just an open question.
 
 ---
 
-## Current future queue — 2026-07-30
+## Current future queue — 2026-07-31
 
 This is the consolidated queue, not a committed release roadmap:
 
@@ -30,7 +30,7 @@ This is the consolidated queue, not a committed release roadmap:
 | Scanned-PDF OCR, with Baidu PaddleOCR as the first candidate | Local-first architecture accepted; runtime gate pending | Run the pinned corpus through the live browser and local-service routes |
 | Source-grounded AI illustrations | Pending product decision | Approve the Phase 6 generation policy |
 | Local embeddings / semantic-similarity index | Shipped in Books 2.0 | Continue measuring retrieval quality and storage on real libraries |
-| Metadata and cover provider | Pending policy decision | Approve licensing, attribution, caching, and destination consent |
+| Metadata and cover provider | Shipped as explicit Open Library lookup | Monitor provider policy, attribution, and result quality |
 | Sovereign sync transport and mobile continuity | Pending product decision | Select a transport for the shipped version/tombstone/conflict contract |
 | Standalone folder libraries with durable sidecar metadata | Shipped in Books 2.0 | Continue browser compatibility and stress testing |
 | Native filesystem watcher | Pending evaluation | Demonstrate value beyond rerunning the incremental index command |

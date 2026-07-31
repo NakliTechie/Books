@@ -116,6 +116,11 @@ assert.match(
 );
 
 assert.match(html, /id="library-filter"/, 'library includes a filter');
+assert.match(
+  html,
+  /Search titles, authors, and inside books[\s\S]*?id="library-options"/,
+  'library keeps one primary search and progressively discloses organization tools',
+);
 assert.match(html, /id="library-sort"/, 'library includes a sort chooser');
 assert.match(html, /id="library-view-select"/,
   'library includes deterministic smart-view and facet selection');
@@ -136,13 +141,13 @@ assert.match(
   /async function mutateSemanticManifest\(workId, mutate\)[\s\S]*?semanticManifestMutationTails[\s\S]*?updateWorkDetails\(latest, values\)[\s\S]*?updateAssetFingerprint\(latest, asset\.assetId/,
   'user metadata and background fingerprints mutate the latest manifest serially',
 );
-assert.match(html, /id="semantic-search-input"/,
-  'library includes full-text search across local passage indexes');
+assert.match(html, /id="semantic-search-results"/,
+  'the unified library search includes local passage results');
 assert.match(html, /async function runSemanticLibrarySearch\(/,
   'library full-text search reads its offline per-work indexes');
 assert.match(
   html,
-  /let semanticLibraryQuery = ''[\s\S]*?value="' \+[\s\S]*?escapeHtml\(semanticLibraryQuery\)[\s\S]*?runSemanticLibrarySearch\(semanticLibraryQuery\)/,
+  /semanticLibraryQuery = libraryFilter[\s\S]*?id="library-filter"[\s\S]*?runSemanticLibrarySearch\(semanticLibraryQuery\)/,
   'semantic search survives a background library reconciliation rerender',
 );
 assert.match(
@@ -265,7 +270,14 @@ assert.match(
   'plain-text highlights retain portable offsets and restore inline',
 );
 assert.match(html, /scrollbar-color:\s*var\(--line\)\s*transparent/, 'Books scrollbars use its active theme');
-assert.match(html, /id="reader-library"/, 'reader keeps the library visible in a sidebar');
+assert.match(html, /id="reader-library"/, 'reader includes an on-demand library pane');
+assert.match(html, /id="reader-library-toggle"/,
+  'reader exposes the library pane from its top bar');
+assert.match(
+  html,
+  /function setReaderLibraryOpen\([\s\S]*?toggleAttribute\('inert'[\s\S]*?READER_LIBRARY_OPEN_KEY/,
+  'reader library collapse is accessible and remembers the user preference',
+);
 assert.match(html, /id="reader-library-list"/, 'reader sidebar includes the library contents');
 assert.match(html, /id="reader-open-file"/, 'reader includes an explicit file-open control');
 assert.match(html, /id="reader-searchbar"/, 'reader includes an in-book search surface');
@@ -407,6 +419,14 @@ assert.doesNotMatch(
   'provider credentials are never written to library storage',
 );
 assert.match(html, /Find in book \(⌘F\)/, 'reader advertises the standard search shortcut');
+assert.match(html, /id="welcome-dialog"[\s\S]*?A private semantic library/,
+  'first run explains the private semantic library thesis');
+assert.match(html, /href="guide\/"[\s\S]*?href="guide\/#active-reader"/,
+  'Help links the library and reader to the shipped guide');
+assert.match(html, /<main class="main"[\s\S]*?<main class="reader-stage"/,
+  'library and reader expose visible-state main landmarks');
+assert.match(html, /rel="icon" href="favicon\.svg"/,
+  'Books ships an explicit favicon');
 assert.match(html, /function renderReaderLibrary\(\)/, 'reader library can refresh without leaving the book');
 assert.match(
   html,
@@ -642,7 +662,7 @@ assert.match(
 );
 assert.match(
   harness,
-  /semantic-search-input[\s\S]*?data-semantic-result[\s\S]*?Search result/,
+  /library-filter[\s\S]*?data-semantic-result[\s\S]*?Search result/,
   'browser harness verifies library search navigates to the source reader',
 );
 assert.match(

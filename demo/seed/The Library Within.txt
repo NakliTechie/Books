@@ -1,0 +1,14 @@
+The Library Within
+
+A personal library is not a warehouse. It is an external memory with doors.
+Some doors are titles and authors. Others are half-remembered phrases,
+questions, arguments, places, or the feeling that two books are speaking to
+each other.
+
+Traditional catalogues are excellent at telling us what an object is. A
+semantic library should also help us recover why it mattered. It can preserve
+the passage behind an idea, reveal a recurring concept across works, and keep
+the reader in control of every inference.
+
+The original file remains the source. Derived indexes can be rebuilt. Reading
+positions, annotations, and deliberate curation deserve more durable care.

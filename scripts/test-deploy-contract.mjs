@@ -20,6 +20,7 @@ for (const asset of [
   'idea-graph.js',
   'open-library-metadata.js',
   'embedding-binary.js',
+  'favicon.svg',
   '_headers',
 ]) {
   assert.match(
@@ -33,6 +34,11 @@ assert.match(
   build,
   /cp\(resolve\(projectRoot, 'vendor'\)[\s\S]*?recursive:\s*true/,
   'Cloudflare build includes the pinned local reader dependencies',
+);
+assert.match(
+  build,
+  /resolve\(projectRoot, 'guide', 'index\.html'\)[\s\S]*?resolve\(projectRoot, 'guide', 'screenshots'\)/,
+  'Cloudflare build includes the visual guide and its screenshots',
 );
 
 assert.equal(config.name, 'books');

@@ -26,4 +26,7 @@ jobs:
           test -f dist/semantic-ai.js
           test -f dist/local-ai-sidecar.js
           test -f dist/_headers
+          test -f dist/favicon.svg
+          test -f dist/guide/index.html
+          test -f dist/guide/screenshots/active-reader/06-ai-reading-companion.png
       - run: npx wrangler deploy --dry-run

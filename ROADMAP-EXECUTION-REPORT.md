@@ -2,9 +2,9 @@
 
 > **Run:** 2026-07-31
 >
-> **State:** Approved implementation and local Folder validation complete;
-> final release verification is in progress. The unavailable sync-folder soak
-> and gated OCR runtime benchmark remain.
+> **State:** Approved implementation, local Folder validation, standalone
+> browser validation, and NakliOS host validation complete. The unavailable
+> sync-folder soak, human semantic labels, and gated OCR runtime remain.
 
 ## Delivered in this run
 
@@ -19,6 +19,14 @@
   retry from the earliest failed stage.
 - Background processing has contract coverage for yielding to interactive AI,
   Data Saver, and critically low battery.
+- A one-time welcome explains the fast single-book and durable Folder paths;
+  Help now opens the shipped 17-screen visual guide from both Library and
+  Reader.
+- Reading starts with the Library pane collapsed. Its top-bar toggle is
+  keyboard-accessible, remembers the reader's preference, and becomes an
+  overlay on narrow screens instead of squeezing the page.
+- The populated Library now prioritizes Continue Reading, one title/author/text
+  search, and Add book; saved views and maintenance sit under Library options.
 
 ### Folder durability
 
@@ -98,8 +106,10 @@ npm run corpus:ocr-public -- /path/to/output
 npm run report -- /path/to/folder-library
 ```
 
-The current release validation passed all application contracts, built
-239 static assets, and completed Wrangler's deployment dry-run. In Chrome, the
+The current release validation passed all application contracts, built and
+validated 265 Worker assets, rendered all 17 guide routes with zero console
+errors or warnings, passed the full NakliOS host regression, and completed
+Wrangler's deployment dry-run. In Chrome, the
 production standalone library loaded 40 works, opened a real EPUB in Faithful
 mode, reflowed it into 352 Native source references, and produced no console
 error. The candidate NakliOS regression also passed without a console error or
@@ -119,6 +129,8 @@ was enabled and the local MiniLM encoder completed.
    before opening the production OCR queue.
 3. Label production semantic queries and relationship judgments; enabling the
    model builds evidence but does not substitute for human quality labels.
+4. Capture cold Gemma 4 E2B transfer, peak browser memory, and forced worker
+   recovery across the supported browser/device matrix.
 
 Product decisions remain separately consolidated in
 `DEFERRED-DECISIONS.md`; none blocks faithful reading, lexical search, or the

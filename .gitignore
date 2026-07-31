@@ -8,6 +8,7 @@
 node_modules/
 dist/
 .wrangler/
+__pycache__/
 
 # Local planning and session handoff notes
 plan/
