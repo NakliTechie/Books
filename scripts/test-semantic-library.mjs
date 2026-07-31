@@ -681,6 +681,14 @@ const portableBundle = createPortableBundle({
   annotations: [annotationFirst.record],
   legacySidecars: [sidecar],
   libraryViews:savedView.record,
+  echoCuration:{
+    schemaVersion:1,
+    recordType:'books.echo-curation',
+    connectionFeedback:{},
+    linkFeedback:{},
+    workExclusions:{},
+    updatedAt:'2026-07-30T00:00:00.000Z',
+  },
   assets: [{
     filename: 'Pride & Prejudice.epub',
     byteLength: sourceBytes.byteLength,
@@ -693,6 +701,7 @@ const portableBundle = createPortableBundle({
 assert.equal(portableBundle.recordType, 'books.portable-library');
 assert.deepEqual(portableBundle.records.works, [fingerprinted.manifest]);
 assert.equal(portableBundle.records.views.views.length, 1);
+assert.equal(portableBundle.records.echoCuration.recordType, 'books.echo-curation');
 assert.ok(
   portableBundle.omittedRebuildableData.includes('indexes/'),
   'portable bundles explicitly document omitted rebuildable indexes',
@@ -707,6 +716,7 @@ assert.deepEqual(validatePortableBundle(portableBundle), {
     annotationRecords: 1,
     legacySidecars: 1,
     savedViews: 1,
+    echoCuration: 1,
   },
 });
 const unsafeBundle = structuredClone(portableBundle);

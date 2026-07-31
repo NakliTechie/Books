@@ -331,6 +331,7 @@ env.useBrowserCache = true;
 let processor = null;
 let model = null;
 let activeRequestId = null;
+let stopRequestedId = null;
 const stoppingCriteria = new InterruptableStoppingCriteria();
 const progress = data => self.postMessage({ type:'progress', data });
 self.postMessage({ type:'booted' });
@@ -377,7 +378,7 @@ async function generate(messages, id, maxTokens) {
     skip_prompt:true,
     skip_special_tokens:true,
     callback_function:token => {
-      self.postMessage({ type:'token', id, token });
+      if (stopRequestedId !== id) self.postMessage({ type:'token', id, token });
     },
   });
   const prompt = processor.apply_chat_template(normalizedMessages, {
@@ -394,7 +395,8 @@ async function generate(messages, id, maxTokens) {
     streamer,
     stopping_criteria:stoppingCriteria,
   });
-  self.postMessage({ type:'complete', id });
+  self.postMessage({ type:stopRequestedId === id ? 'stopped' : 'complete', id });
+  stopRequestedId = null;
   activeRequestId = null;
 }
 
@@ -410,7 +412,10 @@ self.addEventListener('message', async ({ data }) => {
       }
       await generate(data.messages || [], data.id, data.maxTokens);
     } else if (data.type === 'stop') {
-      if (!data.id || data.id === activeRequestId) stoppingCriteria.interrupt();
+      if (!data.id || data.id === activeRequestId) {
+        stopRequestedId = activeRequestId;
+        stoppingCriteria.interrupt();
+      }
     }
   } catch (error) {
     self.postMessage({
@@ -505,7 +510,7 @@ async function generate(messages, id, maxTokens) {
     post({ type:'complete', id });
   } catch (error) {
     if (error?.name === 'AbortError') {
-      post({ type:'complete', id });
+      post({ type:'stopped', id });
     } else {
       throw error;
     }
@@ -538,6 +543,9 @@ self.addEventListener('message', async ({ data }) => {
 export class BrowserLocalAi {
   constructor(scope = globalThis, {
     modelKey = DEFAULT_LOCAL_AI_MODEL_KEY,
+    loadIdleTimeoutMs = 120_000,
+    loadTotalTimeoutMs = 30 * 60_000,
+    stopTimeoutMs = 10_000,
   } = {}) {
     this.scope = scope;
     const requestedModel = localAiModel(modelKey);
@@ -550,6 +558,7 @@ export class BrowserLocalAi {
     this.ready = false;
     this.loading = false;
     this.progress = null;
+    this.progressLabel = null;
     this.compatibility = null;
     this.diagnostic = null;
     this.status = browserLocalAiSupported(scope, this.model)
@@ -563,6 +572,13 @@ export class BrowserLocalAi {
     this.loadPromise = null;
     this.loadResolve = null;
     this.loadReject = null;
+    this.loadIdleTimeoutMs = loadIdleTimeoutMs;
+    this.loadTotalTimeoutMs = loadTotalTimeoutMs;
+    this.stopTimeoutMs = stopTimeoutMs;
+    this.loadIdleTimer = null;
+    this.loadTotalTimer = null;
+    this.setTimer = scope.setTimeout?.bind(scope) || globalThis.setTimeout.bind(globalThis);
+    this.clearTimer = scope.clearTimeout?.bind(scope) || globalThis.clearTimeout.bind(globalThis);
   }
 
   get supported() {
@@ -580,6 +596,7 @@ export class BrowserLocalAi {
       ready:this.ready,
       loading:this.loading,
       progress:this.progress,
+      progressLabel:this.progressLabel,
       status:this.status,
       error:this.error,
       diagnostic:this.diagnostic,
@@ -713,6 +730,7 @@ export class BrowserLocalAi {
         ? 'wllama'
         : 'Transformers.js';
       this.status = runtime + ' is ready. Starting ' + this.model.label + '…';
+      this.touchLoadWatchdog();
       this.emit();
       return;
     }
@@ -723,15 +741,21 @@ export class BrowserLocalAi {
         ? loaded / total * 100
         : Number(data.data?.progress);
       this.progress = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : null;
+      const file = String(
+        data.data?.file || data.data?.name || data.data?.status || '',
+      ).split(/[\\/]/).pop();
+      this.progressLabel = file || null;
       this.status = this.progress == null
         ? 'Downloading model files…'
-        : 'Downloading ' + this.model.label + '… ' +
-          Math.round(this.progress) + '%';
+        : 'Downloading ' + (this.progressLabel || 'current model file') +
+          '… ' + Math.round(this.progress) + '%';
+      this.touchLoadWatchdog();
       this.emit();
       return;
     }
     if (data.type === 'status') {
       this.status = String(data.data || 'Loading…');
+      this.touchLoadWatchdog();
       this.emit();
       return;
     }
@@ -739,17 +763,19 @@ export class BrowserLocalAi {
       this.ready = true;
       this.loading = false;
       this.progress = 100;
+      this.progressLabel = null;
       this.status = this.model.label + ' is ready on this device.';
       this.error = null;
       this.diagnostic = null;
       this.loadResolve?.(this.snapshot());
       this.clearLoadPromise();
+      this.clearLoadWatchdogs();
       this.emit();
       return;
     }
     if (data.type === 'token') {
       const request = this.pending.get(data.id);
-      if (!request) return;
+      if (!request || request.aborted) return;
       request.text += String(data.token || '');
       request.onDelta(request.text);
       return;
@@ -759,6 +785,7 @@ export class BrowserLocalAi {
       if (!request) return;
       this.pending.delete(data.id);
       request.cleanup();
+      if (request.aborted) return;
       if (!request.text.trim()) {
         request.reject(new Error(
           this.model.label + ' returned no readable answer.',
@@ -770,6 +797,14 @@ export class BrowserLocalAi {
           usage:null,
         });
       }
+      return;
+    }
+    if (data.type === 'stopped') {
+      const request = this.pending.get(data.id);
+      if (!request) return;
+      this.pending.delete(data.id);
+      request.cleanup();
+      if (!request.aborted) request.reject(abortError());
       return;
     }
     if (data.type === 'error') {
@@ -795,6 +830,23 @@ export class BrowserLocalAi {
     this.loadReject = null;
   }
 
+  clearLoadWatchdogs() {
+    if (this.loadIdleTimer) this.clearTimer(this.loadIdleTimer);
+    if (this.loadTotalTimer) this.clearTimer(this.loadTotalTimer);
+    this.loadIdleTimer = null;
+    this.loadTotalTimer = null;
+  }
+
+  touchLoadWatchdog() {
+    if (!this.loading) return;
+    if (this.loadIdleTimer) this.clearTimer(this.loadIdleTimer);
+    this.loadIdleTimer = this.setTimer(() => {
+      if (this.loading) this.reportFailure(new Error(
+        'The model download stopped making progress. Retry the load or clear its cache.',
+      ));
+    }, this.loadIdleTimeoutMs);
+  }
+
   async load() {
     if (this.ready) return this.snapshot();
     if (this.loadPromise) return this.loadPromise;
@@ -809,6 +861,7 @@ export class BrowserLocalAi {
     this.ensureWorker();
     this.loading = true;
     this.progress = null;
+    this.progressLabel = null;
     this.error = null;
     this.diagnostic = null;
     this.status = 'Starting the local model…';
@@ -817,6 +870,13 @@ export class BrowserLocalAi {
       this.loadReject = reject;
     });
     this.emit();
+    this.clearLoadWatchdogs();
+    this.touchLoadWatchdog();
+    this.loadTotalTimer = this.setTimer(() => {
+      if (this.loading) this.reportFailure(new Error(
+        'The model did not finish loading within 30 minutes. Retry when the device has more free memory.',
+      ));
+    }, this.loadTotalTimeoutMs);
     this.worker.postMessage({ type:'load' });
     return this.loadPromise;
   }
@@ -841,21 +901,32 @@ export class BrowserLocalAi {
       || 'local_' + Date.now().toString(36);
     onStatus('generating');
     return new Promise((resolve, reject) => {
+      let stopTimer = null;
       const abort = () => {
         this.worker?.postMessage({ type:'stop', id });
         const request = this.pending.get(id);
-        if (!request) return;
-        this.pending.delete(id);
-        request.cleanup();
+        if (!request || request.aborted) return;
+        request.aborted = true;
         reject(abortError());
+        stopTimer = this.setTimer(() => {
+          if (!this.pending.has(id)) return;
+          this.stopWorker(abortError(), { report:false });
+          this.status = 'Generation was stopped. Load the model again to continue.';
+          this.emit();
+        }, this.stopTimeoutMs);
       };
-      const cleanup = () => signal?.removeEventListener('abort', abort);
+      const cleanup = () => {
+        signal?.removeEventListener('abort', abort);
+        if (stopTimer) this.clearTimer(stopTimer);
+        stopTimer = null;
+      };
       this.pending.set(id, {
         resolve,
         reject,
         cleanup,
         onDelta,
         text:'',
+        aborted:false,
       });
       if (signal?.aborted) {
         abort();
@@ -872,6 +943,7 @@ export class BrowserLocalAi {
   }
 
   stopWorker(error, { report = true } = {}) {
+    this.clearLoadWatchdogs();
     this.worker?.terminate();
     if (this.workerUrl) this.scope.URL.revokeObjectURL(this.workerUrl);
     this.worker = null;
@@ -888,6 +960,7 @@ export class BrowserLocalAi {
     this.pending.clear();
     this.ready = false;
     this.progress = null;
+    this.progressLabel = null;
     if (report) {
       const diagnostic = classifyLocalAiError(error, {
         model:this.model,
@@ -908,6 +981,14 @@ export class BrowserLocalAi {
 
   failAll(error) {
     this.reportFailure(error);
+  }
+
+  cancelLoad() {
+    if (!this.loading) return false;
+    this.stopWorker(abortError(), { report:false });
+    this.status = 'Model loading cancelled. Ready to retry.';
+    this.emit();
+    return true;
   }
 
   reportFailure(error) {

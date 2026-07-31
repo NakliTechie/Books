@@ -11,6 +11,7 @@ const embeddingBinary = read('embedding-binary.js');
 const library = read('semantic-library.js');
 const openLibrary = read('open-library-metadata.js');
 const echoes = read('echoes.js');
+const report = read('scripts/books-report.mjs');
 const headers = read('_headers');
 
 assert.match(
@@ -19,10 +20,21 @@ assert.match(
   'embedded capability messages are pinned to the current parent window',
 );
 assert.match(
-  index,
-  /iframe\.setAttribute\('sandbox', ''\)/,
-  'untrusted source HTML uses the most restrictive iframe sandbox',
+  report,
+  /assertSafeSidecar[\s\S]*?Refusing a symlink inside \.books[\s\S]*?SAFE_ID\.test\(workId\)/,
+  'native reports reject sidecar symlinks and traversal-shaped work ids',
 );
+assert.match(index, /window\.parent\.postMessage\(msg, trustedParentOrigin\)/,
+  'host messages target the verified NakliOS origin');
+assert.match(index, /if \(inNakliOS && e\.origin !== trustedParentOrigin\) return;/,
+  'host replies must come from that same verified origin');
+assert.match(
+  index,
+  /querySelectorAll\([\s\S]*?script,noscript,template,object,embed,iframe[\s\S]*?iframe\.setAttribute\('sandbox', 'allow-same-origin'\)/,
+  'untrusted source HTML is made inert before the parent reads its scroll state',
+);
+assert.match(index, /default-src 'none'; img-src data: blob:/,
+  'faithful HTML cannot make network requests');
 
 assert.match(
   ai,

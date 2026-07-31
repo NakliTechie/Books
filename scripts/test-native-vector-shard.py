@@ -44,7 +44,16 @@ assert extends_relation == ("extends", "semantic-containment")
 
 with tempfile.TemporaryDirectory(prefix="books-native-graph-") as directory:
     sidecar = Path(directory)
-    manifests = [{"workId": "work-a"}, {"workId": "work-b"}]
+    manifests = [
+        {"workId": "work-a", "assets": [{
+            "assetId": "asset-a", "availability": "available",
+            "fingerprint": "sha256:a", "fingerprintStatus": "complete",
+        }]},
+        {"workId": "work-b", "assets": [{
+            "assetId": "asset-b", "availability": "available",
+            "fingerprint": "sha256:b", "fingerprintStatus": "complete",
+        }]},
+    ]
     fixture_ideas = [
         {
             "ideaId": "idea_work-a_feedback",
@@ -67,6 +76,15 @@ with tempfile.TemporaryDirectory(prefix="books-native-graph-") as directory:
             sidecar / "semantic" / work_id / "ideas.json",
             {"ideas": [idea]},
         )
+        fingerprint = "sha256:a" if work_id == "work-a" else "sha256:b"
+        books_index.atomic_json(
+            sidecar / "jobs" / f"{work_id}.json",
+            {
+                "pipelineVersion": books_index.PIPELINE_VERSION,
+                "sourceFingerprint": fingerprint,
+                "stages": {"embeddings": {"status": "complete"}},
+            },
+        )
         books_index.atomic_json(
             sidecar / "indexes" / "idea-embeddings" / f"{work_id}.json",
             {
@@ -77,8 +95,11 @@ with tempfile.TemporaryDirectory(prefix="books-native-graph-") as directory:
         )
     native_graph = books_index.build_graph(sidecar, manifests, "fixture")
     assert len(native_graph["links"]) == 1
+    pair_key = "\x1f".join(sorted([
+        "idea_work-a_feedback", "idea-work-b-feedback"
+    ]))
     assert native_graph["links"][0]["linkId"] == (
-        "idea-link_idea-work-b-feedback_idea_work-a_feedback"
+        "idea-link_" + books_index.pair_link_token(pair_key)
     )
     assert native_graph["links"][0]["relation"] == "same_as"
 

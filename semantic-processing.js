@@ -1,8 +1,8 @@
 export const PROCESSING_SCHEMA_VERSION = 2;
-export const PROCESSING_PIPELINE_VERSION = 'library-intelligence-v1';
-export const PASSAGE_EXTRACTOR_VERSION = 'passages-v3';
+export const PROCESSING_PIPELINE_VERSION = 'library-intelligence-v2';
+export const PASSAGE_EXTRACTOR_VERSION = 'passages-v4';
 export const LEXICAL_INDEX_VERSION = 'lexical-v1';
-export const DETERMINISTIC_SEMANTICS_VERSION = 'deterministic-semantics-v1';
+export const DETERMINISTIC_SEMANTICS_VERSION = 'deterministic-semantics-v2';
 export const IDEA_EMBEDDING_INDEX_VERSION = 'idea-embeddings-v2';
 export const LIBRARY_IDEA_LINK_VERSION = 'library-idea-links-v1';
 export const DEFAULT_MAX_PASSAGE_CHARS = 1400;
@@ -31,7 +31,28 @@ const STOP_WORDS = new Set([
   'such', 'than', 'that', 'their', 'theirs', 'them', 'then', 'there',
   'these', 'they', 'this', 'those', 'through', 'under', 'until', 'very',
   'what', 'when', 'where', 'which', 'while', 'with', 'would', 'your',
+  'book', 'books', 'chapter', 'chapters', 'electronic', 'said', 'says',
+  'work', 'works',
 ]);
+
+const BOILERPLATE_PATTERNS = [
+  /project gutenberg/i,
+  /gutenberg (?:ebook|license)/i,
+  /www\.gutenberg\.org/i,
+  /produced by .*distributed proofreading/i,
+  /this ebook is for the use of anyone anywhere/i,
+  /you may copy it, give it away or re-use it/i,
+  /full project gutenberg license/i,
+  /end of (?:the )?project gutenberg/i,
+];
+
+export function isLikelyBoilerplatePassage(passage) {
+  const text = String(passage?.text || '');
+  const label = String(passage?.structure?.label || '');
+  return BOILERPLATE_PATTERNS.some((pattern) => (
+    pattern.test(text) || pattern.test(label)
+  ));
+}
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -89,23 +110,26 @@ function splitSection(text, maxChars) {
     if (!trimmed) continue;
     if (trimmed.length > maxChars) {
       pushChunk();
-      const fragmentCount = Math.ceil(trimmed.length / maxChars);
-      for (let offset = 0; offset < trimmed.length; offset += maxChars) {
-        const end = Math.min(trimmed.length, offset + maxChars);
-        const text = trimmed.slice(offset, end);
+      const codePoints = Array.from(trimmed);
+      const fragmentCount = Math.ceil(codePoints.length / maxChars);
+      let utf16Offset = 0;
+      for (let offset = 0; offset < codePoints.length; offset += maxChars) {
+        const text = codePoints.slice(offset, offset + maxChars).join('');
+        const end = utf16Offset + text.length;
         chunks.push({
           text,
-          start: paragraphStart + offset,
+          start: paragraphStart + utf16Offset,
           end: paragraphStart + end,
           paragraphs:[{
             text,
-            start:paragraphStart + offset,
+            start:paragraphStart + utf16Offset,
             end:paragraphStart + end,
             paragraphIndex,
             fragmentIndex:Math.floor(offset / maxChars),
             fragmentCount,
           }],
         });
+        utf16Offset = end;
       }
       continue;
     }
@@ -138,6 +162,7 @@ export async function segmentSections({
     const section = sections[sectionIndex] || {};
     const normalized = normalizePassageText(section.text);
     const chunks = splitSection(normalized, maxChars);
+    const paragraphHashOccurrences = new Map();
     for (const chunk of chunks) {
       const quote = chunk.text.slice(0, 240);
       const passageId = [
@@ -151,13 +176,15 @@ export async function segmentSections({
       for (const sourceParagraph of chunk.paragraphs || []) {
         const paragraphQuote = sourceParagraph.text.slice(0, 240);
         const paragraphTextHash = await sha256Text(sourceParagraph.text);
+        const hashToken = paragraphTextHash.slice('sha256:'.length, 'sha256:'.length + 16);
+        const occurrence = paragraphHashOccurrences.get(hashToken) || 0;
+        paragraphHashOccurrences.set(hashToken, occurrence + 1);
         const paragraphId = [
           'paragraph',
           assetId,
           sectionIndex,
-          sourceParagraph.paragraphIndex,
-          sourceParagraph.fragmentIndex,
-          paragraphTextHash.slice('sha256:'.length, 'sha256:'.length + 16),
+          hashToken,
+          occurrence,
         ].join('_');
         paragraphs.push({
           paragraphId,
@@ -284,6 +311,8 @@ export function extractDeterministicSemantics({
   maxConcepts = DEFAULT_MAX_CONCEPTS,
   maxScenes = DEFAULT_MAX_SCENES,
 }) {
+  const bodyPassageIndexes = new Set(passages.flatMap((passage, index) =>
+    isLikelyBoilerplatePassage(passage) ? [] : [index]));
   const candidates = Object.entries(lexicalIndex.termFrequency || {})
     .filter(([term]) => (
       term.length >= 4
@@ -292,7 +321,7 @@ export function extractDeterministicSemantics({
     ))
     .map(([term, frequency]) => {
       const passageIndexes = (lexicalIndex.postings[term] || [])
-        .filter((index) => index >= 0);
+        .filter((index) => bodyPassageIndexes.has(index));
       return {
         term,
         frequency,
@@ -332,6 +361,7 @@ export function extractDeterministicSemantics({
 
   const sectionFirstPassages = new Map();
   for (const passage of passages) {
+    if (isLikelyBoilerplatePassage(passage)) continue;
     const sectionIndex = passage.structure.sectionIndex;
     if (!sectionFirstPassages.has(sectionIndex)) {
       sectionFirstPassages.set(sectionIndex, passage);

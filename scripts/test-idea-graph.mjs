@@ -109,8 +109,8 @@ const graph = buildLibraryIdeaGraph({
 });
 assert.equal(graph.links.length, 1);
 assert.equal(
-  graph.links[0].linkId,
-  'idea-link_idea-work-b-feedback_idea_work-a_feedback',
+  /^idea-link_[a-f0-9]{16}$/.test(graph.links[0].linkId),
+  true,
 );
 assert.equal(graph.links[0].relation, 'same_as');
 assert.deepEqual(graph.links[0].evidence.leftPassageIds, ['passage-a']);
@@ -138,6 +138,22 @@ const lowConfidence = applyIdeaRelationClassifications(graph, [{
 }]);
 assert.equal(lowConfidence.changed, false);
 assert.equal(lowConfidence.graph.links[0].relation, 'same_as');
+
+const collisionGraph = (firstId) => buildLibraryIdeaGraph({
+  ideas:[
+    { ...ideas[0], ideaId:firstId, workId:'collision-a' },
+    { ...ideas[1], ideaId:'idea-y', workId:'collision-b' },
+  ],
+  vectors:new Map([[firstId, [1, 0]], ['idea-y', [1, 0]]]),
+  model:'fixture',
+  dimensions:2,
+  minScore:0.8,
+});
+assert.notEqual(
+  collisionGraph('idea/x').links[0].linkId,
+  collisionGraph('idea_x').links[0].linkId,
+  'pair IDs that normalize to the same punctuation token remain distinct',
+);
 
 const results = searchIdeaRecords({
   ideas,

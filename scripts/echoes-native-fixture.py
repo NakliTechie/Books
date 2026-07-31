@@ -12,8 +12,14 @@ books_index = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(books_index)
 
 manifests = [
-    {"workId": "work-loss", "title": "The Shape of Decisions"},
-    {"workId": "work-story", "title": "Mara Keeps the Shop"},
+    {"workId": "work-loss", "title": "The Shape of Decisions", "assets": [{
+        "assetId": "asset-loss", "availability": "available",
+        "fingerprint": "sha256:loss", "fingerprintStatus": "complete",
+    }]},
+    {"workId": "work-story", "title": "Mara Keeps the Shop", "assets": [{
+        "assetId": "asset-story", "availability": "available",
+        "fingerprint": "sha256:story", "fingerprintStatus": "complete",
+    }]},
 ]
 units = [{
     "unitId": "unit-work-loss-loss-aversion",
@@ -62,6 +68,14 @@ with tempfile.TemporaryDirectory(prefix="lorewell-echo-parity-") as value:
         books_index.atomic_json(
             sidecar / "semantic" / work_id / "units.json",
             {"workId": work_id, "units": [unit]},
+        )
+        books_index.atomic_json(
+            sidecar / "jobs" / f"{work_id}.json",
+            {
+                "pipelineVersion": books_index.PIPELINE_VERSION,
+                "sourceFingerprint": manifest["assets"][0]["fingerprint"],
+                "stages": {"echoEmbeddings": {"status": "complete"}},
+            },
         )
         books_index.atomic_json(
             sidecar / "indexes" / "echo-unit-embeddings" / f"{work_id}.json",

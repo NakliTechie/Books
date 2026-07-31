@@ -488,10 +488,9 @@ function parseJsonObject(value) {
 function stableRecordId(prefix, workId, item) {
   const value = [
     workId,
-    item.label,
     item.kind,
-    ...(item.evidenceParagraphIds || []),
-    ...(item.evidencePassageIds || []),
+    ...(item.evidenceParagraphIds || []).slice().sort(),
+    ...(item.evidencePassageIds || []).slice().sort(),
   ].join('\u001f');
   let hash = 2166136261;
   for (let index = 0; index < value.length; index++) {
@@ -647,10 +646,19 @@ export function parseSemanticEnrichment({
 export function mergeModelSemanticRecords(baseRecord, enrichment) {
   const next = cloneJson(baseRecord || {});
   const priorState = new Map();
+  const priorEvidenceState = new Map();
+  const evidenceStateKey = (item) => [
+    item.kind,
+    ...(item.evidence || []).map((row) =>
+      row.paragraphId || row.passageId || '').filter(Boolean).sort(),
+  ].join('\u001f');
   for (const collection of ['concepts', 'entities', 'scenes']) {
     for (const item of next[collection] || []) {
       const id = item.conceptId || item.entityId || item.sceneId;
       if (id && item.userState) priorState.set(id, cloneJson(item.userState));
+      if (item.generatedBy?.mode === 'model-assisted' && item.userState) {
+        priorEvidenceState.set(evidenceStateKey(item), cloneJson(item.userState));
+      }
     }
   }
   const merge = (collection, idField) => {
@@ -659,7 +667,9 @@ export function mergeModelSemanticRecords(baseRecord, enrichment) {
     );
     const model = (enrichment?.[collection] || []).map((item) => ({
       ...cloneJson(item),
-      userState:priorState.get(item[idField]) || cloneJson(item.userState),
+      userState:priorState.get(item[idField])
+        || priorEvidenceState.get(evidenceStateKey(item))
+        || cloneJson(item.userState),
     }));
     return deterministic.concat(model);
   };

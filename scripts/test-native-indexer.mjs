@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import {
   appendFileSync,
+  existsSync,
   mkdtempSync,
   renameSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -230,5 +232,58 @@ assert.equal(
 );
 assert.equal(recoveredInventory.counts.unstable, 0);
 assert.equal(recoveredInventory.counts.collisions, 0);
+
+const hostileManifestPath = join(
+  fixture,
+  '.books',
+  'catalog',
+  'works',
+  'hostile.json',
+);
+writeFileSync(hostileManifestPath, JSON.stringify({
+  schemaVersion:1,
+  recordType:'books.work',
+  workId:'../../outside-write',
+  assets:[{
+    assetId:'asset_hostile',
+    editionId:'edition_hostile',
+    sourceFilename:'../../outside.md',
+    sourcePath:'library/../../outside.md',
+    format:'md',
+    availability:'available',
+  }],
+}));
+execFileSync(
+  'python3',
+  [
+    new URL('./books-index.py', import.meta.url).pathname,
+    fixture,
+    '--no-embeddings',
+  ],
+  { stdio:'pipe' },
+);
+assert.equal(existsSync(join(fixture, 'outside-write.json')), false,
+  'an untrusted manifest identity cannot escape the sidecar');
+
+const symlinkFixture = mkdtempSync(join(tmpdir(), 'books-index-symlink-'));
+const symlinkTarget = mkdtempSync(join(tmpdir(), 'books-index-target-'));
+process.on('exit', () => {
+  rmSync(symlinkFixture, { recursive:true, force:true });
+  rmSync(symlinkTarget, { recursive:true, force:true });
+});
+writeFileSync(join(symlinkFixture, 'Book.md'), '# A book');
+writeFileSync(join(symlinkTarget, 'sentinel.txt'), 'unchanged');
+symlinkSync(symlinkTarget, join(symlinkFixture, '.books'), 'dir');
+assert.throws(() => execFileSync(
+  'python3',
+  [
+    new URL('./books-index.py', import.meta.url).pathname,
+    symlinkFixture,
+    '--no-embeddings',
+  ],
+  { stdio:'pipe' },
+));
+assert.equal(readFileSync(join(symlinkTarget, 'sentinel.txt'), 'utf8'), 'unchanged',
+  'a symlinked .books directory is rejected before any write');
 
 console.log('Books native indexer contract: PASS');

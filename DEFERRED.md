@@ -21,7 +21,7 @@ Without the trigger, the deferral is just an open question.
 
 ---
 
-## Current future queue — 2026-07-31
+## Current future queue — 2026-08-01
 
 This is the consolidated queue, not a committed release roadmap:
 
@@ -38,6 +38,12 @@ This is the consolidated queue, not a committed release roadmap:
 | Generated title cards and other derived media | Pending product decision | Open the Phase 6 artifact pipeline |
 | CBZ/CBR and DjVu | Parked | Approve dedicated reader/extractor contracts and representative corpora |
 | Multiple physical libraries and backend movement | Parked | Approve explicit cross-backend movement semantics |
+| Concurrent browser/native Folder writers | Pending durability design | Specify and stress an atomic lease/commit protocol on a real sync folder |
+| Bounded semantic graph construction above 10,000 sources | Pending scale design | Benchmark shard search/ANN quality, memory, rebuild, and portability |
+| Global defaults versus per-book reader preferences | Pending UX separation | Run a focused preferences information-architecture pass |
+| Real-library semantic and Echo labels | Pending human evaluation | Label representative retrieval queries and cross-genre connection judgments |
+| Cold local-AI browser/device matrix | Pending evidence | Capture transfer, peak memory, cancellation, and forced recovery across Chrome, Firefox/WASM, and ordinary devices |
+| Permission-loss, partial-write, and long-running sync-folder soak | Pending external fixture | Grant a representative disposable synced/network folder |
 | Conversion, polishing, news acquisition, CLI automation, and other Calibre-shaped bets | Separate bets | Reassess independently; none belongs in core by default |
 
 ### Scanned-PDF OCR — evaluate Baidu PaddleOCR

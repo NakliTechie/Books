@@ -8,6 +8,7 @@ const outputDir = resolve(projectRoot, 'dist');
 await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
 await mkdir(resolve(outputDir, 'guide'), { recursive: true });
+await mkdir(resolve(outputDir, 'vendor'), { recursive: true });
 await Promise.all([
   cp(resolve(projectRoot, 'index.html'), resolve(outputDir, 'index.html')),
   cp(resolve(projectRoot, 'favicon.svg'), resolve(outputDir, 'favicon.svg')),
@@ -35,7 +36,19 @@ await Promise.all([
   cp(resolve(projectRoot, 'open-library-metadata.js'), resolve(outputDir, 'open-library-metadata.js')),
   cp(resolve(projectRoot, 'embedding-binary.js'), resolve(outputDir, 'embedding-binary.js')),
   cp(resolve(projectRoot, '_headers'), resolve(outputDir, '_headers')),
-  cp(resolve(projectRoot, 'vendor'), resolve(outputDir, 'vendor'), { recursive: true }),
+  // Cloudflare canonicalizes `@` in URL paths with a redirect. Dynamic module
+  // imports do not handle that consistently across browsers, so publish the
+  // pinned dependencies under redirect-free aliases.
+  cp(
+    resolve(projectRoot, 'vendor', 'foliate-js@1.0.1'),
+    resolve(outputDir, 'vendor', 'foliate-js-1.0.1'),
+    { recursive: true },
+  ),
+  cp(
+    resolve(projectRoot, 'vendor', 'pdfjs-dist@5.7.284'),
+    resolve(outputDir, 'vendor', 'pdfjs-dist-5.7.284'),
+    { recursive: true },
+  ),
 ]);
 
 console.log('Built Cloudflare static assets in dist/');

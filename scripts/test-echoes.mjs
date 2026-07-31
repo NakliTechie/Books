@@ -9,6 +9,7 @@ import {
   ECHO_GRAPH_VERSION,
   ECHO_RELATION_TYPES,
   echoKindsCompatible,
+  inverseEchoRelation,
   makeEchoCurationRecord,
   makeSemanticUnitEmbeddingBundle,
   makeSemanticUnits,
@@ -67,7 +68,7 @@ const lossUnits = makeSemanticUnits({
       kind:'mechanism',
       description:'Losses are weighted more heavily than equal gains.',
       confidence:0.92,
-      evidence:[{ passageId:lossPassage.passageId, quoteHash:'sha256:loss' }],
+      evidence:[{ passageId:lossPassage.passageId, paragraphId:'paragraph_loss', quoteHash:'sha256:loss' }],
       generatedBy:{ extractor:'fixture', mode:'model-assisted' },
     }],
     scenes:[],
@@ -86,7 +87,7 @@ const storyUnits = makeSemanticUnits({
       kind:'character-choice',
       description:'Mara accepts further costs rather than experience surrender as a loss.',
       confidence:0.87,
-      evidence:[{ passageId:storyPassage.passageId, quoteHash:'sha256:story' }],
+      evidence:[{ passageId:storyPassage.passageId, paragraphId:'paragraph_story', quoteHash:'sha256:story' }],
       generatedBy:{ extractor:'fixture', mode:'model-assisted' },
     }],
   },
@@ -135,6 +136,8 @@ assert.equal(graph.links.length, 1);
 assert.equal(graph.links[0].relation, 'echoes');
 assert.deepEqual(graph.links[0].evidence.leftPassageIds, ['passage_loss']);
 assert.ok(ECHO_RELATION_TYPES.includes('dramatizes'));
+assert.ok(ECHO_RELATION_TYPES.includes('dramatized_by'));
+assert.equal(inverseEchoRelation('dramatized_by'), 'dramatizes');
 assert.equal(echoKindsCompatible(lossMechanism, storyChoice), true);
 assert.equal(
   echoKindsCompatible(
@@ -148,7 +151,7 @@ assert.equal(DEFAULT_ECHO_RELATION_MIN_CONFIDENCE, 0.72);
 
 const ignored = applyEchoRelationClassifications(graph, [{
   linkId:graph.links[0].linkId,
-  relation:'dramatizes',
+  relation:'dramatized_by',
   confidence:0.71,
   explanation:'Below the inline classification threshold.',
 }]);
@@ -171,9 +174,9 @@ assert.equal(protectedResult.changed, false);
 assert.equal(protectedResult.graph.links[0].relation, 'same_as');
 const applied = applyEchoRelationClassifications(graph, [{
   linkId:graph.links[0].linkId,
-  relation:'dramatizes',
+  relation:'dramatized_by',
   confidence:0.93,
-  explanation:'The fictional choice dramatizes loss aversion without treating it as proof.',
+  explanation:'Loss aversion is dramatized by the fictional choice without treating fiction as proof.',
 }], {
   provider:'fixture',
   model:'fixture-model',
@@ -181,7 +184,7 @@ const applied = applyEchoRelationClassifications(graph, [{
 });
 assert.equal(applied.changed, true);
 graph = applied.graph;
-assert.equal(graph.links[0].relation, 'dramatizes');
+assert.equal(graph.links[0].relation, 'dramatized_by');
 
 const storyConnections = buildReaderConnectionsForWork({
   workId:'work-story',
@@ -199,6 +202,7 @@ assert.equal(storyConnections.connections.length, 1);
 assert.equal(storyConnections.connections[0].source.paragraphId, 'paragraph_story');
 assert.equal(storyConnections.connections[0].target.workTitle, 'The Shape of Decisions');
 assert.match(storyConnections.connections[0].explanation, /dramatizes loss aversion/i);
+assert.equal(storyConnections.connections[0].relation, 'dramatizes');
 assert.equal(
   storyConnections.connections[0].spoiler.risk,
   'low',
@@ -224,7 +228,11 @@ let curation = makeEchoCurationRecord({}, fixedNow);
 curation = updateEchoConnectionCuration(
   curation,
   storyConnections.connections[0].connectionId,
-  { hidden:true, rating:'wrong' },
+  {
+    hidden:true,
+    rating:'wrong',
+    linkId:storyConnections.connections[0].linkId,
+  },
   fixedNow,
 );
 const hiddenConnections = buildReaderConnectionsForWork({
@@ -249,6 +257,20 @@ assert.equal(
   0,
   'canonical feedback also filters a stale materialized reader index',
 );
+const oppositeConnections = buildReaderConnectionsForWork({
+  workId:'work-loss',
+  graph,
+  units:allUnits,
+  manifests:[
+    { workId:'work-loss', title:'The Shape of Decisions' },
+    { workId:'work-story', title:'Mara Keeps the Shop' },
+  ],
+  curation,
+  minScore:0.8,
+  now:fixedNow,
+});
+assert.equal(oppositeConnections.connectionCount, 0,
+  'Wrong feedback hides the canonical link in both directions');
 curation = updateEchoWorkExclusion(curation, 'work-loss', true, fixedNow);
 const excludedWork = buildReaderConnectionsForWork({
   workId:'work-story',

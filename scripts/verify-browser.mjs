@@ -53,7 +53,9 @@ function safePath(root, pathname) {
 
 async function requestPath(url) {
   const pathname = new URL(url, 'http://127.0.0.1').pathname;
-  const root = pathname.startsWith('/test/') ? projectRoot : productionRoot;
+  const root = pathname.startsWith('/test/') || pathname.startsWith('/demo/')
+    ? projectRoot
+    : productionRoot;
   let path = safePath(root, pathname);
   if (!path) return null;
   try {
@@ -190,7 +192,7 @@ function observedSummary(messages) {
   });
 }
 
-async function runChrome(chromePath, url, profilePath) {
+async function runChrome(chromePath, url, profilePath, mode = 'harness') {
   const child = spawn(chromePath, [
     '--headless=new',
     '--disable-background-networking',
@@ -225,6 +227,115 @@ async function runChrome(chromePath, url, profilePath) {
       cdp.send('Network.enable', {}, sessionId),
     ]);
     await cdp.send('Page.navigate', { url }, sessionId);
+    const evaluate = async (expression, awaitPromise = false) => {
+      const evaluated = await cdp.send('Runtime.evaluate', {
+        expression,
+        awaitPromise,
+        returnByValue:true,
+      }, sessionId);
+      if (evaluated?.exceptionDetails) {
+        throw new Error(
+          evaluated.exceptionDetails.exception?.description
+          || evaluated.exceptionDetails.text
+          || 'Browser evaluation failed.',
+        );
+      }
+      return evaluated?.result?.value;
+    };
+    const waitForValue = async (expression, label, timeout = 30000) => {
+      const started = Date.now();
+      while (Date.now() - started < timeout) {
+        const result = await evaluate(expression);
+        if (result) return result;
+        await delay(100);
+      }
+      throw new Error('Timed out waiting for ' + label + '.');
+    };
+    if (mode === 'standalone') {
+      await waitForValue(
+        `document.readyState === 'complete' && document.getElementById('library-fileinput')`,
+        'the standalone library shell',
+      );
+      await evaluate(`localStorage.setItem('books.welcomeSeen.v1', 'release-verifier')`);
+      await evaluate(`(async () => {
+        const response = await fetch('/demo/seed/The%20Library%20Within.txt');
+        if (!response.ok) throw new Error('Could not load the standalone text fixture.');
+        const seed = await response.text();
+        const body = Array.from({ length:120 }, (_, index) =>
+          'Part ' + (index + 1) + '\\n\\n' + seed
+        ).join('\\n\\n');
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([body], 'Standalone Journey.txt', {
+          type:'text/plain',
+        }));
+        const input = document.getElementById('library-fileinput');
+        input.files = transfer.files;
+        input.dispatchEvent(new Event('change', { bubbles:true }));
+        return true;
+      })()`, true);
+      const opened = await waitForValue(`(() => {
+        const reader = document.getElementById('reader');
+        const error = document.querySelector('.reader-error')?.textContent || '';
+        if (error) return { error };
+        if (!reader?.classList.contains('is-open')) return null;
+        const title = document.getElementById('reader-title')?.textContent || '';
+        const text = document.getElementById('reader-content')?.textContent || '';
+        return title.includes('Standalone Journey') && text.includes('external memory with doors')
+          ? { title, status:document.getElementById('reader-status')?.textContent || '' }
+          : null;
+      })()`, 'a standalone book to persist and open', 60000);
+      if (opened.error) throw new Error(opened.error);
+      await evaluate(`document.getElementById('reader-ai-btn').click()`);
+      const firstContext = await waitForValue(`(() => {
+        const sidecar = document.getElementById('reader-ai-sidecar');
+        const bar = document.getElementById('reader-ai-context-bar');
+        return sidecar?.classList.contains('is-open') && bar?.dataset.state === 'ready'
+          ? {
+              context:document.getElementById('reader-ai-context')?.textContent || '',
+              status:document.getElementById('reader-status')?.textContent || '',
+              scrollTop:document.querySelector('#reader-content > div')?.scrollTop || 0,
+            }
+          : null;
+      })()`, 'standalone AI page context');
+      await evaluate(`document.getElementById('next-btn').click()`);
+      const moved = await waitForValue(`(() => {
+        const error = document.querySelector('.reader-error')?.textContent || '';
+        if (error) return { error };
+        const sidecar = document.getElementById('reader-ai-sidecar');
+        const bar = document.getElementById('reader-ai-context-bar');
+        const status = document.getElementById('reader-status')?.textContent || '';
+        const scrollTop = document.querySelector('#reader-content > div')?.scrollTop || 0;
+        if (
+          sidecar?.classList.contains('is-open')
+          && bar?.dataset.state === 'ready'
+          && scrollTop > ${Number(firstContext.scrollTop)}
+        ) return { status, scrollTop };
+        return null;
+      })()`, 'page navigation while the AI sidecar stays open');
+      if (moved.error) throw new Error(moved.error);
+      await evaluate(`document.getElementById('back-btn').click()`);
+      await waitForValue(
+        `document.querySelector('.row[data-filename="Standalone Journey.txt"]')`,
+        'the persisted standalone library row',
+      );
+      await evaluate(
+        `document.querySelector('.row[data-filename="Standalone Journey.txt"] [data-action="open"]').click()`,
+      );
+      const reopened = await waitForValue(`(() => {
+        const error = document.querySelector('.reader-error')?.textContent || '';
+        if (error) return { error };
+        return document.getElementById('reader')?.classList.contains('is-open')
+          && document.getElementById('reader-title')?.textContent.includes('Standalone Journey')
+          ? { ok:true }
+          : null;
+      })()`, 'the persisted standalone book to reopen');
+      if (reopened.error) throw new Error(reopened.error);
+      return {
+        state:'pass',
+        status:'standalone persistence, reading, AI-sidecar navigation, and reopen',
+        observed:observedSummary(cdp.observed),
+      };
+    }
     const started = Date.now();
     while (Date.now() - started < 120000) {
       const evaluated = await cdp.send('Runtime.evaluate', {
@@ -259,10 +370,13 @@ async function verifyJourney(chromePath, origin, {
   label,
   query,
   expected,
+  mode = 'harness',
 }) {
   const profile = await mkdtemp(join(temporaryRoot, label + '-'));
-  const url = origin + '/test/host-harness.html?' + query + '&autorun=1';
-  const result = await runChrome(chromePath, url, profile);
+  const url = mode === 'standalone'
+    ? origin + '/'
+    : origin + '/test/host-harness.html?' + query + '&autorun=1';
+  const result = await runChrome(chromePath, url, profile, mode);
   if (result.state !== 'pass') {
     throw new Error(label + ' failed: ' + (result.status || 'the harness did not report a result'));
   }
@@ -287,6 +401,12 @@ try {
   }
   const address = await listen();
   const origin = 'http://127.0.0.1:' + address.port;
+  await verifyJourney(chromePath, origin, {
+    label:'standalone-library',
+    query:'',
+    mode:'standalone',
+    expected:'standalone persistence, reading, AI-sidecar navigation, and reopen',
+  });
   await verifyJourney(chromePath, origin, {
     label:'hosted-library',
     query:'walkthrough=hosted',

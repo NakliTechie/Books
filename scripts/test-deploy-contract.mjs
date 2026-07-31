@@ -8,6 +8,7 @@ const build = read('scripts/build.mjs');
 const headers = read('_headers');
 const workflow = read('.github/workflows/test.yml');
 const config = JSON.parse(read('wrangler.jsonc'));
+const app = read('index.html');
 
 for (const asset of [
   'index.html',
@@ -33,9 +34,17 @@ for (const asset of [
 }
 assert.match(
   build,
-  /cp\(resolve\(projectRoot, 'vendor'\)[\s\S]*?recursive:\s*true/,
-  'Cloudflare build includes the pinned local reader dependencies',
+  /resolve\(projectRoot, 'vendor', 'foliate-js@1\.0\.1'\)[\s\S]*?resolve\(outputDir, 'vendor', 'foliate-js-1\.0\.1'\)/,
+  'Cloudflare build publishes Foliate under a redirect-free alias',
 );
+assert.match(
+  build,
+  /resolve\(projectRoot, 'vendor', 'pdfjs-dist@5\.7\.284'\)[\s\S]*?resolve\(outputDir, 'vendor', 'pdfjs-dist-5\.7\.284'\)/,
+  'Cloudflare build publishes PDF.js under a redirect-free alias',
+);
+assert.match(app, /const VENDOR_FOLIATE = '\.\/vendor\/foliate-js-1\.0\.1\/'/);
+assert.match(app, /const VENDOR_PDFJS\s+= '\.\/vendor\/pdfjs-dist-5\.7\.284\/'/);
+assert.doesNotMatch(app, /const VENDOR_(?:FOLIATE|PDFJS)[^\n]*@/);
 assert.match(
   build,
   /resolve\(projectRoot, 'guide', 'index\.html'\)[\s\S]*?resolve\(projectRoot, 'guide', 'screenshots'\)/,

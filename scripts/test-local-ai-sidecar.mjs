@@ -145,6 +145,7 @@ assert.match(worker, /enable_thinking:false/);
 assert.match(worker, /do_sample:false/);
 assert.match(worker, /env\.useBrowserCache = true/);
 assert.match(worker, /type:'booted'/);
+assert.match(worker, /type:stopRequestedId === id \? 'stopped' : 'complete'/);
 assert.match(worker, /self\.addEventListener\('message'/);
 assert.match(
   makeLocalAiWorkerSource(localAiModel('gemma-4-e4b')),
@@ -160,6 +161,7 @@ assert.match(wasmWorker, /n_threads:1/);
 assert.match(wasmWorker, /n_gpu_layers:0/);
 assert.match(wasmWorker, /createChatCompletion/);
 assert.match(wasmWorker, /type:'token', id, token/);
+assert.match(wasmWorker, /type:'stopped', id/);
 
 const memoryDiagnostic = classifyLocalAiError(new Error(
   'Deserialize tensor model_embed_tokens failed. Unknown error in memory copy.',
@@ -250,6 +252,7 @@ assert.doesNotMatch(index, /id="reader-ai-local-model"/,
 assert.match(index, /id="reader-ai-provider-summary"/);
 assert.match(index, /id="reader-ai-context-bar"/);
 assert.match(index, /id="provider-ai-local-load"/);
+assert.match(index, /id="provider-ai-local-cancel"/);
 assert.match(index, /id="provider-ai-local-model"/);
 assert.match(index, /value="lfm2-230m-wasm"/);
 assert.match(index, /data-ai-local-clear/);

@@ -273,6 +273,16 @@ assert.match(
 );
 assert.match(
   html,
+  /class PdfEngine[\s\S]*?IntersectionObserver[\s\S]*?await this\._ensurePageRendered\(1, firstPage\)/,
+  'large PDFs become usable after page one and render nearby pages on demand',
+);
+assert.match(
+  html,
+  /const candidateEngine = new \(ENGINES\[key\]\)[\s\S]*?await candidateEngine\.load\(file\)[\s\S]*?activeSourceFilename = requestedSourceFilename/,
+  'book identity is committed only after the candidate engine loads',
+);
+assert.match(
+  html,
   /class TextEngine[\s\S]*?kind:'text-offset'[\s\S]*?renderAnnotations/,
   'plain-text highlights retain portable offsets and restore inline',
 );

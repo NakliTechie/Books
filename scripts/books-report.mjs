@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { readdir, readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { lstat, readdir, readFile, realpath } from 'node:fs/promises';
+import { basename, resolve } from 'node:path';
 import {
   buildLibraryReport,
   formatLibraryReport,
@@ -25,7 +25,34 @@ async function readJson(path, fallback = null) {
   }
 }
 
-async function readJsonDirectory(path) {
+const SAFE_ID = /^[A-Za-z0-9_-]{1,240}$/;
+
+async function assertSafeSidecar(sidecar) {
+  const sidecarInfo = await lstat(sidecar).catch(() => null);
+  if (sidecarInfo?.isSymbolicLink()) {
+    throw new Error('Refusing a symlinked .books sidecar');
+  }
+  if (!sidecarInfo?.isDirectory()) {
+    throw new Error(`No Books sidecar found at ${sidecar}`);
+  }
+  const root = await realpath(sidecar);
+  const pending = [sidecar];
+  while (pending.length) {
+    const directory = pending.pop();
+    const entries = await readdir(directory, { withFileTypes:true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) {
+        throw new Error(`Refusing a symlink inside .books: ${entry.name}`);
+      }
+      if (entry.isDirectory()) pending.push(resolve(directory, entry.name));
+    }
+  }
+  if (await realpath(sidecar) !== root) {
+    throw new Error('The .books sidecar changed while it was being inspected');
+  }
+}
+
+async function readValidatedRecordDirectory(path, recordType = null) {
   let names = [];
   try {
     names = await readdir(path);
@@ -34,29 +61,39 @@ async function readJsonDirectory(path) {
   }
   const records = await Promise.all(
     names
-      .filter((name) => name.endsWith('.json'))
+      .filter((name) => name.endsWith('.json') && SAFE_ID.test(name.slice(0, -5)))
       .sort()
-      .map((name) => readJson(resolve(path, name))),
-  );
-  return records.filter((record) => record && typeof record === 'object');
-}
-
-async function readSemanticRecords(sidecar, workIds, filename) {
-  const records = await Promise.all(
-    workIds.map((workId) =>
-      readJson(resolve(sidecar, 'semantic', workId, filename))),
+      .map(async (name) => {
+        const workId = name.slice(0, -5);
+        const record = await readJson(resolve(path, name));
+        if (!record || record.workId !== workId) return null;
+        if (recordType && record.recordType !== recordType) return null;
+        return record;
+      }),
   );
   return records.filter(Boolean);
 }
 
+async function readSemanticRecords(sidecar, workIds, filename) {
+  const records = await Promise.all(
+    workIds
+      .filter((workId) => SAFE_ID.test(workId))
+      .map((workId) =>
+        readJson(resolve(sidecar, 'semantic', workId, filename))),
+  );
+  return records.filter((record) =>
+    record && SAFE_ID.test(record.workId) && workIds.includes(record.workId));
+}
+
 const { folder, json } = parseArgs(process.argv);
-const sidecar = folder.endsWith('/.books') ? folder : resolve(folder, '.books');
+const sidecar = basename(folder) === '.books' ? folder : resolve(folder, '.books');
+await assertSafeSidecar(sidecar);
 const [library, inventory, catalog, manifests, jobs, graph, echoGraph] = await Promise.all([
   readJson(resolve(sidecar, 'library.json')),
   readJson(resolve(sidecar, 'inventory', 'current.json')),
   readJson(resolve(sidecar, 'catalog', 'catalog.json')),
-  readJsonDirectory(resolve(sidecar, 'catalog', 'works')),
-  readJsonDirectory(resolve(sidecar, 'jobs')),
+  readValidatedRecordDirectory(resolve(sidecar, 'catalog', 'works'), 'books.work'),
+  readValidatedRecordDirectory(resolve(sidecar, 'jobs')),
   readJson(resolve(sidecar, 'indexes', 'library-idea-graph.json')),
   readJson(resolve(sidecar, 'indexes', 'library-echo-graph.json')),
 ]);

@@ -1,10 +1,38 @@
-# Books roadmap execution report
+# Lorewell roadmap execution report
 
-> **Run:** 2026-07-31
+> **Run:** 2026-08-01
 >
-> **State:** Approved implementation, local Folder validation, standalone
-> browser validation, and NakliOS host validation complete. The unavailable
-> sync-folder soak, human semantic labels, and gated OCR runtime remain.
+> **State:** Production stabilization deployed. Unit/native contracts, direct
+> standalone Chrome, NakliOS host Chrome, the production Worker, and a real
+> production EPUB all pass. The sync-folder soak, human semantic labels,
+> bounded very-large-library indexing, and gated OCR runtime remain.
+
+## 2026-08-01 production stabilization
+
+- Replaced Cloudflare-redirected `vendor/*@version/` dynamic imports with
+  build-time, redirect-free Foliate and PDF.js aliases. The production
+  Foliate entry module now returns JavaScript with `200` and zero redirects.
+- Made book switches transactional: a failing parser cannot leave a phantom
+  active book or prevent Retry, and the old reader is never mistaken for the
+  newly selected source.
+- Made authored HTML inert but faithful, virtualized PDF page rendering, and
+  hardened EPUB/FB2/native extraction against archive bombs, duplicate text,
+  source races, unsafe manifests, symlinks, and partial inventory scans.
+- Versioned stable paragraph anchors, made Unicode splitting surrogate-safe,
+  filtered ebook boilerplate, hardened embedding caches, and aligned native
+  and browser graph/link identities.
+- Corrected Echo directionality, evidence gating, spoiler concealment,
+  canonical curation, and portable curation import/export.
+- Added cancellable local-model loading with terminal worker acknowledgement,
+  watchdogs, truthful per-file progress, and quiet user-cancel behavior.
+- Tightened NakliOS parent-origin verification and the native reporting
+  command's sidecar confinement.
+- Added a direct standalone browser release journey covering persistence,
+  reading, AI-sidecar page navigation, and reopen. Existing hosted and 60-work
+  journeys remain release gates.
+- Deployed Cloudflare Worker version
+  `a4cc638a-5f32-44ec-a658-9a3d6bc4adc1`. `books.naklitechie.com` continues
+  to redirect permanently to `lorewell.naklitechie.com`.
 
 ## Delivered in this run
 
@@ -107,13 +135,12 @@ npm run report -- /path/to/folder-library
 ```
 
 The current release validation passed all application contracts, built and
-validated 265 Worker assets, rendered all 17 guide routes with zero console
-errors or warnings, passed the full NakliOS host regression, and completed
-Wrangler's deployment dry-run. In Chrome, the
-production standalone library loaded 40 works, opened a real EPUB in Faithful
-mode, reflowed it into 352 Native source references, and produced no console
-error. The candidate NakliOS regression also passed without a console error or
-user-visible export download.
+validated 271 Worker assets, passed direct standalone, full NakliOS host, and
+60-work Chrome journeys, and completed Wrangler's deployment dry-run and live
+deployment. In the signed-in Chrome profile, the previously failing production
+EPUB opened at its saved 5% position in Foliate with navigation and AI controls
+available and no console error. The candidate NakliOS regression also passed
+without a console error or user-visible export download.
 
 GitHub `main` deployed through the existing Cloudflare Git integration. The
 production in-app report records 40 available sources and 40 core-complete

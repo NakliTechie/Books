@@ -3,7 +3,7 @@
 > **Lifecycle:** `active` — the dependency-aware execution plan for work that
 > remains after Books 2.0.
 >
-> **Updated:** 2026-07-31
+> **Updated:** 2026-08-01
 
 Books already has the semantic-library foundation: standalone and NakliOS
 operation, durable Folder libraries, background ingestion, local embeddings,
@@ -32,7 +32,7 @@ This document owns execution order.
 
 | Batch | Outcome | Depends on | State |
 |---|---|---|---|
-| 0 | Release hygiene and real-library proof | Books 2.0 | Local Folder proof passed; sync-folder/soak checks pending |
+| 0 | Release hygiene and real-library proof | Books 2.0 | Production hardening passed; sync-folder/soak checks pending |
 | 1 | OCR Adopt / Adapt / Reject decision | Batch 0 corpus and evidence | Defaults accepted; runtime corpus gate pending |
 | 2 | Semantic quality and ingestion operations | Batch 0 evidence | Production intelligence enabled; labeled real queries pending |
 | 2A | Echoes: source-grounded reader connections | Batch 2 labeled quality gate | Engineering complete; human quality rollout pending |
@@ -90,6 +90,14 @@ real collection rather than only fixtures.
 - [x] Smoke the production standalone Browser library by opening a real EPUB in
   Faithful and Native modes, and run the candidate NakliOS host regression in
   Chrome. Both completed without a browser console error.
+- [x] Remove the Cloudflare redirect from Foliate/PDF.js dynamic imports and
+  verify the exact production EPUB that originally failed to open.
+- [x] Add a direct standalone Chrome gate for persistent import, open,
+  navigation while the AI panel is open, close, and reopen; retain the hosted
+  NakliOS and 60-work gates.
+- [x] Harden transactional book switching, faithful HTML isolation, lazy PDF
+  rendering, native archive parsing, cache/version validation, sidecar path
+  confinement, and incomplete-scan recovery.
 
 ### Exit gate
 
@@ -228,6 +236,11 @@ ordinary external file activity.
 - [x] Harden case-collision, normalization, excluded-directory, symlink,
   changing-source, and interrupted-inventory behavior.
 - [ ] Exercise concurrent external-sync behavior against a real sync folder.
+- [ ] Add a cross-process lease/commit protocol before supporting simultaneous
+  browser and native writers against the same `.books/` sidecar.
+- [ ] Bound vector/link building with a measured ANN or shard-search strategy
+  before claiming smooth operation on collections materially beyond the
+  current 10,000-source scan benchmark.
 - [x] Decide that periodic incremental reconciliation is sufficient for the
   current evidence. Build a
   packaged native watcher only if measured workflows require it.

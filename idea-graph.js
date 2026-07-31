@@ -359,8 +359,17 @@ export function buildLibraryIdeaGraph({
       if (seen.has(key)) continue;
       seen.add(key);
       const classification = classifyIdeaRelation(row.left, row.right, row.score);
+      const bytes = new TextEncoder().encode(key);
+      let hashA = 0x811c9dc5;
+      let hashB = 0x9e3779b9;
+      for (const byte of bytes) {
+        hashA = Math.imul(hashA ^ byte, 0x01000193) >>> 0;
+        hashB = Math.imul(hashB ^ (byte + 0x9d), 0x85ebca6b) >>> 0;
+      }
+      const pairToken = hashA.toString(16).padStart(8, '0')
+        + hashB.toString(16).padStart(8, '0');
       links.push({
-        linkId:'idea-link_' + key.replace(/[^\p{L}\p{N}_-]+/gu, '_'),
+        linkId:'idea-link_' + pairToken,
         leftIdeaId:row.left.ideaId,
         rightIdeaId:row.right.ideaId,
         leftWorkId:row.left.workId,

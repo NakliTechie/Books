@@ -10,8 +10,8 @@ export const SEMANTIC_UNIT_SCHEMA_VERSION = 1;
 export const SEMANTIC_UNIT_EXTRACTOR_VERSION = 'semantic-units-v1';
 export const ECHO_EMBEDDING_INDEX_VERSION = 'echo-unit-embeddings-v1';
 export const ECHO_GRAPH_SCHEMA_VERSION = 1;
-export const ECHO_GRAPH_VERSION = 'library-echo-links-v1';
-export const READER_CONNECTION_INDEX_VERSION = 'reader-connections-v1';
+export const ECHO_GRAPH_VERSION = 'library-echo-links-v2';
+export const READER_CONNECTION_INDEX_VERSION = 'reader-connections-v2';
 export const LIBRARY_ECHO_GRAPH_PATH = 'indexes/library-echo-graph.json';
 export const ECHO_CURATION_PATH = 'annotations/echoes.json';
 export const DEFAULT_ECHO_CANDIDATE_MIN_SCORE = 0.70;
@@ -23,23 +23,47 @@ export const DEFAULT_ECHOES_PER_PARAGRAPH = 3;
 export const ECHO_RELATION_TYPES = Object.freeze([
   'same_as',
   'supports',
+  'supported_by',
   'contradicts',
   'extends',
+  'extended_by',
   'example_of',
+  'has_example',
   'applies_to',
   'shares_mechanism',
   'counterexample_to',
+  'has_counterexample',
   'illustrates',
+  'illustrated_by',
   'dramatizes',
+  'dramatized_by',
   'embodies',
+  'embodied_by',
   'violates',
+  'violated_by',
   'tests',
+  'tested_by',
   'parallels',
   'contrasts_with',
   'echoes',
 ]);
 
 const RELATION_TYPE_SET = new Set(ECHO_RELATION_TYPES);
+const INVERSE_RELATIONS = new Map([
+  ['supports', 'supported_by'], ['supported_by', 'supports'],
+  ['extends', 'extended_by'], ['extended_by', 'extends'],
+  ['example_of', 'has_example'], ['has_example', 'example_of'],
+  ['counterexample_to', 'has_counterexample'], ['has_counterexample', 'counterexample_to'],
+  ['illustrates', 'illustrated_by'], ['illustrated_by', 'illustrates'],
+  ['dramatizes', 'dramatized_by'], ['dramatized_by', 'dramatizes'],
+  ['embodies', 'embodied_by'], ['embodied_by', 'embodies'],
+  ['violates', 'violated_by'], ['violated_by', 'violates'],
+  ['tests', 'tested_by'], ['tested_by', 'tests'],
+]);
+
+export function inverseEchoRelation(relation) {
+  return INVERSE_RELATIONS.get(relation) || relation;
+}
 const NARRATIVE_KINDS = new Set([
   'scene',
   'event',
@@ -147,6 +171,10 @@ function evidenceForRecord(record, passages, allParagraphs) {
       : allParagraphs.filter((paragraph) =>
           paragraph.passageId === passage.passageId);
     if (!candidates.length) return [];
+    if (
+      record?.generatedBy?.mode === 'model-assisted'
+      && !reference.paragraphId
+    ) return [];
     const explicitlyAnchored = reference.paragraphId
       ? candidates.find((paragraph) =>
           paragraph.paragraphId === reference.paragraphId)
@@ -587,17 +615,26 @@ function relationExplanation(relation, current, target, targetTitle) {
   const templates = {
     same_as:`Both passages develop the same named idea: ${targetLabel}.`,
     supports:`This passage supports ${targetLabel} in ${title}.`,
+    supported_by:`This passage is supported by ${targetLabel} in ${title}.`,
     contradicts:`This passage challenges ${targetLabel} in ${title}.`,
     extends:`This passage extends ${targetLabel} in ${title}.`,
+    extended_by:`This passage is extended by ${targetLabel} in ${title}.`,
     example_of:`This passage offers an example of ${targetLabel} in ${title}.`,
+    has_example:`${targetLabel} in ${title} offers an example of this passage.`,
     applies_to:`${currentLabel} can be applied to the related passage in ${title}.`,
     shares_mechanism:`Both passages share the mechanism described as ${targetLabel}.`,
     counterexample_to:`This passage offers a counterexample to ${targetLabel} in ${title}.`,
+    has_counterexample:`${targetLabel} in ${title} offers a counterexample to this passage.`,
     illustrates:`This passage illustrates ${targetLabel} in ${title}.`,
+    illustrated_by:`This passage is illustrated by ${targetLabel} in ${title}.`,
     dramatizes:`This passage dramatizes ${targetLabel} in ${title}.`,
+    dramatized_by:`This passage is dramatized by ${targetLabel} in ${title}.`,
     embodies:`This passage embodies ${targetLabel} in ${title}.`,
+    embodied_by:`This passage is embodied by ${targetLabel} in ${title}.`,
     violates:`This passage tests or violates ${targetLabel} in ${title}.`,
+    violated_by:`This passage is violated by ${targetLabel} in ${title}.`,
     tests:`This passage puts ${targetLabel} from ${title} under pressure.`,
+    tested_by:`This passage is put under pressure by ${targetLabel} in ${title}.`,
     parallels:`This passage parallels ${targetLabel} in ${title}.`,
     contrasts_with:`This passage contrasts with ${targetLabel} in ${title}.`,
     echoes:`This passage echoes ${targetLabel} in ${title}.`,
@@ -623,6 +660,7 @@ export function makeEchoCurationRecord(value = {}, now = () => new Date().toISOS
     schemaVersion:1,
     recordType:'books.echo-curation',
     connectionFeedback:cloneJson(record.connectionFeedback || {}),
+    linkFeedback:cloneJson(record.linkFeedback || {}),
     workExclusions:cloneJson(record.workExclusions || {}),
     updatedAt:record.updatedAt || now(),
   };
@@ -631,7 +669,7 @@ export function makeEchoCurationRecord(value = {}, now = () => new Date().toISOS
 export function updateEchoConnectionCuration(
   value,
   connectionId,
-  { hidden, rating, spoiler } = {},
+  { hidden, rating, spoiler, linkId = null } = {},
   now = () => new Date().toISOString(),
 ) {
   const record = makeEchoCurationRecord(value, now);
@@ -643,6 +681,13 @@ export function updateEchoConnectionCuration(
     ...(typeof spoiler === 'boolean' ? { spoiler } : {}),
     updatedAt:now(),
   };
+  if (rating === 'wrong' && linkId) {
+    record.linkFeedback[linkId] = {
+      hidden:true,
+      rating:'wrong',
+      updatedAt:now(),
+    };
+  }
   record.updatedAt = now();
   return record;
 }
@@ -662,6 +707,29 @@ export function updateEchoWorkExclusion(
   return record;
 }
 
+export function mergeEchoCurationRecords(left, right) {
+  const first = makeEchoCurationRecord(left);
+  const second = makeEchoCurationRecord(right);
+  const mergeMap = (a, b) => {
+    const merged = cloneJson(a || {});
+    for (const [key, incoming] of Object.entries(b || {})) {
+      const current = merged[key];
+      if (
+        !current
+        || String(incoming?.updatedAt || '') >= String(current?.updatedAt || '')
+      ) merged[key] = cloneJson(incoming);
+    }
+    return merged;
+  };
+  return makeEchoCurationRecord({
+    connectionFeedback:mergeMap(first.connectionFeedback, second.connectionFeedback),
+    linkFeedback:mergeMap(first.linkFeedback, second.linkFeedback),
+    workExclusions:mergeMap(first.workExclusions, second.workExclusions),
+    updatedAt:String(first.updatedAt) >= String(second.updatedAt)
+      ? first.updatedAt : second.updatedAt,
+  });
+}
+
 export function applyEchoCurationToReaderConnections(record, curation) {
   if (!record || typeof record !== 'object') return record;
   const curated = makeEchoCurationRecord(curation);
@@ -669,6 +737,7 @@ export function applyEchoCurationToReaderConnections(record, curation) {
   const connections = sourceExcluded ? [] : (record.connections || []).filter(
     (connection) => {
       if (curated.workExclusions?.[connection.target?.workId]?.excluded) return false;
+      if (curated.linkFeedback?.[connection.linkId]?.hidden) return false;
       return !curated.connectionFeedback?.[connection.connectionId]?.hidden;
     },
   ).map((connection) => {
@@ -721,6 +790,7 @@ export function buildReaderConnectionsForWork({
   const rows = [];
   for (const link of graph?.links || []) {
     if (link.userState?.hidden) continue;
+    if (curated.linkFeedback?.[link.linkId]?.hidden) continue;
     const currentIsLeft = link.leftWorkId === workId;
     if (!currentIsLeft && link.rightWorkId !== workId) continue;
     const current = unitById.get(
@@ -733,15 +803,21 @@ export function buildReaderConnectionsForWork({
       continue;
     }
     const relationConfidence = Number(link.classification?.confidence) || 0;
-    const eligibleScore = Math.max(Number(link.score) || 0, relationConfidence);
-    if (eligibleScore < minScore) continue;
+    const linkScore = Number(link.score) || 0;
+    if (
+      linkScore < minScore
+      || (link.classification && relationConfidence < minScore)
+    ) continue;
     const sourceEvidence = current.evidence?.[0];
     const targetEvidence = target.evidence?.[0];
     if (!sourceEvidence?.paragraphId || !targetEvidence?.paragraphId) continue;
     if (curated.workExclusions?.[target.workId]?.excluded) continue;
     const targetTitle = titleByWorkId.get(target.workId) || 'another work';
-    const explanation = link.classification?.explanation
-      || relationExplanation(link.relation, current, target, targetTitle);
+    const relation = currentIsLeft
+      ? link.relation : inverseEchoRelation(link.relation);
+    const explanation = currentIsLeft && link.classification?.explanation
+      ? link.classification.explanation
+      : relationExplanation(relation, current, target, targetTitle);
     const connectionId = [
       'echo',
       stableToken(link.linkId),
@@ -751,6 +827,7 @@ export function buildReaderConnectionsForWork({
     if (feedback.hidden) continue;
     rows.push({
       connectionId,
+      linkId:link.linkId,
       source:{
         workId:current.workId,
         unitId:current.unitId,
@@ -771,11 +848,13 @@ export function buildReaderConnectionsForWork({
         workTitle:targetTitle,
         positionFraction:targetEvidence.positionFraction,
       },
-      relation:link.relation,
+      relation,
       direction:currentIsLeft ? 'forward' : 'reverse',
       score:Number(link.score) || 0,
       confidence:relationConfidence || Number(link.score) || 0,
       explanation,
+      teaser:'A source-grounded ' + relation.replaceAll('_', ' ') +
+        ' connection is available from another book.',
       spoiler:spoilerFor(target, targetEvidence),
       evidence:{
         sourceQuoteHash:sourceEvidence.quoteHash || null,

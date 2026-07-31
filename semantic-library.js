@@ -1229,6 +1229,7 @@ export function createPortableBundle({
   annotations = [],
   legacySidecars = [],
   libraryViews = null,
+  echoCuration = null,
   assets = [],
   libraryLabel = null,
   now = () => new Date().toISOString(),
@@ -1245,6 +1246,7 @@ export function createPortableBundle({
       annotations: cloneJson(annotations),
       legacySidecars: cloneJson(legacySidecars),
       ...(libraryViews ? { views:cloneJson(libraryViews) } : {}),
+      ...(echoCuration ? { echoCuration:cloneJson(echoCuration) } : {}),
     },
     omittedRebuildableData: [
       'catalog/catalog.json',
@@ -1285,6 +1287,7 @@ export function validatePortableBundle(bundle) {
   const legacySidecars = Array.isArray(bundle?.records?.legacySidecars)
     ? bundle.records.legacySidecars : [];
   const libraryViews = bundle?.records?.views || null;
+  const echoCuration = bundle?.records?.echoCuration || null;
   const assets = Array.isArray(bundle?.assets) ? bundle.assets : [];
   if (!Array.isArray(bundle?.records?.works)) {
     errors.push({ code: 'missing-work-records', message: 'The bundle has no work-record list.' });
@@ -1335,6 +1338,19 @@ export function validatePortableBundle(bundle) {
     const viewValidation = validateLibraryViewsRecord(libraryViews);
     errors.push(...viewValidation.errors);
   }
+  if (
+    echoCuration
+    && (
+      echoCuration.recordType !== 'books.echo-curation'
+      || typeof echoCuration.connectionFeedback !== 'object'
+      || typeof echoCuration.workExclusions !== 'object'
+    )
+  ) {
+    errors.push({
+      code:'invalid-echo-curation',
+      message:'The bundle contains an invalid Ideas & connections curation record.',
+    });
+  }
 
   const libraryValidation = validateSemanticLibrary({
     sourceFilenames: Array.from(filenames),
@@ -1357,6 +1373,7 @@ export function validatePortableBundle(bundle) {
       annotationRecords: annotations.length,
       legacySidecars: legacySidecars.length,
       savedViews:libraryViews?.views?.length || 0,
+      echoCuration:echoCuration ? 1 : 0,
     },
   };
 }

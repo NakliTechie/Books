@@ -25,7 +25,7 @@ import {
 } from '../semantic-processing.js';
 
 assert.equal(normalizePassageText(' One  two\r\n\r\n\r\nThree '), 'One two\n\nThree');
-assert.equal(PASSAGE_EXTRACTOR_VERSION, 'passages-v3');
+assert.equal(PASSAGE_EXTRACTOR_VERSION, 'passages-v4');
 assert.equal(DEFAULT_MAX_PASSAGE_CHARS, 1400);
 assert.equal(DEFAULT_MAX_CONCEPTS, 16);
 assert.equal(DEFAULT_MAX_SCENES, 12);
@@ -68,7 +68,7 @@ assert.equal(passages[0].passageId, 'passage_asset_test_0_0_35');
 assert.equal(passages[0].paragraphs.length, 1);
 assert.match(
   passages[0].paragraphs[0].paragraphId,
-  /^paragraph_asset_test_0_0_0_[a-f0-9]{16}$/,
+  /^paragraph_asset_test_0_[a-f0-9]{16}_0$/,
 );
 assert.equal(passages[0].paragraphs[0].passageId, passages[0].passageId);
 assert.equal(passages[0].paragraphs[0].anchor.normalizedRange.start, 0);
@@ -84,6 +84,16 @@ assert.deepEqual(
   [DEFAULT_MAX_PASSAGE_CHARS, 1],
   'oversized paragraphs are split at the calibrated passage budget',
 );
+const unicodePassages = await segmentSections({
+  workId:'work_unicode',
+  assetId:'asset_unicode',
+  format:'txt',
+  maxChars:4,
+  sections:[{ text:'abc😀def' }],
+});
+assert.equal(unicodePassages.map((passage) => passage.text).join(''), 'abc😀def');
+assert.ok(unicodePassages.every((passage) => !/[\uD800-\uDBFF]$|^[\uDC00-\uDFFF]/.test(passage.text)),
+  'passage fragments never split a Unicode surrogate pair');
 assert.deepEqual(
   longPassages.flatMap((passage) => passage.paragraphs.map((paragraph) => [
     paragraph.structure.fragmentIndex,
@@ -124,6 +134,30 @@ assert.ok(semantics.concepts.every(
 ));
 assert.equal(semantics.scenes.length, 2);
 assert.equal(semantics.scenes[0].evidence[0].passageId, passages[0].passageId);
+
+const boilerplatePassages = await segmentSections({
+  workId:'work_public_domain',
+  assetId:'asset_public_domain',
+  format:'epub',
+  sections:[
+    { label:'Project Gutenberg License', text:'Project Gutenberg eBook. This ebook is for the use of anyone anywhere. Full Project Gutenberg License.' },
+    { label:'The argument', text:'Reciprocity shapes durable communities. Reciprocity connects obligation, trust, and collective memory.' },
+  ],
+});
+const boilerplateLexical = buildLexicalIndex({
+  workId:'work_public_domain',
+  passages:boilerplatePassages,
+});
+const curatedSemantics = extractDeterministicSemantics({
+  workId:'work_public_domain',
+  passages:boilerplatePassages,
+  lexicalIndex:boilerplateLexical,
+});
+assert.ok(curatedSemantics.concepts.some((concept) => concept.label === 'reciprocity'));
+assert.ok(curatedSemantics.concepts.every((concept) =>
+  !['gutenberg', 'license', 'ebook'].includes(concept.label)));
+assert.equal(curatedSemantics.scenes.length, 1);
+assert.equal(curatedSemantics.scenes[0].label, 'The argument');
 
 let tick = 0;
 const now = () => `2026-07-30T10:00:0${tick++}.000Z`;
