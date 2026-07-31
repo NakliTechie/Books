@@ -765,5 +765,35 @@ assert.match(
   /local storage accounting by data class[\s\S]*?background semantic processing pause[\s\S]*?derived cleanup preserves originals and portable records[\s\S]*?resumable local rebuild/,
   'browser harness verifies safe derived-data lifecycle controls',
 );
+assert.match(
+  html,
+  /reader-echo-sidecar[\s\S]*?Open related passage[\s\S]*?data-echo-feedback="wrong"[\s\S]*?reader-echo-mode[\s\S]*?Indicators \+ asides/,
+  'Native Echoes expose explicit modes, grounded cards, navigation, and durable feedback',
+);
+assert.match(
+  html,
+  /data-paragraph-id[\s\S]*?native-echo-indicator[\s\S]*?data-echo-summary[\s\S]*?activeReaderPrefs\.echoMode === 'off'/,
+  'Echo indicators remain paragraph-anchored, generated-text distinct, and immediately switchable off',
+);
+assert.match(
+  html,
+  /openActiveEchoTarget[\s\S]*?activeEchoReturnRoute[\s\S]*?returnFromEchoRoute[\s\S]*?paragraphId:route\.paragraphId/,
+  'Echo passage navigation retains an exact Native paragraph return route',
+);
+assert.match(
+  html,
+  /readerEchoSidecar\.contains\(t\)[\s\S]*?PageDown[\s\S]*?queueReaderNavigation/,
+  'reader navigation remains available while the Echo sidecar has focus',
+);
+assert.match(
+  html,
+  /const DEFAULT_READER_PREFS = Object\.freeze\(\{[\s\S]*?echoMode:\s*'off'/,
+  'Echoes remains off by default until the real-library quality gate passes',
+);
+assert.match(
+  harness,
+  /echoMode\.value = 'indicators'[\s\S]*?grounded spoiler-aware Echo card[\s\S]*?Echo exact related-passage route[\s\S]*?Echo return route to original paragraph/,
+  'hosted regression opts in through the real control and covers the Echo round trip',
+);
 
 console.log('Books persistent storage and library contract: PASS');

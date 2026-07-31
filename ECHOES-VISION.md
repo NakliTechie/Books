@@ -1,7 +1,8 @@
 # Lorewell Echoes — vision
 
-> **Lifecycle:** `vision` — approved product direction; implementation is
-> sequenced in [ECHOES-WORKPLAN.md](ECHOES-WORKPLAN.md).
+> **Lifecycle:** `implemented vision` — the engineering foundation is shipped
+> as a release candidate; real-library quality calibration is tracked in
+> [ECHOES-WORKPLAN.md](ECHOES-WORKPLAN.md).
 >
 > **Date:** 2026-07-31
 
@@ -227,4 +228,3 @@ library-wide thematic journeys, reading recaps, audio walks through related
 ideas, and source-grounded illustrations. All of them should consume the same
 typed units and evidence-backed graph rather than inventing a second semantic
 system.
-

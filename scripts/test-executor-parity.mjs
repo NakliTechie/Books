@@ -16,6 +16,9 @@ import {
 import {
   makeSourceGroundedIdeas,
 } from '../idea-graph.js';
+import {
+  makeSemanticUnits,
+} from '../echoes.js';
 
 const fixture = mkdtempSync(join(tmpdir(), 'books-executor-parity-'));
 process.on('exit', () => rmSync(fixture, { recursive:true, force:true }));
@@ -62,6 +65,10 @@ const nativeIdeas = JSON.parse(readFileSync(
   join(fixture, '.books', 'semantic', workId, 'ideas.json'),
   'utf8',
 ));
+const nativeUnits = JSON.parse(readFileSync(
+  join(fixture, '.books', 'semantic', workId, 'units.json'),
+  'utf8',
+));
 
 const browserPassages = await segmentSections({
   workId,
@@ -92,6 +99,14 @@ const browserIdeas = makeSourceGroundedIdeas({
   },
   passages:browserPassages,
 });
+const browserUnits = makeSemanticUnits({
+  workId,
+  semanticRecord:{
+    ...browserSemantics,
+    sourceFingerprint:asset.fingerprint,
+  },
+  passages:browserPassages,
+});
 
 assert.equal(nativePassageRecord.assetId, asset.assetId);
 assert.deepEqual(
@@ -101,6 +116,14 @@ assert.deepEqual(
     label:passage.structure.label,
     quoteHash:passage.anchor.quoteHash,
     range:passage.anchor.normalizedRange,
+    paragraphs:passage.paragraphs.map((paragraph) => ({
+      paragraphId:paragraph.paragraphId,
+      text:paragraph.text,
+      quoteHash:paragraph.anchor.quoteHash,
+      textHash:paragraph.anchor.textHash,
+      range:paragraph.anchor.normalizedRange,
+      structure:paragraph.structure,
+    })),
   })),
   browserPassages.map((passage) => ({
     passageId:passage.passageId,
@@ -108,6 +131,14 @@ assert.deepEqual(
     label:passage.structure.label,
     quoteHash:passage.anchor.quoteHash,
     range:passage.anchor.normalizedRange,
+    paragraphs:passage.paragraphs.map((paragraph) => ({
+      paragraphId:paragraph.paragraphId,
+      text:paragraph.text,
+      quoteHash:paragraph.anchor.quoteHash,
+      textHash:paragraph.anchor.textHash,
+      range:paragraph.anchor.normalizedRange,
+      structure:paragraph.structure,
+    })),
   })),
   'browser and native executors produce the same passage identity and evidence anchors',
 );
@@ -149,6 +180,37 @@ assert.deepEqual(
     label:idea.label,
     evidence:idea.evidence.map((row) => row.passageId),
   })),
+);
+assert.deepEqual(
+  nativeUnits.units.map((unit) => ({
+    unitId:unit.unitId,
+    kind:unit.kind,
+    lens:unit.lens,
+    statement:unit.statement,
+    evidence:unit.evidence.map((row) => ({
+      passageId:row.passageId,
+      paragraphId:row.paragraphId,
+      quoteHash:row.quoteHash,
+      textHash:row.textHash,
+      order:row.order,
+      positionFraction:row.positionFraction,
+    })),
+  })),
+  browserUnits.units.map((unit) => ({
+    unitId:unit.unitId,
+    kind:unit.kind,
+    lens:unit.lens,
+    statement:unit.statement,
+    evidence:unit.evidence.map((row) => ({
+      passageId:row.passageId,
+      paragraphId:row.paragraphId,
+      quoteHash:row.quoteHash,
+      textHash:row.textHash,
+      order:row.order,
+      positionFraction:row.positionFraction,
+    })),
+  })),
+  'browser and native executors produce the same typed semantic units',
 );
 
 console.log('Books browser/native executor parity: PASS');

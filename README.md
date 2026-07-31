@@ -29,9 +29,9 @@ choices in
 execution sequence and complete pending-item map in
 [SEMANTIC-LIBRARY-WORKPLAN.md](SEMANTIC-LIBRARY-WORKPLAN.md). The
 dependency-aware sequence for the work that remains is in
-[BATCHED-ROADMAP.md](BATCHED-ROADMAP.md). The next product horizon—discreet,
-source-grounded concept, scene, plot, and cross-genre connections while
-reading—is defined in [ECHOES-VISION.md](ECHOES-VISION.md) and sequenced in
+[BATCHED-ROADMAP.md](BATCHED-ROADMAP.md). Discreet, source-grounded concept,
+scene, plot, and cross-genre connections while reading are defined in
+[ECHOES-VISION.md](ECHOES-VISION.md) and delivered through
 [ECHOES-WORKPLAN.md](ECHOES-WORKPLAN.md).
 
 The approved name, Living Book mark, palette, asset usage, and compatibility
@@ -95,6 +95,27 @@ The folder layout and executor contract are documented in
 [FOLDER-LIBRARY-FORMAT.md](FOLDER-LIBRARY-FORMAT.md), with the completed
 implementation plan in
 [LIBRARY-INTELLIGENCE-WORKPLAN.md](LIBRARY-INTELLIGENCE-WORKPLAN.md).
+
+## Echoes release-candidate highlights
+
+- Stable paragraph anchors let browser and native indexing identify the same
+  evidence after rebuilds without relying on rendered DOM order.
+- Typed semantic units preserve the difference between claims, mechanisms,
+  scenes, choices, conflicts, motifs, and outcomes before bounded cross-work
+  matching.
+- Native mode can show a quiet `◌` at a paragraph with an eligible connection.
+  Its grounded card explains the relation, shows evidence from both books,
+  conceals spoilers, opens the exact related paragraph, and keeps a route back.
+- Echoes starts Off pending real-library quality calibration; readers can opt
+  into indicator-only or optional-aside modes. Generated prose never becomes
+  authored paragraph text, and speech runs only when the reader asks for it.
+- Hide, wrong, unhelpful, spoiler, and work-exclusion feedback is durable user
+  metadata; the graph, vectors, and reader indexes remain removable and
+  rebuildable.
+- The synthetic quality corpus, browser/native identity fixtures, 3,000-idea
+  scale contract, security boundary, and live NakliOS reader round trip pass.
+  Broad default rollout still awaits human usefulness labels on a real
+  collection.
 
 ## v1.4 highlights
 
@@ -238,6 +259,9 @@ naklios-universe/
       search
 - [x] v2.0 Native indexer — local CPU/GPU or OpenAI-compatible/Ollama
       processing without stored credentials
+- [x] Echoes release candidate — paragraph anchors, typed fiction/nonfiction
+      units, graph v2, materialized reader connections, Native indicators and
+      cards, spoiler controls, speech, curation, and exact cross-book routes
 - [x] Scale contracts — 10,000-book inventory and 3,000-idea bounded graph
 - [x] Contract test at `scripts/test-books-v1_1.mjs`
 - [x] Safe two-backend browser fixture at `test/host-harness.html`

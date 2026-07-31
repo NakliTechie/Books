@@ -25,7 +25,7 @@ import {
 } from '../semantic-processing.js';
 
 assert.equal(normalizePassageText(' One  two\r\n\r\n\r\nThree '), 'One two\n\nThree');
-assert.equal(PASSAGE_EXTRACTOR_VERSION, 'passages-v2');
+assert.equal(PASSAGE_EXTRACTOR_VERSION, 'passages-v3');
 assert.equal(DEFAULT_MAX_PASSAGE_CHARS, 1400);
 assert.equal(DEFAULT_MAX_CONCEPTS, 16);
 assert.equal(DEFAULT_MAX_SCENES, 12);
@@ -65,6 +65,14 @@ assert.deepEqual(passages[0].structure.unsupportedStructures, [
 ]);
 assert.match(passages[0].anchor.quoteHash, /^sha256:[a-f0-9]{64}$/);
 assert.equal(passages[0].passageId, 'passage_asset_test_0_0_35');
+assert.equal(passages[0].paragraphs.length, 1);
+assert.match(
+  passages[0].paragraphs[0].paragraphId,
+  /^paragraph_asset_test_0_0_0_[a-f0-9]{16}$/,
+);
+assert.equal(passages[0].paragraphs[0].passageId, passages[0].passageId);
+assert.equal(passages[0].paragraphs[0].anchor.normalizedRange.start, 0);
+assert.match(passages[0].paragraphs[0].anchor.textHash, /^sha256:[a-f0-9]{64}$/);
 const longPassages = await segmentSections({
   workId:'work_long',
   assetId:'asset_long',
@@ -75,6 +83,14 @@ assert.deepEqual(
   longPassages.map((passage) => passage.text.length),
   [DEFAULT_MAX_PASSAGE_CHARS, 1],
   'oversized paragraphs are split at the calibrated passage budget',
+);
+assert.deepEqual(
+  longPassages.flatMap((passage) => passage.paragraphs.map((paragraph) => [
+    paragraph.structure.fragmentIndex,
+    paragraph.structure.fragmentCount,
+  ])),
+  [[0, 2], [1, 2]],
+  'oversized source paragraphs retain stable fragment identity',
 );
 
 const lexical = buildLexicalIndex({

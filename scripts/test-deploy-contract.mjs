@@ -18,6 +18,7 @@ for (const asset of [
   'local-ai-sidecar.js',
   'semantic-embedding-sidecar.js',
   'idea-graph.js',
+  'echoes.js',
   'open-library-metadata.js',
   'embedding-binary.js',
   'favicon.svg',

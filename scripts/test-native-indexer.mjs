@@ -54,9 +54,17 @@ const ideas = JSON.parse(readFileSync(
   join(fixture, '.books', 'semantic', workId, 'ideas.json'),
   'utf8',
 ));
+const units = JSON.parse(readFileSync(
+  join(fixture, '.books', 'semantic', workId, 'units.json'),
+  'utf8',
+));
 assert.equal(ideas.recordType, 'books.idea-records');
 assert.ok(ideas.ideas.length > 0);
 assert.ok(ideas.ideas.every((idea) => idea.evidence.length));
+assert.equal(units.recordType, 'books.semantic-units');
+assert.ok(units.units.length > 0);
+assert.ok(units.units.every((unit) =>
+  unit.evidence.every((row) => row.paragraphId && row.passageId)));
 
 const job = JSON.parse(readFileSync(
   join(fixture, '.books', 'jobs', workId + '.json'),
@@ -65,6 +73,9 @@ const job = JSON.parse(readFileSync(
 assert.equal(job.executorClass, 'native');
 assert.equal(job.lease, null);
 assert.equal(job.stages.passages.status, 'complete');
+assert.equal(job.stages.semanticUnits.status, 'complete');
+assert.equal(job.stages.echoEmbeddings.status, 'waiting-for-model');
+assert.equal(job.stages.echoLinks.status, 'blocked-by-embeddings');
 assert.equal(job.stages.embeddings.status, 'waiting-for-model');
 assert.equal(job.artifacts.passages.path, `semantic/${workId}/passages.json`);
 assert.equal(job.artifacts.lexicalIndex.path, `indexes/works/${workId}.json`);

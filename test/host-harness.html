@@ -558,6 +558,79 @@
       ) {
         throw new Error('Local semantic pipeline did not produce grounded records');
       }
+      const harnessWorkId = recoveredCatalog?.aliases?.sourceFilenames?.['Harness.epub'];
+      const harnessPassages = await waitFor(
+        () => harnessWorkId
+          ? jsonFromStore('semantic/' + harnessWorkId + '/passages.json')
+          : null,
+        'related work paragraph anchors',
+      );
+      const sourceParagraph = samplePassages.passages
+        .flatMap((passage) => passage.paragraphs || [])
+        .find((paragraph) => paragraph.text.includes('quiet test book'));
+      const targetParagraph = harnessPassages.passages
+        .flatMap((passage) => passage.paragraphs || [])
+        .find((paragraph) => paragraph.text.includes('deterministic opening page'));
+      if (!sourceParagraph?.paragraphId || !targetParagraph?.paragraphId) {
+        throw new Error('Echo fixture could not resolve stable paragraph anchors');
+      }
+      const sourcePassage = samplePassages.passages.find(
+        (passage) => passage.passageId === sourceParagraph.passageId
+      );
+      const targetPassage = harnessPassages.passages.find(
+        (passage) => passage.passageId === targetParagraph.passageId
+      );
+      stores.fsa.set(
+        'semantic/' + sampleWorkId + '/reader-connections.json',
+        JSON.stringify({
+          schemaVersion:1,
+          recordType:'books.reader-connections',
+          indexVersion:'reader-connections-v1',
+          workId:sampleWorkId,
+          graphVersion:'echo-graph-v2',
+          connectionCount:1,
+          connections:[{
+            connectionId:'echo_harness_reader_roundtrip',
+            source:{
+              workId:sampleWorkId,
+              unitId:'unit_sample_quiet',
+              paragraphId:sourceParagraph.paragraphId,
+              passageId:sourcePassage.passageId,
+              excerpt:sourceParagraph.text,
+              label:'A quiet local test',
+              kind:'principle',
+            },
+            target:{
+              workId:harnessWorkId,
+              unitId:'unit_harness_opening',
+              paragraphId:targetParagraph.paragraphId,
+              passageId:targetPassage.passageId,
+              excerpt:targetParagraph.text,
+              label:'The deterministic opening',
+              kind:'scene',
+              workTitle:'Harness EPUB',
+              positionFraction:0.92,
+            },
+            relation:'illustrates',
+            direction:'forward',
+            score:0.91,
+            confidence:0.94,
+            explanation:'The opening scene illustrates the sample’s quiet local test.',
+            spoiler:{ risk:'high', reason:'Target evidence is late in the related work.' },
+            evidence:{
+              sourceQuoteHash:sourceParagraph.anchor?.quoteHash || null,
+              targetQuoteHash:targetParagraph.anchor?.quoteHash || null,
+            },
+            generatedBy:{
+              graph:'echo-graph-v2',
+              model:'harness-echo-classifier',
+              relationMethod:'source-grounded-echo-classifier',
+            },
+            userState:{ hidden:false, rating:'spoiler', spoiler:true },
+          }],
+          updatedAt:'2026-07-31T12:00:00.000Z',
+        }),
+      );
       app.getElementById('back-btn').click();
       const semanticSearch = await waitFor(
         () => app.getElementById('library-filter'),
@@ -583,6 +656,11 @@
       if (readerMode.hidden) {
         throw new Error('Native mode was unavailable after passage processing');
       }
+      app.getElementById('reader-prefs-btn').click();
+      const echoMode = app.getElementById('reader-echo-mode');
+      echoMode.value = 'indicators';
+      echoMode.dispatchEvent(new Event('change', { bubbles:true }));
+      app.querySelector('[data-close-dialog="reader-prefs-dialog"]').click();
       readerMode.click();
       const nativePassage = await waitFor(
         () => readerMode.getAttribute('aria-pressed') === 'true'
@@ -595,7 +673,49 @@
       const selectedParagraph = Array.from(
         nativePassage.querySelectorAll('p')
       ).find((paragraph) => paragraph.textContent.includes('quiet test book'));
-      const selectedText = selectedParagraph.firstChild;
+      const echoIndicator = await waitFor(
+        () => selectedParagraph?.querySelector('.native-echo-indicator'),
+        'discreet paragraph Echo indicator',
+      );
+      if (selectedParagraph.textContent.includes('opening scene illustrates')) {
+        throw new Error('Generated Echo explanation leaked into authored reader text');
+      }
+      echoIndicator.click();
+      await waitFor(
+        () => app.getElementById('reader-echo-sidecar').classList.contains('is-open')
+          && app.activeElement === app.getElementById('reader-echo-close')
+          && app.getElementById('reader-echo-title').textContent.includes('Harness EPUB')
+          && app.getElementById('reader-echo-target').dataset.concealed === 'true',
+        'grounded spoiler-aware Echo card',
+      );
+      app.getElementById('reader-echo-reveal').click();
+      if (!app.getElementById('reader-echo-target').textContent.includes(
+        'deterministic opening page'
+      )) {
+        throw new Error('Echo spoiler reveal did not expose its target evidence');
+      }
+      app.getElementById('reader-echo-open').click();
+      await waitFor(
+        () => app.getElementById('reader-title').textContent.includes('Harness')
+          && app.getElementById('reader-mode-btn').getAttribute('aria-pressed') === 'true'
+          && app.querySelector(
+            '[data-paragraph-id="' + targetParagraph.paragraphId + '"]'
+          )
+          && !app.getElementById('reader-echo-return').hidden,
+        'Echo exact related-passage route',
+      );
+      app.getElementById('reader-echo-return').click();
+      await waitFor(
+        () => app.getElementById('reader-title').textContent.includes('Sample')
+          && app.getElementById('reader-mode-btn').getAttribute('aria-pressed') === 'true'
+          && app.querySelector(
+            '[data-paragraph-id="' + sourceParagraph.paragraphId + '"]'
+          ),
+        'Echo return route to original paragraph',
+      );
+      const selectedText = app.querySelector(
+        '[data-paragraph-id="' + sourceParagraph.paragraphId + '"]'
+      ).firstChild;
       const selectedStart = selectedText.data.indexOf('quiet test book');
       const selectedRange = app.createRange();
       selectedRange.setStart(selectedText, selectedStart);
@@ -1431,21 +1551,21 @@
         token = JSON.stringify({
           concepts:[{
             label:'Quiet source grounding',
-            kind:'reading-principle',
+            kind:'principle',
             description:'The sample keeps a quiet test statement tied to its source.',
             confidence:0.94,
             evidencePassageIds:[passageId],
           }],
           entities:[{
             label:'NakliOS Books',
-            kind:'software',
+            kind:'work',
             description:'The Books reader named by the indexed sample.',
             confidence:0.82,
             evidencePassageIds:[passageId],
           }],
           scenes:[{
             label:'Quiet test scene',
-            kind:'section-moment',
+            kind:'scene',
             description:'A quiet test book is introduced in the source passage.',
             confidence:0.88,
             evidencePassageIds:[passageId],

@@ -87,6 +87,20 @@ const report = buildLibraryReport({
       rightWorkId:'work-missing',
     }],
   },
+  semanticUnits:[{
+    workId:'work-ready',
+    units:[{ unitId:'unit-one' }, { unitId:'unit-two' }],
+  }],
+  echoGraph:{
+    links:[{
+      leftWorkId:'work-ready',
+      rightWorkId:'work-missing',
+    }],
+  },
+  readerConnections:[{
+    workId:'work-ready',
+    connections:[{ connectionId:'echo-one' }],
+  }],
 });
 
 assert.equal(report.recordType, 'books.library-report');
@@ -95,11 +109,15 @@ assert.equal(report.totals.availableWorks, 1);
 assert.equal(report.totals.passages, 3);
 assert.equal(report.totals.concepts, 2);
 assert.equal(report.totals.relationships, 1);
+assert.equal(report.totals.semanticUnits, 2);
+assert.equal(report.totals.echoes, 1);
+assert.equal(report.totals.readerConnections, 1);
 assert.equal(report.processingOutcomes['core-complete'], 1);
 assert.equal(report.processingOutcomes['not-queued'], 1);
 assert.equal(report.issueCounts['path-collision'], 1);
 assert.equal(report.issueCounts['no-available-source'], 1);
 assert.match(formatLibraryReport(report), /Ready — core-complete/);
 assert.match(formatLibraryReport(report), /path-collision: 1/);
+assert.match(formatLibraryReport(report), /2 \/ 1 \/ 1/);
 
 console.log('Books library report contract: PASS');

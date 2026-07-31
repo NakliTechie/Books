@@ -1,6 +1,6 @@
 export const PROCESSING_SCHEMA_VERSION = 2;
 export const PROCESSING_PIPELINE_VERSION = 'library-intelligence-v1';
-export const PASSAGE_EXTRACTOR_VERSION = 'passages-v2';
+export const PASSAGE_EXTRACTOR_VERSION = 'passages-v3';
 export const LEXICAL_INDEX_VERSION = 'lexical-v1';
 export const DETERMINISTIC_SEMANTICS_VERSION = 'deterministic-semantics-v1';
 export const IDEA_EMBEDDING_INDEX_VERSION = 'idea-embeddings-v2';
@@ -16,8 +16,11 @@ const DEFAULT_PROCESSING_STAGES = {
   lexicalIndex: { status:'pending' },
   deterministicSemantics: { status:'pending' },
   modelSemantics: { status:'waiting-for-provider' },
+  semanticUnits: { status:'pending' },
   embeddings: { status:'waiting-for-model' },
   libraryLinks: { status:'blocked-by-embeddings' },
+  echoEmbeddings: { status:'waiting-for-model' },
+  echoLinks: { status:'blocked-by-embeddings' },
 };
 
 const STOP_WORDS = new Set([
@@ -61,6 +64,7 @@ function splitSection(text, maxChars) {
   const paragraphs = normalized.split(/\n{2,}/);
   const chunks = [];
   let chunk = '';
+  let chunkParagraphs = [];
   let sourceStart = 0;
   let cursor = 0;
 
@@ -71,23 +75,36 @@ function splitSection(text, maxChars) {
       text: value,
       start: sourceStart,
       end: sourceStart + value.length,
+      paragraphs:chunkParagraphs,
     });
     chunk = '';
+    chunkParagraphs = [];
   };
 
-  for (const paragraph of paragraphs) {
+  for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex++) {
+    const paragraph = paragraphs[paragraphIndex];
     const trimmed = paragraph.trim();
     const paragraphStart = normalized.indexOf(trimmed, cursor);
     cursor = Math.max(cursor, paragraphStart + trimmed.length);
     if (!trimmed) continue;
     if (trimmed.length > maxChars) {
       pushChunk();
+      const fragmentCount = Math.ceil(trimmed.length / maxChars);
       for (let offset = 0; offset < trimmed.length; offset += maxChars) {
         const end = Math.min(trimmed.length, offset + maxChars);
+        const text = trimmed.slice(offset, end);
         chunks.push({
-          text: trimmed.slice(offset, end),
+          text,
           start: paragraphStart + offset,
           end: paragraphStart + end,
+          paragraphs:[{
+            text,
+            start:paragraphStart + offset,
+            end:paragraphStart + end,
+            paragraphIndex,
+            fragmentIndex:Math.floor(offset / maxChars),
+            fragmentCount,
+          }],
         });
       }
       continue;
@@ -95,6 +112,14 @@ function splitSection(text, maxChars) {
     if (chunk && chunk.length + 2 + trimmed.length > maxChars) pushChunk();
     if (!chunk) sourceStart = paragraphStart;
     chunk += (chunk ? '\n\n' : '') + trimmed;
+    chunkParagraphs.push({
+      text:trimmed,
+      start:paragraphStart,
+      end:paragraphStart + trimmed.length,
+      paragraphIndex,
+      fragmentIndex:0,
+      fragmentCount:1,
+    });
   }
   pushChunk();
   return chunks;
@@ -108,6 +133,7 @@ export async function segmentSections({
   maxChars = DEFAULT_MAX_PASSAGE_CHARS,
 }) {
   const passages = [];
+  let paragraphOrder = 0;
   for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
     const section = sections[sectionIndex] || {};
     const normalized = normalizePassageText(section.text);
@@ -121,6 +147,51 @@ export async function segmentSections({
         chunk.start,
         chunk.end,
       ].join('_');
+      const paragraphs = [];
+      for (const sourceParagraph of chunk.paragraphs || []) {
+        const paragraphQuote = sourceParagraph.text.slice(0, 240);
+        const paragraphTextHash = await sha256Text(sourceParagraph.text);
+        const paragraphId = [
+          'paragraph',
+          assetId,
+          sectionIndex,
+          sourceParagraph.paragraphIndex,
+          sourceParagraph.fragmentIndex,
+          paragraphTextHash.slice('sha256:'.length, 'sha256:'.length + 16),
+        ].join('_');
+        paragraphs.push({
+          paragraphId,
+          passageId,
+          workId,
+          assetId,
+          extractorVersion:PASSAGE_EXTRACTOR_VERSION,
+          order:paragraphOrder++,
+          passageOrder:passages.length,
+          text:sourceParagraph.text,
+          structure:{
+            sectionIndex,
+            label:section.label || null,
+            paragraphIndex:sourceParagraph.paragraphIndex,
+            fragmentIndex:sourceParagraph.fragmentIndex,
+            fragmentCount:sourceParagraph.fragmentCount,
+          },
+          anchor:{
+            format,
+            normalizedRange:{
+              start:sourceParagraph.start,
+              end:sourceParagraph.end,
+            },
+            quote:paragraphQuote,
+            quoteHash:await sha256Text(paragraphQuote),
+            textHash:paragraphTextHash,
+            engine:{
+              ...(cloneJson(section.anchor || {})),
+              fraction:normalized.length
+                ? sourceParagraph.start / normalized.length : 0,
+            },
+          },
+        });
+      }
       passages.push({
         passageId,
         workId,
@@ -128,6 +199,7 @@ export async function segmentSections({
         extractorVersion: PASSAGE_EXTRACTOR_VERSION,
         order: passages.length,
         text: chunk.text,
+        paragraphs,
         structure: {
           sectionIndex,
           label: section.label || null,
@@ -413,8 +485,11 @@ export function invalidateProcessingStages(
     lexicalIndex:'pending',
     deterministicSemantics:'pending',
     modelSemantics:'waiting-for-provider',
+    semanticUnits:'pending',
     embeddings:'waiting-for-model',
     libraryLinks:'blocked-by-embeddings',
+    echoEmbeddings:'waiting-for-model',
+    echoLinks:'blocked-by-embeddings',
   };
   const timestamp = now();
   for (const stage of stages || []) {

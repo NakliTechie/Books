@@ -51,13 +51,14 @@ async function readSemanticRecords(sidecar, workIds, filename) {
 
 const { folder, json } = parseArgs(process.argv);
 const sidecar = folder.endsWith('/.books') ? folder : resolve(folder, '.books');
-const [library, inventory, catalog, manifests, jobs, graph] = await Promise.all([
+const [library, inventory, catalog, manifests, jobs, graph, echoGraph] = await Promise.all([
   readJson(resolve(sidecar, 'library.json')),
   readJson(resolve(sidecar, 'inventory', 'current.json')),
   readJson(resolve(sidecar, 'catalog', 'catalog.json')),
   readJsonDirectory(resolve(sidecar, 'catalog', 'works')),
   readJsonDirectory(resolve(sidecar, 'jobs')),
   readJson(resolve(sidecar, 'indexes', 'library-idea-graph.json')),
+  readJson(resolve(sidecar, 'indexes', 'library-echo-graph.json')),
 ]);
 if (!library && !inventory && !catalog) {
   throw new Error(`No Books sidecar found at ${sidecar}`);
@@ -66,10 +67,12 @@ const workIds = Array.from(new Set([
   ...manifests.map((manifest) => manifest.workId),
   ...(catalog?.works || []).map((work) => work.workId),
 ])).filter(Boolean);
-const [passages, semantics, ideas] = await Promise.all([
+const [passages, semantics, ideas, semanticUnits, readerConnections] = await Promise.all([
   readSemanticRecords(sidecar, workIds, 'passages.json'),
   readSemanticRecords(sidecar, workIds, 'records.json'),
   readSemanticRecords(sidecar, workIds, 'ideas.json'),
+  readSemanticRecords(sidecar, workIds, 'units.json'),
+  readSemanticRecords(sidecar, workIds, 'reader-connections.json'),
 ]);
 const report = buildLibraryReport({
   library,
@@ -81,6 +84,9 @@ const report = buildLibraryReport({
   semantics,
   ideas,
   graph,
+  semanticUnits,
+  echoGraph,
+  readerConnections,
 });
 process.stdout.write(json
   ? JSON.stringify(report, null, 2) + '\n'

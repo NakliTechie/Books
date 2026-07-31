@@ -1,7 +1,7 @@
 # Lorewell Echoes — work plan
 
-> **Lifecycle:** `planned` — active next product batch after real-library
-> semantic labeling establishes the inline-quality threshold.
+> **Lifecycle:** `release candidate` — engineering phases are implemented;
+> real-library human labeling and the default-rollout decision remain gated.
 >
 > **Vision:** [ECHOES-VISION.md](ECHOES-VISION.md)  
 > **Date:** 2026-07-31
@@ -31,26 +31,59 @@ Already shipped:
 
 The current production evidence contains 40 processed works, 20,910 passages,
 636 concepts, 457 scenes, 636 source-grounded ideas, and 1,677 cross-work
-relationships. Connections are currently exposed in work details and search,
-not at the point of reading.
+relationships. Echoes now materializes typed paragraph-level reader records and
+exposes them in Native mode, work details, and library search when the required
+local semantic artifacts are available.
 
 ## Release sequence
 
 | Phase | Outcome | Dependency | State |
 |---|---|---|---|
-| 0 | Quality corpus and relation contract | Existing 40-book library | Pending |
-| 1 | Stable paragraph anchors and schemas | Phase 0 relation contract | Pending |
-| 2 | Typed fiction/nonfiction unit extraction | Phase 1 | Pending |
-| 3 | Cross-work candidate and relation graph v2 | Phases 1–2 | Pending |
-| 4 | Materialized reader-connection index | Phase 3 | Pending |
-| 5 | Native reader indicators and Echo cards | Phase 4 | Pending |
-| 6 | Optional spoken Echoes | Phase 5; reader-depth decision | Optional |
-| 7 | Browser/native parity, scale, and recovery | Phases 1–5 | Pending |
-| 8 | Real-library quality gate and rollout | Phases 5 and 7 | Pending |
+| 0 | Quality corpus and relation contract | Existing 40-book library | Synthetic contract complete; human labels pending |
+| 1 | Stable paragraph anchors and schemas | Phase 0 relation contract | Complete |
+| 2 | Typed fiction/nonfiction unit extraction | Phase 1 | Complete |
+| 3 | Cross-work candidate and relation graph v2 | Phases 1–2 | Complete |
+| 4 | Materialized reader-connection index | Phase 3 | Complete |
+| 5 | Native reader indicators and Echo cards | Phase 4 | Complete |
+| 6 | Optional spoken Echoes | Phase 5 | Browser speech baseline complete |
+| 7 | Browser/native parity, scale, and recovery | Phases 1–5 | Complete |
+| 8 | Real-library quality gate and rollout | Phases 5 and 7 | Awaiting human evaluation |
 
 Phases must leave reading and lexical search usable when embeddings, a
 generative model, or a provider are unavailable. No phase may change source
 files or make derived intelligence canonical.
+
+## Implementation evidence
+
+- `passages-v3` emits stable paragraph IDs, UTF-16 offsets, structure,
+  quote/text hashes, and faithful-engine fallbacks in both executors.
+- `books.semantic-units`, `echo-graph-v2`, and
+  `books.reader-connections` are rebuildable artifacts; canonical hide,
+  quality, spoiler, and work-exclusion feedback lives in
+  `annotations/echoes.json`.
+- Fiction, nonfiction, and mixed works use typed units and a compatibility
+  matrix before bounded cross-work matching. Optional pair classification can
+  refine a relation but cannot weaken deterministic strong relations below the
+  release threshold.
+- Native mode provides Off, Indicators, and Indicators + asides controls. The
+  compact card retains evidence from both books, conceals spoiler-sensitive
+  targets, speaks only on request, jumps to an exact related paragraph, and
+  keeps a route back.
+- Generated indicator and aside prose is CSS/ARIA presentation metadata, not a
+  text node inside the authored paragraph, so it cannot contaminate copy,
+  highlights, source offsets, or indexing.
+- `fixtures/echoes-quality-v1.json` covers cross-genre positives,
+  within-genre positives, vocabulary-only negatives, duplicates,
+  instruction-like book text, and a high-spoiler target.
+- The regular test suite checks domain behavior, the quality corpus,
+  browser/native unit and graph identity, security, reports, scale, and deploy
+  output. The live Chrome host harness additionally exercises indicator → card
+  → reveal → exact related passage → return while retaining the full NakliOS
+  reader regression.
+
+The remaining gate needs a reader's judgments on a representative real
+collection; automation cannot truthfully decide whether a connection is
+surprising, useful, repetitive, or merely plausible.
 
 ---
 
@@ -410,20 +443,18 @@ pipeline can generate them.
 - Production smoke: standalone Native reader and Lorewell hosted inside
   NakliOS.
 
-## Decisions deliberately deferred until their phase
+## Decisions deliberately deferred until evidence exists
 
-- Whether `Echoes` remains the final user-facing name.
-- Whether first-run default is `Off` or `Indicators`; automatic asides remain
-  off by default either way.
-- Exact indicator artwork and motion.
-- The first TTS route and whether spoken Echoes join the initial launch.
-- The spoiler default for wholly unread target works.
+- Whether labeled real-library evidence supports changing the initial `Off`
+  setting to `Indicators`; automatic asides remain off by default.
 - Whether a stronger provider may rerank automatically after explicit consent,
   or only on demand.
 - Faithful-reader overlays beyond a sidecar presentation.
 - Concept maps, journeys, recaps, illustrations, and other later consumers of
   the Echo graph.
 
-None of these decisions blocks paragraph anchors, typed units, candidate
-retrieval, evidence schemas, or the quality corpus.
-
+`Echoes`, the quiet `◌` indicator, on-demand browser speech, conservative
+spoiler concealment, and an initial `Off` setting are the release-candidate
+defaults. None of the remaining
+decisions blocks paragraph anchors, typed units, candidate retrieval, evidence
+schemas, or the quality corpus.

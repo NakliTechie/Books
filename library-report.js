@@ -69,6 +69,9 @@ export function buildLibraryReport({
   semantics = [],
   ideas = [],
   graph = null,
+  semanticUnits = [],
+  echoGraph = null,
+  readerConnections = [],
   generatedAt = new Date().toISOString(),
 } = {}) {
   const manifestById = new Map(
@@ -82,12 +85,26 @@ export function buildLibraryReport({
     asArray(semantics).map((record) => [record.workId, record]),
   );
   const ideaById = new Map(asArray(ideas).map((record) => [record.workId, record]));
+  const unitsById = new Map(
+    asArray(semanticUnits).map((record) => [record.workId, record]),
+  );
+  const readerConnectionsById = new Map(
+    asArray(readerConnections).map((record) => [record.workId, record]),
+  );
   const links = asArray(graph?.links);
   const linkCountByWork = new Map();
   for (const link of links) {
     for (const workId of new Set([link.leftWorkId, link.rightWorkId])) {
       if (!workId) continue;
       linkCountByWork.set(workId, (linkCountByWork.get(workId) || 0) + 1);
+    }
+  }
+  const echoLinks = asArray(echoGraph?.links);
+  const echoLinkCountByWork = new Map();
+  for (const link of echoLinks) {
+    for (const workId of new Set([link.leftWorkId, link.rightWorkId])) {
+      if (!workId) continue;
+      echoLinkCountByWork.set(workId, (echoLinkCountByWork.get(workId) || 0) + 1);
     }
   }
 
@@ -129,6 +146,8 @@ export function buildLibraryReport({
     const passageRecord = passageById.get(workId);
     const semanticRecord = semanticById.get(workId);
     const ideaRecord = ideaById.get(workId);
+    const unitRecord = unitsById.get(workId);
+    const readerConnectionRecord = readerConnectionsById.get(workId);
     return {
       workId,
       title:manifest?.title || projection?.title || 'Untitled',
@@ -167,6 +186,9 @@ export function buildLibraryReport({
         || Number(run?.stages?.deterministicSemantics?.sceneCount) || 0,
       ideaCount:asArray(ideaRecord?.ideas).length,
       relationshipCount:linkCountByWork.get(workId) || 0,
+      semanticUnitCount:asArray(unitRecord?.units).length,
+      echoRelationshipCount:echoLinkCountByWork.get(workId) || 0,
+      readerConnectionCount:asArray(readerConnectionRecord?.connections).length,
       issues:Array.from(new Set(workIssues)).sort(),
     };
   }).sort((left, right) =>
@@ -208,6 +230,12 @@ export function buildLibraryReport({
       scenes:works.reduce((sum, work) => sum + work.sceneCount, 0),
       ideas:works.reduce((sum, work) => sum + work.ideaCount, 0),
       relationships:links.length,
+      semanticUnits:works.reduce((sum, work) => sum + work.semanticUnitCount, 0),
+      echoes:echoLinks.length,
+      readerConnections:works.reduce(
+        (sum, work) => sum + work.readerConnectionCount,
+        0,
+      ),
       issues:issues.length,
     },
     processingOutcomes:countBy(works, (work) => work.processing.outcome),
@@ -234,6 +262,7 @@ export function formatLibraryReport(report) {
     `- Passages: ${report.totals.passages}`,
     `- Concepts / scenes / ideas: ${report.totals.concepts} / ${report.totals.scenes} / ${report.totals.ideas}`,
     `- Cross-book relationships: ${report.totals.relationships}`,
+    `- Semantic units / Echo links / reader connections: ${report.totals.semanticUnits} / ${report.totals.echoes} / ${report.totals.readerConnections}`,
     `- Issues: ${report.totals.issues}`,
     '',
     '## Processing',
@@ -250,7 +279,7 @@ export function formatLibraryReport(report) {
     lines.push(
       `- ${work.title} — ${work.processing.outcome} · ` +
       `${work.passageCount} passages · ${work.ideaCount} ideas · ` +
-      `${work.relationshipCount} relationships${issueSuffix}`,
+      `${work.relationshipCount} relationships · ${work.readerConnectionCount} reader Echoes${issueSuffix}`,
     );
   }
   if (report.issues.length) {
