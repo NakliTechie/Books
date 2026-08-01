@@ -286,4 +286,72 @@ assert.throws(() => execFileSync(
 assert.equal(readFileSync(join(symlinkTarget, 'sentinel.txt'), 'utf8'), 'unchanged',
   'a symlinked .books directory is rejected before any write');
 
+// H2 — the processing input fingerprint folds in the asset format so a
+// byte-identical .txt -> .md rename cannot warm-cache the stale parser route.
+assert.match(
+  scriptSource,
+  /"format":\s*asset\.get\("format"\)/,
+  'the processing input fingerprint includes the asset format (H2)',
+);
+
+// H1 / H3 behavioural coverage on an isolated fixture.
+const warmFixture = mkdtempSync(join(tmpdir(), 'books-index-warm-'));
+process.on('exit', () => rmSync(warmFixture, { recursive:true, force:true }));
+writeFileSync(
+  join(warmFixture, 'Ledger.md'),
+  '# Ledger\n\nEvidence anchors a durable record.\n\n' +
+    'Context preserved keeps meaning stable over time.',
+);
+const runWarm = () => execFileSync(
+  'python3',
+  [new URL('./books-index.py', import.meta.url).pathname, warmFixture, '--no-embeddings'],
+  { stdio:'pipe' },
+);
+runWarm();
+const warmCatalog = JSON.parse(readFileSync(
+  join(warmFixture, '.books', 'catalog', 'catalog.json'), 'utf8'));
+const warmWorkId = warmCatalog.works[0].workId;
+const lexicalPath = join(
+  warmFixture, '.books', 'indexes', 'works', warmWorkId + '.json');
+
+// H1a — a corrupt lexical index is not accepted as a warm cache; it rebuilds.
+writeFileSync(lexicalPath, '{ this is not valid lexical json');
+runWarm();
+const rebuiltLexical = JSON.parse(readFileSync(lexicalPath, 'utf8'));
+assert.equal(rebuiltLexical.recordType, 'books.lexical-index',
+  'a corrupt lexical index is rebuilt rather than blessed as warm (H1)');
+assert.equal(rebuiltLexical.indexVersion, 'lexical-v1');
+
+// H1b — a job left mid-stage is not blessed as a warm cache.
+const warmJobPath = join(warmFixture, '.books', 'jobs', warmWorkId + '.json');
+const stalledJob = JSON.parse(readFileSync(warmJobPath, 'utf8'));
+stalledJob.stages.deterministicSemantics.status = 'running';
+writeFileSync(warmJobPath, JSON.stringify(stalledJob));
+runWarm();
+assert.equal(
+  JSON.parse(readFileSync(warmJobPath, 'utf8')).stages.deterministicSemantics.status,
+  'complete',
+  'a job left mid-stage reprocesses instead of returning a warm cache (H1)');
+
+// H3 — stale reader connections and global-graph links for a work that is not
+// currently graph-eligible are reconciled away even without an embedding run.
+const readerConnPath = join(
+  warmFixture, '.books', 'semantic', warmWorkId, 'reader-connections.json');
+writeFileSync(readerConnPath, JSON.stringify({
+  schemaVersion:1, recordType:'books.reader-connections',
+  workId:warmWorkId, connections:[{ stale:true }],
+}));
+const echoGraphPath = join(
+  warmFixture, '.books', 'indexes', 'library-echo-graph.json');
+writeFileSync(echoGraphPath, JSON.stringify({
+  recordType:'books.library-echo-graph',
+  links:[{ linkId:'echo-link_stale', leftWorkId:warmWorkId, rightWorkId:warmWorkId }],
+}));
+runWarm();
+assert.equal(existsSync(readerConnPath), false,
+  'reader connections for a non-current work are removed (H3)');
+assert.deepEqual(
+  JSON.parse(readFileSync(echoGraphPath, 'utf8')).links, [],
+  'global-graph links referencing a non-current work are pruned (H3)');
+
 console.log('Books native indexer contract: PASS');

@@ -1427,6 +1427,15 @@ class Embedder:
                     file=sys.stderr,
                 )
                 self.mode = "none"
+            except Exception as error:  # noqa: BLE001 - optional AI must never abort indexing
+                # Model download failure, OOM, or a malformed local model must not
+                # stop deterministic indexing; embeddings are optional by contract.
+                print(
+                    f"Embedding skipped: model load failed ({type(error).__name__}: {error}).",
+                    file=sys.stderr,
+                )
+                self.native_model = None
+                self.mode = "none"
 
     @property
     def model_name(self):
@@ -1907,6 +1916,7 @@ def process_work(root: Path, sidecar: Path, manifest: dict, embedder: Embedder, 
         "title": manifest.get("title"),
         "authors": manifest.get("authors", []),
         "assetId": asset.get("assetId"),
+        "format": asset.get("format"),
         "sourceFingerprint": asset.get("fingerprint"),
         "embeddingModel": embedder.model_name,
         "chatEndpoint": embedder.args.endpoint,
@@ -2020,6 +2030,7 @@ def process_work(root: Path, sidecar: Path, manifest: dict, embedder: Embedder, 
     cached_semantics = read_json(sidecar / "semantic" / work_id / "records.json", {})
     cached_ideas = read_json(sidecar / "semantic" / work_id / "ideas.json", {})
     cached_units = read_json(sidecar / "semantic" / work_id / "units.json", {})
+    cached_lexical = read_json(sidecar / "indexes" / "works" / f"{work_id}.json", {})
     expected_idea_embedding_input = text_hash("\x1f".join(
         embedding_text(idea) for idea in cached_ideas.get("ideas", [])
     ))
@@ -2064,6 +2075,24 @@ def process_work(root: Path, sidecar: Path, manifest: dict, embedder: Embedder, 
         and cached_units.get("sourceFingerprint") == asset.get("fingerprint")
         and cached_units.get("extractorVersion") == SEMANTIC_UNIT_VERSION
         and isinstance(cached_units.get("units"), list)
+        and cached_lexical.get("recordType") == "books.lexical-index"
+        and cached_lexical.get("workId") == work_id
+        and cached_lexical.get("assetId") == asset.get("assetId")
+        and cached_lexical.get("indexVersion") == LEXICAL_VERSION
+        and isinstance(cached_lexical.get("postings"), dict)
+    )
+    # Every deterministic stage must have completed; a valid inputFingerprint with
+    # a stage left running/failed must not be blessed as a warm cache (H1).
+    existing_stage_status = existing_job.get("stages", {})
+    deterministic_stages_complete = all(
+        existing_stage_status.get(name, {}).get("status") == "complete"
+        for name in (
+            "fingerprint",
+            "passages",
+            "lexicalIndex",
+            "deterministicSemantics",
+            "semanticUnits",
+        )
     )
     if (
         not force
@@ -2071,6 +2100,7 @@ def process_work(root: Path, sidecar: Path, manifest: dict, embedder: Embedder, 
         and existing_job.get("sourceFingerprint") == asset.get("fingerprint")
         and existing_job.get("inputFingerprint") == processing_input_fingerprint
         and artifact_cache_valid
+        and deterministic_stages_complete
         and (
             embedder.mode == "none"
             or (
@@ -2488,6 +2518,54 @@ def manifest_current_for_graph(sidecar: Path, manifest: dict, stage: str) -> boo
         and job.get("sourceFingerprint") == asset.get("fingerprint")
         and job.get("stages", {}).get(stage, {}).get("status") == "complete"
     )
+
+
+def invalidate_stale_graph_artifacts(sidecar: Path, manifests: list[dict]) -> None:
+    """Reconcile persisted graph and reader-connection artifacts to the works that
+    are currently graph-eligible, so a changed, failed, or re-indexed-without-
+    embeddings work cannot keep feeding stale global links or reader Echoes (H3).
+    Runs regardless of embedder mode, including when no graph rebuild happens."""
+    active = [
+        manifest for manifest in manifests
+        if manifest.get("recordState") != "merged" and manifest.get("workId")
+    ]
+    idea_current = {
+        manifest["workId"] for manifest in active
+        if manifest_current_for_graph(sidecar, manifest, "embeddings")
+    }
+    echo_current = {
+        manifest["workId"] for manifest in active
+        if manifest_current_for_graph(sidecar, manifest, "echoLinks")
+    }
+    # Drop reader connections for works no longer eligible for the echo graph.
+    for manifest in active:
+        work_id = manifest["workId"]
+        if work_id in echo_current:
+            continue
+        connection_path = sidecar / "semantic" / work_id / "reader-connections.json"
+        if connection_path.exists():
+            assert_safe_sidecar_path(connection_path)
+            connection_path.unlink()
+    # Prune persisted global-graph links that reference a now-stale work.
+    for graph_name, current in (
+        ("library-idea-graph.json", idea_current),
+        ("library-echo-graph.json", echo_current),
+    ):
+        graph_path = sidecar / "indexes" / graph_name
+        graph = read_json(graph_path, {})
+        links = graph.get("links")
+        if not isinstance(links, list):
+            continue
+        kept = [
+            link for link in links
+            if link.get("leftWorkId") in current
+            and link.get("rightWorkId") in current
+        ]
+        if len(kept) != len(links):
+            graph["links"] = kept
+            graph["updatedAt"] = timestamp()
+            assert_safe_sidecar_path(graph_path)
+            atomic_json(graph_path, graph)
 
 
 def build_graph(sidecar: Path, manifests: list[dict], model_name: str):
@@ -3361,16 +3439,33 @@ def main():
     echo_graph = None
     if embedder.mode != "none":
         graph = build_graph(sidecar, manifests, embedder.model_name)
-        graph = classify_graph(args, sidecar, graph)
+        try:
+            graph = classify_graph(args, sidecar, graph)
+        except Exception as error:  # noqa: BLE001 - optional classifier must not abort materialization
+            print(
+                f"Idea-graph classification skipped ({type(error).__name__}: {error}); "
+                "keeping deterministic relations.",
+                file=sys.stderr,
+            )
         complete_graph_jobs(sidecar, manifests, graph)
         echo_graph, units = build_echo_graph(
             sidecar, manifests, embedder.model_name
         )
-        echo_graph = classify_echo_graph(args, sidecar, echo_graph, units)
+        try:
+            echo_graph = classify_echo_graph(args, sidecar, echo_graph, units)
+        except Exception as error:  # noqa: BLE001 - optional classifier must not abort materialization
+            print(
+                f"Echo-graph classification skipped ({type(error).__name__}: {error}); "
+                "keeping deterministic relations.",
+                file=sys.stderr,
+            )
         reader_records = build_reader_connections(
             sidecar, manifests, echo_graph, units
         )
         complete_echo_jobs(sidecar, manifests, echo_graph, reader_records)
+    # Reconcile persisted graph/reader artifacts to current works even when the
+    # embedding-dependent rebuild above was skipped (H3).
+    invalidate_stale_graph_artifacts(sidecar, manifests)
     print(
         f"Done: {processed} books processed"
         + (f", {len(graph['links'])} idea links" if graph else "")
