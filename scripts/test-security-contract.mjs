@@ -120,7 +120,7 @@ assert.match(
 );
 assert.match(
   echoes,
-  /duplicateEvidence[\s\S]*?return duplicateEvidence \? \[\] :/,
+  /const duplicateEvidence[\s\S]*?if \(duplicateEvidence\) return \[\];/,
   'duplicate source evidence is rejected before it can become an Echo',
 );
 assert.match(

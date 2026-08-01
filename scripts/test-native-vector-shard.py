@@ -160,4 +160,37 @@ with tempfile.TemporaryDirectory(prefix="books-native-graph-") as directory:
     assert completed_b.get("stages", {}).get("libraryLinks", {}).get(
         "status") == "complete", "an unleased job is completed normally"
 
+# M20 — the native pre-classification filters must match echoes.js exactly.
+assert books_index.dominant_script("A durable library preserves evidence.") == "latin"
+assert books_index.dominant_script("विचार और साक्ष्य को जोड़ता है।") == "devanagari"
+assert books_index.dominant_script("  123 — !?  ") == "neutral"
+_good_left = {
+    "statement": "Fast feedback changes future behaviour over time.",
+    "evidence": [{"passageId": "p1", "paragraphId": "para-1"}],
+}
+_good_right = {
+    "statement": "A durable library preserves evidence and context.",
+    "evidence": [{"passageId": "p2", "paragraphId": "para-2"}],
+}
+assert books_index.echo_candidate_filters_pass(_good_left, _good_right, 0.75) is True
+# minimum-spread: within the margin above the floor -> rejected.
+assert books_index.echo_candidate_filters_pass(
+    _good_left, _good_right,
+    books_index.ECHO_LINK_MIN_SCORE + books_index.ECHO_MIN_SPREAD_MARGIN / 2,
+) is False
+# language: cross-script pair rejected.
+assert books_index.echo_candidate_filters_pass(
+    _good_left,
+    {"statement": "विचार और साक्ष्य को जोड़ता है और अर्थ बनाता है।",
+     "evidence": [{"passageId": "p3", "paragraphId": "para-3"}]},
+    0.95,
+) is False
+# evidence-quality: thin statement / ungrounded evidence rejected.
+assert books_index.echo_candidate_filters_pass(
+    {"statement": "short", "evidence": _good_left["evidence"]}, _good_right, 0.95
+) is False
+assert books_index.echo_candidate_filters_pass(
+    _good_left, {"statement": _good_right["statement"], "evidence": [{"passageId": "p4"}]}, 0.95
+) is False
+
 print("Books native vector-shard contract: PASS")

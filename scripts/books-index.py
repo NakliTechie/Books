@@ -85,6 +85,59 @@ ECHO_LINK_MIN_SCORE = 0.70
 INLINE_ECHO_MIN_SCORE = 0.82
 ECHO_LINKS_PER_UNIT = 6
 ECHOES_PER_PARAGRAPH = 3
+# Pre-classification candidate filters (M20), kept byte-for-byte equivalent to
+# echoes.js so the browser and native executors accept the same links.
+ECHO_MIN_STATEMENT_LENGTH = 16
+ECHO_MIN_SPREAD_MARGIN = 0.02
+ECHO_SCRIPT_RANGES = (
+    ("devanagari", 0x0900, 0x097F),
+    ("bengali", 0x0980, 0x09FF),
+    ("tamil", 0x0B80, 0x0BFF),
+    ("cyrillic", 0x0400, 0x04FF),
+    ("greek", 0x0370, 0x03FF),
+    ("hebrew", 0x0590, 0x05FF),
+    ("arabic", 0x0600, 0x06FF),
+    ("hiragana", 0x3040, 0x309F),
+    ("katakana", 0x30A0, 0x30FF),
+    ("hangul", 0xAC00, 0xD7A3),
+    ("cjk", 0x4E00, 0x9FFF),
+)
+
+
+def dominant_script(text: str) -> str:
+    counts: dict[str, int] = {}
+    for character in str(text or ""):
+        cp = ord(character)
+        name = None
+        if (0x41 <= cp <= 0x5A) or (0x61 <= cp <= 0x7A) or (0xC0 <= cp <= 0x24F):
+            name = "latin"
+        else:
+            for candidate, lo, hi in ECHO_SCRIPT_RANGES:
+                if lo <= cp <= hi:
+                    name = candidate
+                    break
+        if name:
+            counts[name] = counts.get(name, 0) + 1
+    if not counts:
+        return "neutral"
+    return sorted(counts.items(), key=lambda row: (-row[1], row[0]))[0][0]
+
+
+def echo_unit_evidence_ok(unit: dict) -> bool:
+    return len(str(unit.get("statement") or "").strip()) >= ECHO_MIN_STATEMENT_LENGTH and any(
+        evidence.get("passageId") and evidence.get("paragraphId")
+        for evidence in unit.get("evidence", [])
+    )
+
+
+def echo_candidate_filters_pass(left: dict, right: dict, score: float) -> bool:
+    if score < ECHO_LINK_MIN_SCORE + ECHO_MIN_SPREAD_MARGIN:
+        return False
+    left_script = dominant_script(left.get("statement"))
+    right_script = dominant_script(right.get("statement"))
+    if left_script != "neutral" and right_script != "neutral" and left_script != right_script:
+        return False
+    return echo_unit_evidence_ok(left) and echo_unit_evidence_ok(right)
 ECHO_RELATION_CLASSIFICATION_MIN_CONFIDENCE = 0.72
 ECHO_RELATION_TYPES = {
     "same_as", "supports", "supported_by", "contradicts", "extends",
@@ -2814,6 +2867,8 @@ def build_echo_graph(sidecar: Path, manifests: list[dict], model_name: str):
                 for evidence in right.get("evidence", [])
                 if evidence.get("textHash")
             ):
+                continue
+            if not echo_candidate_filters_pass(left, right, score):
                 continue
             relation, method = classify_idea_relation(left, right, score)
             if relation == "related_to":

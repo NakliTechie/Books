@@ -19,6 +19,68 @@ export const DEFAULT_INLINE_ECHO_MIN_SCORE = 0.82;
 export const DEFAULT_ECHO_RELATION_MIN_CONFIDENCE = 0.72;
 export const DEFAULT_ECHO_LINKS_PER_UNIT = 6;
 export const DEFAULT_ECHOES_PER_PARAGRAPH = 3;
+// Pre-classification candidate filters (M20). Kept deterministic and identical
+// to build_echo_graph in scripts/books-index.py so both executors accept the
+// same links.
+export const ECHO_MIN_STATEMENT_LENGTH = 16;
+export const ECHO_MIN_SPREAD_MARGIN = 0.02;
+
+// Contiguous Unicode ranges, checked in this order, mirrored exactly in Python.
+const ECHO_SCRIPT_RANGES = [
+  ['devanagari', 0x0900, 0x097f],
+  ['bengali', 0x0980, 0x09ff],
+  ['tamil', 0x0b80, 0x0bff],
+  ['cyrillic', 0x0400, 0x04ff],
+  ['greek', 0x0370, 0x03ff],
+  ['hebrew', 0x0590, 0x05ff],
+  ['arabic', 0x0600, 0x06ff],
+  ['hiragana', 0x3040, 0x309f],
+  ['katakana', 0x30a0, 0x30ff],
+  ['hangul', 0xac00, 0xd7a3],
+  ['cjk', 0x4e00, 0x9fff],
+];
+
+// The dominant writing system of a statement, or 'neutral' when it carries no
+// script-bearing characters. Cross-script pairs are almost always spurious.
+export function dominantScript(text) {
+  const counts = {};
+  for (const character of String(text || '')) {
+    const cp = character.codePointAt(0);
+    let name = null;
+    if ((cp >= 0x41 && cp <= 0x5a) || (cp >= 0x61 && cp <= 0x7a)
+      || (cp >= 0xc0 && cp <= 0x24f)) {
+      name = 'latin';
+    } else {
+      for (const [candidate, lo, hi] of ECHO_SCRIPT_RANGES) {
+        if (cp >= lo && cp <= hi) { name = candidate; break; }
+      }
+    }
+    if (name) counts[name] = (counts[name] || 0) + 1;
+  }
+  const entries = Object.entries(counts);
+  if (!entries.length) return 'neutral';
+  entries.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+  return entries[0][0];
+}
+
+function echoUnitEvidenceOk(unit) {
+  return String(unit?.statement || '').trim().length >= ECHO_MIN_STATEMENT_LENGTH
+    && (unit?.evidence || []).some((row) => row?.passageId && row?.paragraphId);
+}
+
+// The four advertised pre-classification filters, as pure per-pair predicates
+// (same-edition is already enforced upstream by excluding same-work pairs):
+// language (no cross-script), evidence-quality (substantive grounded units),
+// and minimum-spread (a score margin above the candidate floor).
+export function echoCandidateFiltersPass(left, right, score, minScore) {
+  if (score < minScore + ECHO_MIN_SPREAD_MARGIN) return false;
+  const leftScript = dominantScript(left?.statement);
+  const rightScript = dominantScript(right?.statement);
+  if (leftScript !== 'neutral' && rightScript !== 'neutral'
+    && leftScript !== rightScript) return false;
+  if (!echoUnitEvidenceOk(left) || !echoUnitEvidenceOk(right)) return false;
+  return true;
+}
 
 export const ECHO_RELATION_TYPES = Object.freeze([
   'same_as',
@@ -494,7 +556,9 @@ export function buildEchoGraph({
     const leftHashes = new Set(left.evidence.map((row) => row.textHash).filter(Boolean));
     const duplicateEvidence = right.evidence.some((row) =>
       row.textHash && leftHashes.has(row.textHash));
-    return duplicateEvidence ? [] : [{ link, left, right }];
+    if (duplicateEvidence) return [];
+    if (!echoCandidateFiltersPass(left, right, link.score, minScore)) return [];
+    return [{ link, left, right }];
   }).sort((a, b) => b.link.score - a.link.score
     || a.link.linkId.localeCompare(b.link.linkId));
   const visibleCounts = new Map();

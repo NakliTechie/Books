@@ -3,6 +3,10 @@ import {
   applyEchoCurationToReaderConnections,
   applyEchoRelationClassifications,
   buildEchoGraph,
+  dominantScript,
+  echoCandidateFiltersPass,
+  ECHO_MIN_STATEMENT_LENGTH,
+  ECHO_MIN_SPREAD_MARGIN,
   buildReaderConnectionsForWork,
   DEFAULT_ECHO_RELATION_MIN_CONFIDENCE,
   ECHO_CURATION_PATH,
@@ -285,5 +289,53 @@ const excludedWork = buildReaderConnectionsForWork({
   now:fixedNow,
 });
 assert.equal(excludedWork.connectionCount, 0, 'work exclusions remain canonical');
+
+// M20 — pre-classification candidate filters (language / evidence-quality /
+// minimum-spread). Mirrored byte-for-byte in scripts/books-index.py.
+assert.equal(dominantScript('A durable library preserves evidence.'), 'latin');
+assert.equal(dominantScript('विचार और साक्ष्य को जोड़ता है।'), 'devanagari');
+assert.equal(dominantScript('  123 — !?  '), 'neutral');
+
+const goodLeft = {
+  statement:'Fast feedback changes future behaviour over time.',
+  evidence:[{ passageId:'p1', paragraphId:'para-1' }],
+};
+const goodRight = {
+  statement:'A durable library preserves evidence and context.',
+  evidence:[{ passageId:'p2', paragraphId:'para-2' }],
+};
+const minScore = 0.70;
+// A strong same-script grounded pair passes.
+assert.equal(echoCandidateFiltersPass(goodLeft, goodRight, 0.75, minScore), true);
+// minimum-spread: a score inside the margin above the floor is rejected.
+assert.equal(
+  echoCandidateFiltersPass(goodLeft, goodRight, minScore + ECHO_MIN_SPREAD_MARGIN / 2, minScore),
+  false,
+  'a candidate within the spread margin of the floor is dropped',
+);
+// language: a cross-script pair is rejected even at a high score.
+assert.equal(
+  echoCandidateFiltersPass(
+    goodLeft,
+    { statement:'विचार और साक्ष्य को जोड़ता है और अर्थ बनाता है।',
+      evidence:[{ passageId:'p3', paragraphId:'para-3' }] },
+    0.95,
+    minScore,
+  ),
+  false,
+  'a cross-script pair is dropped',
+);
+// evidence-quality: a too-thin statement or ungrounded evidence is rejected.
+assert.ok('short'.length < ECHO_MIN_STATEMENT_LENGTH);
+assert.equal(
+  echoCandidateFiltersPass({ statement:'short', evidence:goodLeft.evidence }, goodRight, 0.95, minScore),
+  false,
+  'a statement under the minimum length is dropped',
+);
+assert.equal(
+  echoCandidateFiltersPass(goodLeft, { statement:goodRight.statement, evidence:[{ passageId:'p4' }] }, 0.95, minScore),
+  false,
+  'a unit without paragraph-grounded evidence is dropped',
+);
 
 console.log('Lorewell Echoes domain contract: PASS');

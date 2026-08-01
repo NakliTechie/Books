@@ -229,8 +229,19 @@ classify their meaning without comparing every paragraph to every other one.
 - Embed bounded semantic-unit statements plus minimal evidence context using
   the compact local encoder.
 - Retrieve approximate nearest neighbors across different works.
-- Apply kind-compatibility, language, duplicate, same-edition, hidden-unit,
-  evidence-quality, and minimum-spread filters before model classification.
+- Apply these pre-classification candidate filters, implemented identically in
+  `echoes.js` and `scripts/books-index.py`:
+  - hidden-unit and duplicate-evidence (drop hidden units and pairs that share
+    the same source text);
+  - kind-compatibility (only compatible semantic-unit kinds may pair);
+  - same-edition (pairs within the same work/edition are excluded upstream by
+    never comparing a work to itself);
+  - language (no cross-script pairs: units whose statements have different
+    dominant writing systems are dropped);
+  - evidence-quality (both units need a substantive statement of at least
+    `ECHO_MIN_STATEMENT_LENGTH` characters and paragraph-grounded evidence);
+  - minimum-spread (the candidate score must clear `ECHO_MIN_SPREAD_MARGIN`
+    above the candidate floor, so only clearly-related pairs survive).
 - Add directed relations: `counterexample_to`, `illustrates`, `dramatizes`,
   `embodies`, `violates`, `tests`, `parallels`, `contrasts_with`, and `echoes`.
 - Pair-classify only bounded candidates using evidence from both works.
