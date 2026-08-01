@@ -1488,6 +1488,9 @@ def endpoint_embeddings(endpoint: str, model: str, values: list[str], api_key: s
     return [row["embedding"] for row in rows]
 
 
+MAX_PROVIDER_RESPONSE_BYTES = 8_000_000
+
+
 def post_json(url: str, payload: dict, api_key: str | None):
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -1499,7 +1502,12 @@ def post_json(url: str, payload: dict, api_key: str | None):
         method="POST",
     )
     with request.urlopen(req, timeout=300) as response:
-        return json.loads(response.read().decode("utf-8"))
+        # Bound the response so a hostile or runaway endpoint cannot exhaust
+        # memory; the socket timeout already bounds time (M19).
+        body = response.read(MAX_PROVIDER_RESPONSE_BYTES + 1)
+        if len(body) > MAX_PROVIDER_RESPONSE_BYTES:
+            raise ValueError("Provider response exceeded the size limit.")
+        return json.loads(body.decode("utf-8"))
 
 
 def extract_model_semantics(args, work_id: str, title: str, passages: list[dict]):
