@@ -162,6 +162,22 @@ class SourceChangedDuringScan(Exception):
     pass
 
 
+class LeaseLost(Exception):
+    """Raised when another executor holds this job's lease; abort without a
+    write rather than clobbering a foreign owner's state (H4)."""
+
+
+def lease_held_by_other(job: dict, executor_id: str) -> bool:
+    """True when a job carries an unexpired lease owned by a different
+    executor, so this process must not overwrite it (H4)."""
+    lease = job.get("lease") or {}
+    holder = lease.get("executorId")
+    if not holder or holder == executor_id:
+        return False
+    expiry = parse_timestamp(lease.get("expiresAt"))
+    return bool(expiry and expiry > datetime.now(timezone.utc))
+
+
 SAFE_SIDECAR_ROOT: Path | None = None
 
 
@@ -2158,6 +2174,14 @@ def process_work(root: Path, sidecar: Path, manifest: dict, embedder: Embedder, 
     def persist_job(checkpoint=None, error=None, release=False, honor_cancel=True):
         nonlocal existing_job
         disk_job = read_json(job_path, {})
+        # Compare-and-swap on ownership: if another executor has taken an
+        # unexpired lease since we last wrote, abort instead of clobbering it
+        # (H4). --force deliberately overrides.
+        if not force and lease_held_by_other(disk_job, executor_id):
+            raise LeaseLost(
+                f"{work_id} is now leased by "
+                f"{(disk_job.get('lease') or {}).get('executorId')}"
+            )
         if disk_job.get("cancelRequested") is True and not force:
             existing_job["cancelRequested"] = True
         if honor_cancel and existing_job.get("cancelRequested") is True and not force:
@@ -2398,6 +2422,10 @@ def process_work(root: Path, sidecar: Path, manifest: dict, embedder: Embedder, 
             }
         persist_job(release=True)
         return ideas
+    except LeaseLost as error:
+        # Another executor owns this job; leave its state untouched.
+        print(f"  {asset['sourceFilename']}: {error}", file=sys.stderr)
+        return None
     except ProcessingCancelled as error:
         running = next(
             (name for name, value in stages.items() if value.get("status") == "running"),
@@ -3180,11 +3208,15 @@ def complete_echo_jobs(
     graph: dict,
     reader_records: dict,
 ):
+    executor_id = native_executor_id()
     for manifest in manifests:
         work_id = manifest["workId"]
         path = sidecar / "jobs" / f"{work_id}.json"
         job = read_json(path)
         if not isinstance(job, dict):
+            continue
+        # Do not overwrite a job another executor is actively holding (H4).
+        if lease_held_by_other(job, executor_id):
             continue
         link_count = sum(
             link.get("leftWorkId") == work_id or link.get("rightWorkId") == work_id
@@ -3213,11 +3245,15 @@ def complete_echo_jobs(
 
 
 def complete_graph_jobs(sidecar: Path, manifests: list[dict], graph: dict):
+    executor_id = native_executor_id()
     for manifest in manifests:
         work_id = manifest["workId"]
         path = sidecar / "jobs" / f"{work_id}.json"
         job = read_json(path)
         if not isinstance(job, dict):
+            continue
+        # Do not overwrite a job another executor is actively holding (H4).
+        if lease_held_by_other(job, executor_id):
             continue
         link_count = sum(
             link.get("leftWorkId") == work_id or link.get("rightWorkId") == work_id

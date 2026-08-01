@@ -129,4 +129,35 @@ with tempfile.TemporaryDirectory(prefix="books-native-graph-") as directory:
     )
     assert native_graph["links"][0]["relation"] == "same_as"
 
+    # H4 — the global completion pass must not overwrite a job another executor
+    # is actively holding, while an unleased job is completed normally.
+    from datetime import datetime, timedelta, timezone
+    future = (datetime.now(timezone.utc) + timedelta(minutes=30)) \
+        .isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    past = (datetime.now(timezone.utc) - timedelta(minutes=30)) \
+        .isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    assert books_index.lease_held_by_other(
+        {"lease": {"executorId": "browser:x", "expiresAt": future}}, "native:y")
+    assert not books_index.lease_held_by_other(
+        {"lease": {"executorId": "native:y", "expiresAt": future}}, "native:y")
+    assert not books_index.lease_held_by_other(
+        {"lease": {"executorId": "browser:x", "expiresAt": past}}, "native:y")
+    assert not books_index.lease_held_by_other({}, "native:y")
+
+    work_a_job_path = sidecar / "jobs" / "work-a.json"
+    work_a_job = books_index.read_json(work_a_job_path, {})
+    work_a_job["lease"] = {
+        "executorId": "browser:foreign", "executorClass": "browser",
+        "claimedAt": future, "renewedAt": future, "expiresAt": future,
+    }
+    books_index.atomic_json(work_a_job_path, work_a_job)
+    books_index.complete_graph_jobs(sidecar, manifests, native_graph)
+    completed_a = books_index.read_json(work_a_job_path, {})
+    completed_b = books_index.read_json(sidecar / "jobs" / "work-b.json", {})
+    assert "libraryLinks" not in completed_a.get("stages", {}), \
+        "a foreign-leased job is not overwritten by the global completion pass"
+    assert completed_a["lease"]["executorId"] == "browser:foreign"
+    assert completed_b.get("stages", {}).get("libraryLinks", {}).get(
+        "status") == "complete", "an unleased job is completed normally"
+
 print("Books native vector-shard contract: PASS")
