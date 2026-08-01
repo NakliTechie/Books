@@ -23,6 +23,7 @@ from contextlib import contextmanager
 import hashlib
 import html
 from html.parser import HTMLParser
+import fcntl
 import json
 import math
 import os
@@ -218,6 +219,36 @@ class SourceChangedDuringScan(Exception):
 class LeaseLost(Exception):
     """Raised when another executor holds this job's lease; abort without a
     write rather than clobbering a foreign owner's state (H4)."""
+
+
+@contextmanager
+def native_work_lock(sidecar: Path, work_id: str):
+    """Hold an exclusive advisory lock for a work across its whole native
+    processing, closing the read-verify-then-rename window in which two
+    concurrent native indexer processes could both claim and write the same job
+    (H4). The lock auto-releases if the process exits. This coordinates
+    native<->native; native<->browser contention still relies on the job lease.
+    Yields True when the lock is held, False when another holder has it."""
+    locks_dir = sidecar / "locks"
+    locks_dir.mkdir(exist_ok=True)
+    lock_path = locks_dir / f"{work_id}.lock"
+    assert_safe_sidecar_path(lock_path)
+    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError):
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            except OSError:
+                pass
+    finally:
+        os.close(descriptor)
 
 
 def lease_held_by_other(job: dict, executor_id: str) -> bool:
@@ -3526,11 +3557,19 @@ def main():
     for manifest in manifests:
         if manifest.get("recordState") == "merged":
             continue
-        before = read_json(sidecar / "jobs" / f"{manifest['workId']}.json", {})
-        result = process_work(root, sidecar, manifest, embedder, args.force)
-        after = read_json(sidecar / "jobs" / f"{manifest['workId']}.json", {})
-        if result is not None and before.get("updatedAt") != after.get("updatedAt"):
-            processed += 1
+        with native_work_lock(sidecar, manifest["workId"]) as locked:
+            if not locked:
+                # Another native process holds this work; skip it entirely.
+                print(
+                    f"  {manifest['workId']}: skipped; locked by another native run",
+                    file=sys.stderr,
+                )
+                continue
+            before = read_json(sidecar / "jobs" / f"{manifest['workId']}.json", {})
+            result = process_work(root, sidecar, manifest, embedder, args.force)
+            after = read_json(sidecar / "jobs" / f"{manifest['workId']}.json", {})
+            if result is not None and before.get("updatedAt") != after.get("updatedAt"):
+                processed += 1
     graph = None
     echo_graph = None
     if embedder.mode != "none":

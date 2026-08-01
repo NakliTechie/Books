@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+import fcntl
 import importlib.util
 from array import array
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -244,5 +246,20 @@ with tempfile.TemporaryDirectory(prefix="books-classify-") as directory:
     assert classified_by_id["link-16"]["relation"] == "extends", \
         "the surviving batch's classification is applied"
     assert classified_by_id["link-16"].get("classification")
+
+# H4 — a work already locked by another native holder is skipped, not claimed.
+with tempfile.TemporaryDirectory(prefix="books-lock-") as directory:
+    lock_sidecar = Path(directory)
+    (lock_sidecar / "locks").mkdir()
+    held = os.open(lock_sidecar / "locks" / "work-locked.lock", os.O_CREAT | os.O_RDWR)
+    fcntl.flock(held, fcntl.LOCK_EX)
+    try:
+        with books_index.native_work_lock(lock_sidecar, "work-locked") as locked:
+            assert locked is False, "a work held by another native holder is not re-locked"
+        with books_index.native_work_lock(lock_sidecar, "work-free") as free_locked:
+            assert free_locked is True, "an unlocked work is lockable"
+    finally:
+        fcntl.flock(held, fcntl.LOCK_UN)
+        os.close(held)
 
 print("Books native vector-shard contract: PASS")
