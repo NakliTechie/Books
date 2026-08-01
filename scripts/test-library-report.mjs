@@ -131,4 +131,57 @@ assert.match(formatLibraryReport(report), /2 \/ 1 \/ 1/);
 assert.match(formatLibraryReport(report), /Connection quality/);
 assert.match(formatLibraryReport(report), /Pair review: 4 \/ 20/);
 
+// M17 — lineage validators and unreadable-artifact surfacing.
+const lineageReport = buildLibraryReport({
+  generatedAt:'2026-07-30T00:00:00.000Z',
+  catalog:{ works:[
+    { workId:'work-stale', title:'Stale' },
+    { workId:'work-gap', title:'Gap' },
+  ] },
+  manifests:[
+    {
+      workId:'work-stale', title:'Stale',
+      assets:[{
+        assetId:'asset-new', fingerprint:'sha256:new',
+        sourceFilename:'Stale.md', format:'md', availability:'available',
+      }],
+    },
+    {
+      workId:'work-gap', title:'Gap',
+      assets:[{
+        assetId:'asset-gap', fingerprint:'sha256:gap',
+        sourceFilename:'Gap.md', format:'md', availability:'available',
+      }],
+    },
+  ],
+  jobs:[
+    { workId:'work-stale', stages:{
+      passages:{ status:'complete', passageCount:1 },
+      semanticUnits:{ status:'complete' },
+    } },
+    { workId:'work-gap', stages:{
+      passages:{ status:'complete' },
+      semanticUnits:{ status:'complete' },
+    } },
+  ],
+  passages:[{ workId:'work-stale', assetId:'asset-old', passages:[{ passageId:'p1' }] }],
+  semantics:[{ workId:'work-stale', sourceFingerprint:'sha256:old', concepts:[] }],
+  semanticUnits:[{ workId:'work-stale', sourceFingerprint:'sha256:old', units:[{ unitId:'u1' }] }],
+  artifactErrors:['/lib/.books/semantic/work-broken/units.json'],
+});
+const lineageCodes = new Set(lineageReport.issues.map((issue) => issue.code));
+assert.ok(lineageCodes.has('stale-passage-lineage'), 'stale passage assetId is flagged');
+assert.ok(lineageCodes.has('stale-semantic-lineage'), 'stale semantic fingerprint is flagged');
+assert.ok(lineageCodes.has('stale-unit-lineage'), 'stale unit fingerprint is flagged');
+assert.ok(lineageCodes.has('missing-completed-passages'),
+  'a passages stage marked complete with no passage record is flagged');
+assert.ok(lineageCodes.has('missing-completed-units'),
+  'a semanticUnits stage marked complete with no unit record is flagged');
+assert.ok(lineageCodes.has('unreadable-artifact'),
+  'a corrupt artifact is retained as an issue, not read as missing');
+assert.equal(
+  lineageReport.issues.find((issue) => issue.code === 'unreadable-artifact')?.path,
+  '/lib/.books/semantic/work-broken/units.json',
+);
+
 console.log('Books library report contract: PASS');

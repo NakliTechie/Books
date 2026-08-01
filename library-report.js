@@ -73,6 +73,7 @@ export function buildLibraryReport({
   echoGraph = null,
   readerConnections = [],
   echoQuality = null,
+  artifactErrors = [],
   generatedAt = new Date().toISOString(),
 } = {}) {
   const manifestById = new Map(
@@ -117,6 +118,11 @@ export function buildLibraryReport({
   ]);
   const catalogById = new Map(catalogWorks.map((work) => [work.workId, work]));
   const issues = [];
+  // Files that existed but could not be parsed are corruption signals, not
+  // absence; retain them as issues instead of silently reading as missing (M17).
+  for (const path of asArray(artifactErrors)) {
+    issues.push({ code:'unreadable-artifact', path:String(path) });
+  }
   const works = Array.from(knownWorkIds, (workId) => {
     const manifest = manifestById.get(workId);
     const projection = catalogById.get(workId);
@@ -128,6 +134,11 @@ export function buildLibraryReport({
     const missingAssets = assetRows.filter(
       (asset) => asset.availability === 'missing',
     );
+    const passageRecord = passageById.get(workId);
+    const semanticRecord = semanticById.get(workId);
+    const ideaRecord = ideaById.get(workId);
+    const unitRecord = unitsById.get(workId);
+    const readerConnectionRecord = readerConnectionsById.get(workId);
     const workIssues = [];
     if (!manifest) workIssues.push('missing-work-manifest');
     if (!projection) workIssues.push('missing-catalog-projection');
@@ -141,14 +152,36 @@ export function buildLibraryReport({
     if (outcome === 'waiting-for-stable-source') {
       workIssues.push('unstable-source');
     }
+    // Artifact lineage: a stage marked complete whose artifact is missing, or an
+    // artifact whose source lineage no longer matches the current asset, means
+    // the reported "complete" state is stale or corrupt and must be surfaced,
+    // not blessed (M17).
+    const currentAsset = availableAssets[0];
+    const stageComplete = (name) => run?.stages?.[name]?.status === 'complete';
+    if (stageComplete('passages') && !asArray(passageRecord?.passages).length) {
+      workIssues.push('missing-completed-passages');
+    }
+    if (stageComplete('semanticUnits') && !asArray(unitRecord?.units).length) {
+      workIssues.push('missing-completed-units');
+    }
+    if (currentAsset) {
+      if (passageRecord?.assetId && passageRecord.assetId !== currentAsset.assetId) {
+        workIssues.push('stale-passage-lineage');
+      }
+      for (const [record, code] of [
+        [semanticRecord, 'stale-semantic-lineage'],
+        [ideaRecord, 'stale-idea-lineage'],
+        [unitRecord, 'stale-unit-lineage'],
+      ]) {
+        if (record?.sourceFingerprint
+          && record.sourceFingerprint !== currentAsset.fingerprint) {
+          workIssues.push(code);
+        }
+      }
+    }
     for (const code of workIssues) {
       issues.push({ code, workId, title:manifest?.title || projection?.title || workId });
     }
-    const passageRecord = passageById.get(workId);
-    const semanticRecord = semanticById.get(workId);
-    const ideaRecord = ideaById.get(workId);
-    const unitRecord = unitsById.get(workId);
-    const readerConnectionRecord = readerConnectionsById.get(workId);
     return {
       workId,
       title:manifest?.title || projection?.title || 'Untitled',

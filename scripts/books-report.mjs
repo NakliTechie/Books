@@ -21,12 +21,45 @@ function parseArgs(argv) {
   return { folder:resolve(positional[0]), json };
 }
 
+const parseErrors = [];
+
 async function readJson(path, fallback = null) {
+  let text;
   try {
-    return JSON.parse(await readFile(path, 'utf8'));
+    text = await readFile(path, 'utf8');
   } catch {
+    return fallback; // absent or unreadable — genuine absence, not corruption
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    // A file that exists but does not parse is corruption; record it so the
+    // report surfaces it rather than treating it as missing (M17).
+    parseErrors.push(path);
+    process.stderr.write(
+      `Lorewell report: unreadable JSON at ${path} (${error.message})\n`,
+    );
     return fallback;
   }
+}
+
+// Bound file-read fan-out so a large library cannot open thousands of
+// descriptors at once (M17).
+const READ_CONCURRENCY = 32;
+
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await fn(items[index], index);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return results;
 }
 
 const SAFE_ID = /^[A-Za-z0-9_-]{1,240}$/;
@@ -63,27 +96,25 @@ async function readValidatedRecordDirectory(path, recordType = null) {
   } catch {
     return [];
   }
-  const records = await Promise.all(
-    names
-      .filter((name) => name.endsWith('.json') && SAFE_ID.test(name.slice(0, -5)))
-      .sort()
-      .map(async (name) => {
-        const workId = name.slice(0, -5);
-        const record = await readJson(resolve(path, name));
-        if (!record || record.workId !== workId) return null;
-        if (recordType && record.recordType !== recordType) return null;
-        return record;
-      }),
-  );
+  const candidates = names
+    .filter((name) => name.endsWith('.json') && SAFE_ID.test(name.slice(0, -5)))
+    .sort();
+  const records = await mapWithConcurrency(candidates, READ_CONCURRENCY, async (name) => {
+    const workId = name.slice(0, -5);
+    const record = await readJson(resolve(path, name));
+    if (!record || record.workId !== workId) return null;
+    if (recordType && record.recordType !== recordType) return null;
+    return record;
+  });
   return records.filter(Boolean);
 }
 
 async function readSemanticRecords(sidecar, workIds, filename) {
-  const records = await Promise.all(
-    workIds
-      .filter((workId) => SAFE_ID.test(workId))
-      .map((workId) =>
-        readJson(resolve(sidecar, 'semantic', workId, filename))),
+  const safeWorkIds = workIds.filter((workId) => SAFE_ID.test(workId));
+  const records = await mapWithConcurrency(
+    safeWorkIds,
+    READ_CONCURRENCY,
+    (workId) => readJson(resolve(sidecar, 'semantic', workId, filename)),
   );
   return records.filter((record) =>
     record && SAFE_ID.test(record.workId) && workIds.includes(record.workId));
@@ -155,6 +186,7 @@ const report = buildLibraryReport({
   echoQuality:effectiveEchoReviewQueue
     ? buildEchoQualityReport(effectiveEchoReviewQueue, echoEvaluations)
     : null,
+  artifactErrors:parseErrors,
 });
 process.stdout.write(json
   ? JSON.stringify(report, null, 2) + '\n'
