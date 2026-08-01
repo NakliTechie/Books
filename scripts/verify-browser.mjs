@@ -204,6 +204,11 @@ async function runChrome(chromePath, url, profilePath, mode = 'harness') {
     '--mute-audio',
     '--no-default-browser-check',
     '--no-first-run',
+    // CI containers usually lack the namespaces Chrome's sandbox needs; opt in
+    // to --no-sandbox there without weakening local runs (SB7).
+    ...(process.env.CHROME_NO_SANDBOX
+      ? ['--no-sandbox', '--disable-setuid-sandbox']
+      : []),
     '--remote-debugging-port=0',
     '--user-data-dir=' + profilePath,
     'about:blank',

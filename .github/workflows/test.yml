@@ -31,3 +31,30 @@ jobs:
           test -f dist/guide/index.html
           test -f dist/guide/screenshots/active-reader/06-ai-reading-companion.png
       - run: npx wrangler deploy --dry-run
+
+  hosted-harness:
+    # Runs the hosted/browser regression (test/host-harness.html) in real
+    # headless Chrome so browser-side regressions are caught automatically (SB7).
+    runs-on: ubuntu-latest
+    env:
+      CHROME_NO_SANDBOX: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Locate the pre-installed Chrome on the runner
+        run: |
+          set -e
+          chrome=""
+          for candidate in \
+            /usr/bin/google-chrome-stable \
+            /usr/bin/google-chrome \
+            /usr/bin/chromium-browser \
+            /usr/bin/chromium; do
+            if [ -x "$candidate" ]; then chrome="$candidate"; break; fi
+          done
+          test -n "$chrome" || { echo "No Chrome found on the runner"; exit 1; }
+          echo "CHROME_PATH=$chrome" >> "$GITHUB_ENV"
+      - run: npm run test:browser
