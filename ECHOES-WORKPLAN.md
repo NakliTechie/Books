@@ -57,7 +57,7 @@ files or make derived intelligence canonical.
 
 - `passages-v3` emits stable paragraph IDs, UTF-16 offsets, structure,
   quote/text hashes, and faithful-engine fallbacks in both executors.
-- `books.semantic-units`, `echo-graph-v2`, and
+- `books.semantic-units`, `library-echo-links-v2`, and
   `books.reader-connections` are rebuildable artifacts; canonical hide,
   quality, spoiler, and work-exclusion feedback lives in
   `annotations/echoes.json`.

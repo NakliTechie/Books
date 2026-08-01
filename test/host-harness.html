@@ -595,7 +595,7 @@
           recordType:'books.reader-connections',
           indexVersion:'reader-connections-v1',
           workId:sampleWorkId,
-          graphVersion:'echo-graph-v2',
+          graphVersion:'library-echo-links-v2',
           connectionCount:1,
           connections:[{
             connectionId:'echo_harness_reader_roundtrip',
@@ -630,7 +630,7 @@
               targetQuoteHash:targetParagraph.anchor?.quoteHash || null,
             },
             generatedBy:{
-              graph:'echo-graph-v2',
+              graph:'library-echo-links-v2',
               model:'harness-echo-classifier',
               relationMethod:'source-grounded-echo-classifier',
             },
