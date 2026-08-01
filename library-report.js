@@ -93,6 +93,18 @@ export function buildLibraryReport({
   const readerConnectionsById = new Map(
     asArray(readerConnections).map((record) => [record.workId, record]),
   );
+  // Paragraph anchors that actually exist, per work, for evidence and
+  // reader-connection freshness checks (M17).
+  const paragraphsByWork = new Map();
+  for (const record of asArray(passages)) {
+    const ids = new Set();
+    for (const passage of asArray(record?.passages)) {
+      for (const paragraph of asArray(passage?.paragraphs)) {
+        if (paragraph?.paragraphId) ids.add(paragraph.paragraphId);
+      }
+    }
+    paragraphsByWork.set(record?.workId, ids);
+  }
   const links = asArray(graph?.links);
   const linkCountByWork = new Map();
   for (const link of links) {
@@ -178,6 +190,30 @@ export function buildLibraryReport({
           workIssues.push(code);
         }
       }
+    }
+    // Deeper freshness: unit evidence and reader connections must resolve to
+    // paragraphs that still exist, and reader connections must match the
+    // current Echo graph version (M17).
+    const workParagraphs = paragraphsByWork.get(workId) || new Set();
+    const unitEvidenceDangling = asArray(unitRecord?.units).some((unit) =>
+      asArray(unit?.evidence).some((row) =>
+        row?.paragraphId && !workParagraphs.has(row.paragraphId)));
+    if (unitEvidenceDangling) workIssues.push('dangling-unit-evidence');
+    const connections = asArray(readerConnectionRecord?.connections);
+    const readerConnectionDangling = connections.some((connection) => {
+      if (connection?.source?.paragraphId
+        && !workParagraphs.has(connection.source.paragraphId)) return true;
+      const targetWorkId = connection?.target?.workId;
+      const targetParagraph = connection?.target?.paragraphId;
+      if (!targetWorkId || !targetParagraph) return false;
+      const targetSet = paragraphsByWork.get(targetWorkId);
+      // Only flag when we actually have the target work's paragraphs loaded.
+      return targetSet ? !targetSet.has(targetParagraph) : false;
+    });
+    if (readerConnectionDangling) workIssues.push('stale-reader-connection');
+    if (readerConnectionRecord?.graphVersion && echoGraph?.graphVersion
+      && readerConnectionRecord.graphVersion !== echoGraph.graphVersion) {
+      workIssues.push('stale-reader-graph');
     }
     for (const code of workIssues) {
       issues.push({ code, workId, title:manifest?.title || projection?.title || workId });

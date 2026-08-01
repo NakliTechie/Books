@@ -184,4 +184,43 @@ assert.equal(
   '/lib/.books/semantic/work-broken/units.json',
 );
 
+// M17 deeper — dangling evidence, stale reader connections, stale reader graph.
+const freshnessReport = buildLibraryReport({
+  generatedAt:'2026-07-30T00:00:00.000Z',
+  catalog:{ works:[{ workId:'work-f', title:'Fresh' }] },
+  manifests:[{
+    workId:'work-f', title:'Fresh',
+    assets:[{
+      assetId:'asset-f', fingerprint:'sha256:f',
+      sourceFilename:'F.md', format:'md', availability:'available',
+    }],
+  }],
+  jobs:[{ workId:'work-f', stages:{
+    passages:{ status:'complete' }, semanticUnits:{ status:'complete' },
+  } }],
+  passages:[{
+    workId:'work-f', assetId:'asset-f',
+    passages:[{ passageId:'pg-1', paragraphs:[{ paragraphId:'para-1' }] }],
+  }],
+  semanticUnits:[{
+    workId:'work-f', sourceFingerprint:'sha256:f',
+    units:[{ unitId:'u1', evidence:[{ paragraphId:'para-missing' }] }],
+  }],
+  readerConnections:[{
+    workId:'work-f', graphVersion:'echo-graph-old',
+    connections:[{
+      source:{ paragraphId:'para-missing' },
+      target:{ workId:'work-f', paragraphId:'para-1' },
+    }],
+  }],
+  echoGraph:{ graphVersion:'library-echo-links-v2', links:[] },
+});
+const freshCodes = new Set(freshnessReport.issues.map((issue) => issue.code));
+assert.ok(freshCodes.has('dangling-unit-evidence'),
+  'unit evidence pointing at a missing paragraph is flagged');
+assert.ok(freshCodes.has('stale-reader-connection'),
+  'a reader connection whose source paragraph is gone is flagged');
+assert.ok(freshCodes.has('stale-reader-graph'),
+  'a reader-connections record from an older graph version is flagged');
+
 console.log('Books library report contract: PASS');
