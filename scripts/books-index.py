@@ -2932,6 +2932,49 @@ def build_echo_graph(sidecar: Path, manifests: list[dict], model_name: str):
     return graph, units
 
 
+def _post_classifier_batch(args, system: str, pairs: list) -> list:
+    """POST one classifier batch and return its parsed relations list. Raises on
+    a network or JSON failure so the caller can skip just this batch (H5)."""
+    base = args.endpoint.rstrip("/")
+    if "11434" in base and not base.endswith("/v1"):
+        response = post_json(
+            base + "/api/chat",
+            {
+                "model": args.chat_model,
+                "stream": False,
+                "format": "json",
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": json.dumps({"pairs": pairs})},
+                ],
+            },
+            args.api_key,
+        )
+        content = response.get("message", {}).get("content", "")
+    else:
+        response = post_json(
+            base + (
+                "/chat/completions"
+                if base.endswith("/v1")
+                else "/v1/chat/completions"
+            ),
+            {
+                "model": args.chat_model,
+                "temperature": 0.1,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": json.dumps({"pairs": pairs})},
+                ],
+            },
+            args.api_key,
+        )
+        content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+    parsed = json.loads(re.sub(
+        r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.I
+    ))
+    return parsed.get("relations", [])
+
+
 def classify_echo_graph(args, sidecar: Path, graph: dict, units: list[dict]):
     if not args.chat_model or not args.endpoint:
         return graph
@@ -2978,47 +3021,18 @@ def classify_echo_graph(args, sidecar: Path, graph: dict, units: list[dict]):
             "\"explanation\":string}]}. Explanations must be one cautious "
             "sentence grounded in both excerpts. Do not invent IDs or intent."
         )
-        base = args.endpoint.rstrip("/")
-        if "11434" in base and not base.endswith("/v1"):
-            response = post_json(
-                base + "/api/chat",
-                {
-                    "model": args.chat_model,
-                    "stream": False,
-                    "format": "json",
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": json.dumps({"pairs": pairs})},
-                    ],
-                },
-                args.api_key,
+        try:
+            relations = _post_classifier_batch(args, system, pairs)
+        except Exception as error:  # noqa: BLE001 - one bad batch must not forfeit the rest
+            print(
+                f"Echo-graph classification batch skipped "
+                f"({type(error).__name__}: {error}).",
+                file=sys.stderr,
             )
-            content = response.get("message", {}).get("content", "")
-        else:
-            response = post_json(
-                base + (
-                    "/chat/completions"
-                    if base.endswith("/v1") else "/v1/chat/completions"
-                ),
-                {
-                    "model": args.chat_model,
-                    "temperature": 0.1,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": json.dumps({"pairs": pairs})},
-                    ],
-                },
-                args.api_key,
-            )
-            content = response.get("choices", [{}])[0].get("message", {}).get(
-                "content", ""
-            )
-        parsed = json.loads(re.sub(
-            r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.I
-        ))
+            continue
         classifications = {
             row.get("linkId"): row
-            for row in parsed.get("relations", [])
+            for row in relations
             if (
                 row.get("relation") in ECHO_RELATION_TYPES
                 and max(0, min(1, float(row.get("confidence") or 0)))
@@ -3372,46 +3386,18 @@ def classify_graph(args, sidecar: Path, graph: dict):
             "\"confidence\":number,\"rationale\":string}]}. Use related_to "
             "when evidence is insufficient. Do not create IDs."
         )
-        base = args.endpoint.rstrip("/")
-        if "11434" in base and not base.endswith("/v1"):
-            response = post_json(
-                base + "/api/chat",
-                {
-                    "model": args.chat_model,
-                    "stream": False,
-                    "format": "json",
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": json.dumps({"pairs": pairs})},
-                    ],
-                },
-                args.api_key,
+        try:
+            relations = _post_classifier_batch(args, system, pairs)
+        except Exception as error:  # noqa: BLE001 - one bad batch must not forfeit the rest
+            print(
+                f"Idea-graph classification batch skipped "
+                f"({type(error).__name__}: {error}).",
+                file=sys.stderr,
             )
-            content = response.get("message", {}).get("content", "")
-        else:
-            response = post_json(
-                base + (
-                    "/chat/completions"
-                    if base.endswith("/v1")
-                    else "/v1/chat/completions"
-                ),
-                {
-                    "model": args.chat_model,
-                    "temperature": 0.1,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": json.dumps({"pairs": pairs})},
-                    ],
-                },
-                args.api_key,
-            )
-            content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
-        parsed = json.loads(re.sub(
-            r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.I
-        ))
+            continue
         classifications = {
             row.get("linkId"): row
-            for row in parsed.get("relations", [])
+            for row in relations
             if (
                 row.get("relation") in RELATION_TYPES
                 and max(0, min(1, float(row.get("confidence") or 0)))

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import importlib.util
 from array import array
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -192,5 +193,56 @@ assert books_index.echo_candidate_filters_pass(
 assert books_index.echo_candidate_filters_pass(
     _good_left, {"statement": _good_right["statement"], "evidence": [{"passageId": "p4"}]}, 0.95
 ) is False
+
+# H5 — a failed classifier batch must not forfeit the batches after it.
+class _ClassifierArgs:
+    endpoint = "http://127.0.0.1:9/v1"
+    chat_model = "test-model"
+    api_key = None
+
+
+with tempfile.TemporaryDirectory(prefix="books-classify-") as directory:
+    classify_sidecar = Path(directory)
+    classify_graph_data = {
+        "links": [
+            {
+                "linkId": f"link-{i}",
+                "leftIdeaId": f"a{i}",
+                "rightIdeaId": f"b{i}",
+                "leftWorkId": "wa",
+                "rightWorkId": "wb",
+                "relation": "related_to",
+            }
+            for i in range(20)  # 20 candidates -> two batches of 16 + 4
+        ],
+    }
+    calls = {"n": 0}
+    original_post_json = books_index.post_json
+
+    def _fake_post_json(url, payload, api_key):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("simulated endpoint failure on the first batch")
+        return {"choices": [{"message": {"content": json.dumps({
+            "relations": [
+                {"linkId": "link-16", "relation": "extends", "confidence": 0.9}
+            ]
+        })}}]}
+
+    books_index.post_json = _fake_post_json
+    try:
+        classified = books_index.classify_graph(
+            _ClassifierArgs(), classify_sidecar, classify_graph_data
+        )
+    finally:
+        books_index.post_json = original_post_json
+
+    classified_by_id = {link["linkId"]: link for link in classified["links"]}
+    assert calls["n"] == 2, "the second batch is attempted despite the first failing"
+    assert classified_by_id["link-0"]["relation"] == "related_to", \
+        "the failed batch keeps its deterministic relation"
+    assert classified_by_id["link-16"]["relation"] == "extends", \
+        "the surviving batch's classification is applied"
+    assert classified_by_id["link-16"].get("classification")
 
 print("Books native vector-shard contract: PASS")
