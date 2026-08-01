@@ -213,4 +213,55 @@ assert.deepEqual(
   'browser and native executors produce the same typed semantic units',
 );
 
+// M16 — a long non-BMP paragraph must fragment identically across executors.
+// 800 astral code points = 1600 UTF-16 units, above the 1400-unit passage
+// budget; a code-point splitter would keep it whole while a UTF-16 splitter
+// makes two fragments, so this fixture discriminates the two algorithms.
+const astralFixture = mkdtempSync(join(tmpdir(), 'books-astral-parity-'));
+process.on('exit', () => rmSync(astralFixture, { recursive:true, force:true }));
+const astralParagraph = '\u{1F4A1}'.repeat(800);
+const astralSource = ['# Sparks', '', astralParagraph].join('\n');
+writeFileSync(join(astralFixture, 'Sparks.md'), astralSource);
+execFileSync(
+  'python3',
+  [new URL('./books-index.py', import.meta.url).pathname, astralFixture, '--no-embeddings'],
+  { stdio:'pipe' },
+);
+const astralCatalog = JSON.parse(readFileSync(
+  join(astralFixture, '.books', 'catalog', 'catalog.json'), 'utf8'));
+const astralWorkId = astralCatalog.works[0].workId;
+const astralManifest = JSON.parse(readFileSync(
+  join(astralFixture, '.books', 'catalog', 'works', astralWorkId + '.json'), 'utf8'));
+const astralAsset = astralManifest.assets[0];
+const nativeAstralPassages = JSON.parse(readFileSync(
+  join(astralFixture, '.books', 'semantic', astralWorkId, 'passages.json'), 'utf8'));
+const browserAstralPassages = await segmentSections({
+  workId:astralWorkId,
+  assetId:astralAsset.assetId,
+  format:'md',
+  sections:[{
+    label:'Sparks',
+    text:astralParagraph,
+    anchor:{ kind:'text-offset', sectionIndex:0 },
+  }],
+});
+const projectAstral = (passages) => passages.map((passage) => ({
+  passageId:passage.passageId,
+  paragraphs:passage.paragraphs.map((paragraph) => ({
+    paragraphId:paragraph.paragraphId,
+    text:paragraph.text,
+    range:paragraph.anchor.normalizedRange,
+    structure:paragraph.structure,
+  })),
+}));
+const nativeAstralFragments = nativeAstralPassages.passages.flatMap(
+  (passage) => passage.paragraphs);
+assert.ok(nativeAstralFragments.length >= 2,
+  'a 1600-unit astral paragraph fragments into at least two parts');
+assert.deepEqual(
+  projectAstral(nativeAstralPassages.passages),
+  projectAstral(browserAstralPassages),
+  'browser and native executors fragment non-BMP paragraphs identically (M16)',
+);
+
 console.log('Books browser/native executor parity: PASS');

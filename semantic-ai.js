@@ -248,6 +248,54 @@ export async function listOpenAICompatibleModels({
   };
 }
 
+// Read a provider response as JSON under a hard byte ceiling so a hostile or
+// runaway endpoint cannot exhaust memory by streaming an unbounded body (M19).
+// Prefers a streaming read; falls back to bounded text, then buffered JSON for
+// fetch stand-ins (e.g. tests) that expose neither.
+export async function readJsonBounded(response, maxBytes) {
+  if (response.body && typeof response.body.getReader === 'function') {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try { await reader.cancel(); } catch (_) { /* already closing */ }
+        throw new Error('The provider response exceeded the size limit.');
+      }
+      chunks.push(value);
+    }
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.byteLength; }
+    return JSON.parse(new TextDecoder().decode(merged));
+  }
+  if (typeof response.text === 'function') {
+    const body = await response.text();
+    if (body.length > maxBytes) {
+      throw new Error('The provider response exceeded the size limit.');
+    }
+    return JSON.parse(body);
+  }
+  return response.json();
+}
+
+// Bound a request in time even when the caller passes no signal, and honour a
+// caller signal when it does (M19).
+function requestSignal(signal, timeoutMs) {
+  if (typeof AbortSignal === 'undefined'
+    || typeof AbortSignal.timeout !== 'function') {
+    return signal;
+  }
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  if (signal && typeof AbortSignal.any === 'function') {
+    return AbortSignal.any([signal, timeoutSignal]);
+  }
+  return signal || timeoutSignal;
+}
+
 export async function callOpenAICompatible({
   config,
   apiKey = '',
@@ -256,6 +304,8 @@ export async function callOpenAICompatible({
   fetchImpl = globalThis.fetch,
   temperature = 0.1,
   maxTokens = 1200,
+  maxResponseBytes = 8_000_000,
+  timeoutMs = 60_000,
 }) {
   const normalized = normalizeProviderConfig(config);
   if (typeof fetchImpl !== 'function') {
@@ -270,7 +320,7 @@ export async function callOpenAICompatible({
     response = await fetchImpl(completionEndpoint(normalized.endpoint), {
       method:'POST',
       headers,
-      signal,
+      signal:requestSignal(signal, timeoutMs),
       body:JSON.stringify({
         model:normalized.model,
         messages:cloneJson(messages || []),
@@ -287,7 +337,7 @@ export async function callOpenAICompatible({
       'Provider request failed with HTTP ' + response.status + '.',
     );
   }
-  const payload = await response.json();
+  const payload = await readJsonBounded(response, maxResponseBytes);
   const text = payload?.choices?.[0]?.message?.content;
   if (typeof text !== 'string' || !text.trim()) {
     throw new Error('The provider returned no readable answer.');

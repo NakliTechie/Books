@@ -176,6 +176,41 @@ assert.equal(capturedRequest.options.headers.Authorization, 'Bearer session-secr
 assert.doesNotMatch(capturedRequest.options.body, /session-secret/);
 assert.equal(completion.text, 'Grounded response [S1].');
 
+// M19 — an oversized provider response is rejected, not buffered whole.
+await assert.rejects(
+  callOpenAICompatible({
+    config:remote,
+    apiKey:'session-secret',
+    messages:grounded.messages,
+    maxResponseBytes:1024,
+    fetchImpl:async () => ({
+      ok:true,
+      status:200,
+      async text() { return JSON.stringify({ padding:'x'.repeat(4096) }); },
+    }),
+  }),
+  /exceeded the size limit/,
+  'a provider response over the byte ceiling is rejected (M19)',
+);
+
+// M19 — a bounded response under the ceiling is read via the text path.
+const boundedCompletion = await callOpenAICompatible({
+  config:remote,
+  apiKey:'session-secret',
+  messages:grounded.messages,
+  fetchImpl:async () => ({
+    ok:true,
+    status:200,
+    async text() {
+      return JSON.stringify({
+        model:'remote-reader',
+        choices:[{ message:{ content:'Bounded [S1].' } }],
+      });
+    },
+  }),
+});
+assert.equal(boundedCompletion.text, 'Bounded [S1].');
+
 let modelsRequest = null;
 const discovered = await listOpenAICompatibleModels({
   endpoint:'http://127.0.0.1:11434',

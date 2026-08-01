@@ -79,6 +79,28 @@ async function sha256Text(value) {
     byte.toString(16).padStart(2, '0')).join('');
 }
 
+// Fragment an over-long paragraph by a UTF-16 code-unit budget without ever
+// splitting a surrogate pair, so the browser and native (Python) executors
+// produce identical fragment boundaries and counts for non-BMP text (M16).
+// Mirrors split_utf16_fragments in scripts/books-index.py exactly.
+function splitUtf16Fragments(value, maxUnits) {
+  const fragments = [];
+  let current = '';
+  let units = 0;
+  for (const character of value) {
+    const width = character.length;
+    if (current && units + width > maxUnits) {
+      fragments.push(current);
+      current = '';
+      units = 0;
+    }
+    current += character;
+    units += width;
+  }
+  if (current) fragments.push(current);
+  return fragments;
+}
+
 function splitSection(text, maxChars) {
   const normalized = normalizePassageText(text);
   if (!normalized) return [];
@@ -110,11 +132,11 @@ function splitSection(text, maxChars) {
     if (!trimmed) continue;
     if (trimmed.length > maxChars) {
       pushChunk();
-      const codePoints = Array.from(trimmed);
-      const fragmentCount = Math.ceil(codePoints.length / maxChars);
+      const fragments = splitUtf16Fragments(trimmed, maxChars);
+      const fragmentCount = fragments.length;
       let utf16Offset = 0;
-      for (let offset = 0; offset < codePoints.length; offset += maxChars) {
-        const text = codePoints.slice(offset, offset + maxChars).join('');
+      for (let fragmentIndex = 0; fragmentIndex < fragments.length; fragmentIndex++) {
+        const text = fragments[fragmentIndex];
         const end = utf16Offset + text.length;
         chunks.push({
           text,
@@ -125,7 +147,7 @@ function splitSection(text, maxChars) {
             start:paragraphStart + utf16Offset,
             end:paragraphStart + end,
             paragraphIndex,
-            fragmentIndex:Math.floor(offset / maxChars),
+            fragmentIndex,
             fragmentCount,
           }],
         });

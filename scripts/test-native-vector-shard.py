@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import importlib.util
+from array import array
 from pathlib import Path
 import sys
 import tempfile
+import tracemalloc
 
 sys.dont_write_bytecode = True
 module_path = Path(__file__).with_name("books-index.py")
@@ -15,8 +17,32 @@ with tempfile.TemporaryDirectory(prefix="books-vectors-") as directory:
     vectors = [[1.0, 0.0, 0.5], [0.0, 1.0, -0.25]]
     books_index.atomic_vector_shard(path, vectors, 3)
     decoded = books_index.read_vector_shard(path, 2, 3)
-    assert decoded == vectors
+    # Rows are compact float32 arrays, not lists of Python float objects (H10).
+    assert all(isinstance(row, array) and row.typecode == "f" for row in decoded)
+    assert decoded[0].itemsize == 4
+    # These values are exact in float32, so they round-trip precisely.
+    assert [list(row) for row in decoded] == vectors
     assert path.read_bytes()[:4] == b"BIE1"
+
+# H10 — reading a large shard stays memory-bounded because vectors are float32
+# arrays (~4 bytes/value) instead of Python-float lists (~24 bytes/value).
+with tempfile.TemporaryDirectory(prefix="books-vectors-scale-") as directory:
+    big = Path(directory) / "scale.f32"
+    dims = 384
+    rows = 3000
+    big_vectors = [
+        [float((i * 7 + j) % 13) / 13.0 for j in range(dims)] for i in range(rows)
+    ]
+    books_index.atomic_vector_shard(big, big_vectors, dims)
+    del big_vectors
+    tracemalloc.start()
+    decoded_big = books_index.read_vector_shard(big, rows, dims)
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    assert len(decoded_big) == rows
+    assert sum(len(row) for row in decoded_big) == rows * dims
+    budget = rows * dims * 8  # half the ~8 bytes/pointer a Python-float list needs
+    assert peak < budget, f"shard read peak {peak} exceeded {budget}"
 
 assert books_index.MAX_PASSAGE_CHARS == 1400
 assert books_index.MAX_CONCEPTS == 16
@@ -102,5 +128,36 @@ with tempfile.TemporaryDirectory(prefix="books-native-graph-") as directory:
         "idea-link_" + books_index.pair_link_token(pair_key)
     )
     assert native_graph["links"][0]["relation"] == "same_as"
+
+    # H4 — the global completion pass must not overwrite a job another executor
+    # is actively holding, while an unleased job is completed normally.
+    from datetime import datetime, timedelta, timezone
+    future = (datetime.now(timezone.utc) + timedelta(minutes=30)) \
+        .isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    past = (datetime.now(timezone.utc) - timedelta(minutes=30)) \
+        .isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    assert books_index.lease_held_by_other(
+        {"lease": {"executorId": "browser:x", "expiresAt": future}}, "native:y")
+    assert not books_index.lease_held_by_other(
+        {"lease": {"executorId": "native:y", "expiresAt": future}}, "native:y")
+    assert not books_index.lease_held_by_other(
+        {"lease": {"executorId": "browser:x", "expiresAt": past}}, "native:y")
+    assert not books_index.lease_held_by_other({}, "native:y")
+
+    work_a_job_path = sidecar / "jobs" / "work-a.json"
+    work_a_job = books_index.read_json(work_a_job_path, {})
+    work_a_job["lease"] = {
+        "executorId": "browser:foreign", "executorClass": "browser",
+        "claimedAt": future, "renewedAt": future, "expiresAt": future,
+    }
+    books_index.atomic_json(work_a_job_path, work_a_job)
+    books_index.complete_graph_jobs(sidecar, manifests, native_graph)
+    completed_a = books_index.read_json(work_a_job_path, {})
+    completed_b = books_index.read_json(sidecar / "jobs" / "work-b.json", {})
+    assert "libraryLinks" not in completed_a.get("stages", {}), \
+        "a foreign-leased job is not overwritten by the global completion pass"
+    assert completed_a["lease"]["executorId"] == "browser:foreign"
+    assert completed_b.get("stages", {}).get("libraryLinks", {}).get(
+        "status") == "complete", "an unleased job is completed normally"
 
 print("Books native vector-shard contract: PASS")
