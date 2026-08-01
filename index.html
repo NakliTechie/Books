@@ -1392,6 +1392,9 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   .library-filter, .library-sort, .library-view-select {
     min-height:44px;
   }
+  /* The Echo indicator is a small inline circle; give it a full 44px touch
+     target on coarse pointers (min-height already applies via button) (S4). */
+  .native-echo-indicator { min-width:44px; min-height:44px; }
 }
 </style>
 </head>
@@ -3850,7 +3853,7 @@ async function hydrateCoverImages(scope = document) {
         // derived-data clear should quietly fall back to the title card.
         cover.removeAttribute('data-cover-path');
       } else {
-        console.warn('Books: cover load failed for', path, error);
+        console.warn('Lorewell: cover load failed for', path, error);
       }
     } finally {
       cover.classList.remove('is-loading');
@@ -4042,7 +4045,7 @@ async function readSidecar(bookId) {
     const obj = JSON.parse(txt);
     return (obj && typeof obj === 'object') ? obj : null;
   } catch (err) {
-    console.warn('Books: sidecar read failed for', bookId, err);
+    console.warn('Lorewell: sidecar read failed for', bookId, err);
     return null;
   }
 }
@@ -4057,9 +4060,9 @@ function writeSidecarDebounced(bookId, data) {
     pendingWrites.delete(bookId);
     naklios.fs.write('notes/' + bookId + '.json', JSON.stringify(data, null, 2))
       .then(() => syncPortableAnnotationsForSidecar(data).catch((error) => {
-        console.warn('Books: portable annotation sync failed for', bookId, error);
+        console.warn('Lorewell: portable annotation sync failed for', bookId, error);
       }))
-      .catch((err) => console.warn('Books: sidecar write failed for', bookId, err));
+      .catch((err) => console.warn('Lorewell: sidecar write failed for', bookId, err));
   }, 1000);
   pendingWrites.set(bookId, { timer, data });
 }
@@ -4071,9 +4074,9 @@ function flushPendingWritesSync() {
     clearTimeout(timer);
     naklios.fs.write('notes/' + bookId + '.json', JSON.stringify(data, null, 2))
       .then(() => syncPortableAnnotationsForSidecar(data).catch((error) => {
-        console.warn('Books: portable annotation flush failed for', bookId, error);
+        console.warn('Lorewell: portable annotation flush failed for', bookId, error);
       }))
-      .catch((err) => console.warn('Books: sidecar flush failed for', bookId, err));
+      .catch((err) => console.warn('Lorewell: sidecar flush failed for', bookId, err));
   }
   pendingWrites.clear();
 }
@@ -4086,7 +4089,7 @@ async function flushPendingWrites() {
       naklios.fs.write('notes/' + bookId + '.json', JSON.stringify(data, null, 2))
         .then(() => syncPortableAnnotationsForSidecar(data))
         .catch((err) => {
-          console.warn('Books: sidecar flush failed for', bookId, err);
+          console.warn('Lorewell: sidecar flush failed for', bookId, err);
           throw err;
         })
     );
@@ -4141,7 +4144,7 @@ async function readJsonRecord(path) {
     const record = JSON.parse(raw);
     return record && typeof record === 'object' ? record : null;
   } catch (error) {
-    console.warn('Books: ignored unreadable JSON record', path, error);
+    console.warn('Lorewell: ignored unreadable JSON record', path, error);
     return null;
   }
 }
@@ -4157,7 +4160,7 @@ async function readIdeaVectorMap(embeddingRecord) {
     const binary = await naklios.fs.readBinary(vectorPath);
     return ideaVectorMap(embeddingRecord, toArrayBuffer(binary));
   } catch (error) {
-    console.warn('Books: ignored unreadable idea-vector shard', vectorPath, error);
+    console.warn('Lorewell: ignored unreadable idea-vector shard', vectorPath, error);
     return new Map();
   }
 }
@@ -5953,7 +5956,7 @@ async function enrichSemanticRecordInBackground({
       },
     )).catch(() => run);
     console.warn(
-      'Books: background idea extraction failed for',
+      'Lorewell: background idea extraction failed for',
       manifest.workId,
       error,
     );
@@ -6517,7 +6520,7 @@ async function processSemanticWork(manifest, backendId) {
       error: String(error?.message || error),
       code: error?.code || 'processing-failed',
     }));
-    console.warn('Books: background processing stopped for', manifest.workId, error);
+    console.warn('Lorewell: background processing stopped for', manifest.workId, error);
   } finally {
     if (
       processingStillOwnsBackend(backendId)
@@ -6592,7 +6595,7 @@ async function classifyLibraryIdeaGraph(graph, ideas) {
       );
       classifiedGraph = applied.graph;
     } catch (error) {
-      console.warn('Books: idea relation classification kept embedding links', error);
+      console.warn('Lorewell: idea relation classification kept embedding links', error);
       break;
     }
   }
@@ -7955,6 +7958,9 @@ class NativeEngine {
       for (const paragraphRow of paragraphRows) {
         const paragraph = document.createElement('p');
         paragraph.dataset.paragraphId = paragraphRow.paragraphId;
+        // Focusable target so an exact-paragraph Echo jump can move focus here
+        // (without joining the tab order) instead of no-opping on a bare <p> (S4).
+        paragraph.tabIndex = -1;
         paragraph.textContent = paragraphRow.text;
         passageContent.appendChild(paragraph);
         const echoes = this._echoesByParagraph.get(paragraphRow.paragraphId) || [];
@@ -7977,10 +7983,11 @@ class NativeEngine {
           aside.className = 'native-echo-aside';
           aside.dataset.echoUi = '';
           aside.dataset.echoParagraph = paragraphRow.paragraphId;
-          aside.dataset.echoSummary = String(echoes[0].explanation || '').slice(0, 280);
+          const echoAsideText = echoAsideSummary(echoes[0]);
+          aside.dataset.echoSummary = echoAsideText.slice(0, 280);
           aside.setAttribute(
             'aria-label',
-            'Generated Echo: ' + String(echoes[0].explanation || ''),
+            'Generated Echo: ' + echoAsideText,
           );
           passageContent.appendChild(aside);
         }
@@ -8342,10 +8349,11 @@ class NativeEngine {
             : next.length + ' Echoes are available';
         }
         if (aside) {
-          aside.dataset.echoSummary = String(next[0].explanation || '').slice(0, 280);
+          const nextAsideText = echoAsideSummary(next[0]);
+          aside.dataset.echoSummary = nextAsideText.slice(0, 280);
           aside.setAttribute(
             'aria-label',
-            'Generated Echo: ' + String(next[0].explanation || ''),
+            'Generated Echo: ' + nextAsideText,
           );
         }
       }
@@ -9764,7 +9772,7 @@ async function deletePathIfPresent(path) {
   try {
     if (await naklios.fs.exists(path)) await naklios.fs.delete(path);
   } catch (error) {
-    console.warn('Books: trash cleanup failed for', path, error);
+    console.warn('Lorewell: trash cleanup failed for', path, error);
     throw error;
   }
 }
@@ -10257,7 +10265,7 @@ async function openLibraryTools() {
   libraryToolsDialog.showModal();
   await Promise.all([
     validateActiveLibrary().catch((error) => {
-      console.warn('Books: library validation failed', error);
+      console.warn('Lorewell: library validation failed', error);
     }),
     refreshTrashRecords(),
     refreshStorageAccounting(),
@@ -12254,7 +12262,7 @@ async function addBooksToLibrary(files) {
       added.push(f.name);
     } catch (err) {
       const msg = String(err && err.message || err);
-      console.warn('Books: write failed for', f.name, err);
+      console.warn('Lorewell: write failed for', f.name, err);
       failures.push({ name: f.name, message: msg });
     }
   }
@@ -12638,7 +12646,7 @@ async function cacheActiveCover() {
   } catch (error) {
     // Extraction is format-specific and best-effort. A damaged cover must not
     // prevent reading or poison the sidecar with a permanent failure.
-    console.warn('Books: cover extraction failed', error);
+    console.warn('Lorewell: cover extraction failed', error);
   }
 }
 
@@ -12736,7 +12744,7 @@ async function openBookFromFile(file, persistInfo) {
       } catch (error) {
         // A portable metadata update is repairable and must never prevent the
         // faithful reader from opening the original.
-        console.warn('Books: semantic metadata sync failed', error);
+        console.warn('Lorewell: semantic metadata sync failed', error);
       }
       renderReaderLibrary();
       void cacheActiveCover();
@@ -13005,6 +13013,17 @@ function echoTargetShouldBeConcealed(connection) {
   );
   const target = Number(connection.target?.positionFraction) || 0;
   return target > progress + 0.035;
+}
+
+// The native inline aside exposes its text in visible content (via CSS
+// ::before on data-echo-summary) and in its aria-label / TTS. Both must fall
+// back to the spoiler-safe teaser when the target is concealed, so a late-book
+// reveal cannot leak through the aside while the passage itself is hidden (H7).
+function echoAsideSummary(connection) {
+  if (!connection) return '';
+  return echoTargetShouldBeConcealed(connection)
+    ? (connection.teaser || 'A related source-grounded connection is available.')
+    : String(connection.explanation || '');
 }
 
 function renderReaderEchoConnection() {
@@ -14248,7 +14267,7 @@ tocList.addEventListener('click', async (e) => {
   if (!btn || !activeEngine) return;
   const href = btn.getAttribute('data-href') || '';
   try { await activeEngine.jumpToTocItem({ href, label: btn.textContent }); }
-  catch (err) { console.warn('Books: jumpToTocItem failed', err); }
+  catch (err) { console.warn('Lorewell: jumpToTocItem failed', err); }
 });
 
 // ============================================================
@@ -14366,7 +14385,7 @@ function showReaderError(htmlMsg, err) {
       '<p>' + htmlMsg + '</p>' +
       (detail ? '<p style="font-size:12px; opacity:0.7;"><code>' + escapeHtml(detail) + '</code></p>' : '') +
     '</div>';
-  if (err) console.error('Books:', err);
+  if (err) console.error('Lorewell:', err);
   // Also surface via toast — covers the case where the reader chrome is
   // somehow obscured (eg drop overlay stuck), so the user at least sees
   // the failure mode instead of a frozen window.
@@ -14631,7 +14650,7 @@ function scheduleStandaloneFolderRefresh() {
         }
       })
       .catch((error) => {
-        console.warn('Books: background folder refresh failed', error);
+        console.warn('Lorewell: background folder refresh failed', error);
         if (backendId === activeBackendId()) {
           topbarStatus.textContent = 'Folder refresh paused · reconnect to try again';
         }
@@ -14651,7 +14670,7 @@ async function listLibrary({
     const folderReconciliation = providedFolderReconciliation
       || await persistStandaloneFolderInventory()
         .catch((error) => {
-          console.warn('Books: folder inventory could not be persisted', error);
+          console.warn('Lorewell: folder inventory could not be persisted', error);
           return null;
         });
     const libEntries = stripListPrefix(libRaw, 'library');
@@ -14684,7 +14703,7 @@ async function listLibrary({
     } catch (error) {
       // The v1.4 scan remains the reading fallback if catalog migration or
       // repair cannot be persisted on this backend.
-      console.warn('Books: semantic catalog unavailable; using source scan', error);
+      console.warn('Lorewell: semantic catalog unavailable; using source scan', error);
       semanticCatalog = null;
       semanticManifests = new Map();
     }
@@ -14751,7 +14770,7 @@ async function listLibrary({
       scheduleStandaloneFolderRefresh();
     }
   } catch (err) {
-    console.error('Books: library listing failed', err);
+    console.error('Lorewell: library listing failed', err);
     orphanSidecars = [];
     renderLibraryEmpty();
   }
