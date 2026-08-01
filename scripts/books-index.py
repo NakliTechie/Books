@@ -18,6 +18,7 @@ Optional dependencies:
 from __future__ import annotations
 
 import argparse
+from array import array
 from contextlib import contextmanager
 import hashlib
 import html
@@ -273,7 +274,12 @@ def atomic_vector_shard(path: Path, vectors: list[list[float]], dimensions: int)
             pass
 
 
-def read_vector_shard(path: Path, expected_rows: int, dimensions: int) -> list[list[float]]:
+def read_vector_shard(path: Path, expected_rows: int, dimensions: int) -> list[array]:
+    # Return rows as C-backed float32 arrays (4 bytes/value) rather than lists
+    # of Python float objects (~24 bytes/value each), so a large library's idea
+    # and unit vectors fit in a fraction of the memory during graph building
+    # (H10). Every consumer (cosine, vector_bucket_signature, LSH) indexes and
+    # iterates these the same way as before.
     with path.open("rb") as stream:
         header = stream.read(12)
         if len(header) != 12:
@@ -287,7 +293,11 @@ def read_vector_shard(path: Path, expected_rows: int, dimensions: int) -> list[l
             value = stream.read(row_bytes)
             if len(value) != row_bytes:
                 raise ValueError(f"Truncated idea-vector shard: {path}")
-            vectors.append(list(struct.unpack(f"<{dimensions}f", value)))
+            vector = array("f")
+            vector.frombytes(value)
+            if sys.byteorder != "little":
+                vector.byteswap()
+            vectors.append(vector)
         if stream.read(1):
             raise ValueError(f"Idea-vector shard has trailing bytes: {path}")
         return vectors
