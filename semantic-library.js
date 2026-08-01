@@ -1224,12 +1224,20 @@ function safeBundleFilename(value) {
     && value !== '..';
 }
 
+function containsUnsafeEchoEvaluationData(value) {
+  if (!value || typeof value !== 'object') return false;
+  return Object.entries(value).some(([key, nested]) =>
+    ['excerpt', 'sourceText', 'bookText', 'results'].includes(key)
+    || containsUnsafeEchoEvaluationData(nested));
+}
+
 export function createPortableBundle({
   manifests = [],
   annotations = [],
   legacySidecars = [],
   libraryViews = null,
   echoCuration = null,
+  echoEvaluations = null,
   assets = [],
   libraryLabel = null,
   now = () => new Date().toISOString(),
@@ -1247,6 +1255,7 @@ export function createPortableBundle({
       legacySidecars: cloneJson(legacySidecars),
       ...(libraryViews ? { views:cloneJson(libraryViews) } : {}),
       ...(echoCuration ? { echoCuration:cloneJson(echoCuration) } : {}),
+      ...(echoEvaluations ? { echoEvaluations:cloneJson(echoEvaluations) } : {}),
     },
     omittedRebuildableData: [
       'catalog/catalog.json',
@@ -1288,6 +1297,7 @@ export function validatePortableBundle(bundle) {
     ? bundle.records.legacySidecars : [];
   const libraryViews = bundle?.records?.views || null;
   const echoCuration = bundle?.records?.echoCuration || null;
+  const echoEvaluations = bundle?.records?.echoEvaluations || null;
   const assets = Array.isArray(bundle?.assets) ? bundle.assets : [];
   if (!Array.isArray(bundle?.records?.works)) {
     errors.push({ code: 'missing-work-records', message: 'The bundle has no work-record list.' });
@@ -1351,6 +1361,47 @@ export function validatePortableBundle(bundle) {
       message:'The bundle contains an invalid Ideas & connections curation record.',
     });
   }
+  if (
+    echoEvaluations
+    && (
+      echoEvaluations.recordType !== 'books.echo-evaluations'
+      || typeof echoEvaluations.connectionJudgments !== 'object'
+      || typeof echoEvaluations.queryJudgments !== 'object'
+    )
+  ) {
+    errors.push({
+      code:'invalid-echo-evaluations',
+      message:'The bundle contains an invalid connection-evaluation record.',
+    });
+  } else if (echoEvaluations) {
+    const connectionLabels = new Set([
+      'useful', 'obvious', 'weak', 'wrong', 'repetitive', 'spoiler-sensitive',
+    ]);
+    const queryLabels = new Set([
+      'good', 'mixed', 'poor', 'duplicate', 'missing',
+    ]);
+    const connectionRows = Object.values(echoEvaluations.connectionJudgments || {});
+    const queryRows = Object.values(echoEvaluations.queryJudgments || {});
+    if (
+      connectionRows.length > 10000
+      || queryRows.length > 1000
+      || connectionRows.some((row) =>
+        !connectionLabels.has(row?.label)
+        || typeof row?.linkId !== 'string'
+        || String(row?.notes || '').length > 1200
+        || containsUnsafeEchoEvaluationData(row))
+      || queryRows.some((row) =>
+        !queryLabels.has(row?.label)
+        || String(row?.query || '').length > 120
+        || String(row?.notes || '').length > 1200
+        || containsUnsafeEchoEvaluationData(row))
+    ) {
+      errors.push({
+        code:'unsafe-echo-evaluations',
+        message:'Connection evaluations contain unsupported labels, source text, or oversized fields.',
+      });
+    }
+  }
 
   const libraryValidation = validateSemanticLibrary({
     sourceFilenames: Array.from(filenames),
@@ -1374,6 +1425,7 @@ export function validatePortableBundle(bundle) {
       legacySidecars: legacySidecars.length,
       savedViews:libraryViews?.views?.length || 0,
       echoCuration:echoCuration ? 1 : 0,
+      echoEvaluations:echoEvaluations ? 1 : 0,
     },
   };
 }

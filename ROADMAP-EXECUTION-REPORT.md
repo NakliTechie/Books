@@ -34,6 +34,25 @@
   `a4cc638a-5f32-44ec-a658-9a3d6bc4adc1`. `books.naklitechie.com` continues
   to redirect permanently to `lorewell.naklitechie.com`.
 
+## 2026-08-01 connection calibration engineering
+
+- Added a deterministic, rebuildable review queue stratified across three
+  genre directions, likely false positives, generic/repetitive concepts, and
+  spoiler-sensitive targets, plus balanced library-query checks.
+- Added portable `books.echo-evaluations` judgments with evidence hashes,
+  compact provenance, resumable progress, conflict-safe import/export, and a
+  hard no-source-text boundary.
+- Added a first-class Ideas & connections explorer, side-by-side evidence
+  review, search checks, privacy-safe quality reports, and exact source/return
+  navigation shared with Native-reader Echoes.
+- Added in-app and native CLI quality reporting with label, direction,
+  relation, generation-route, score-bin, evidence, and search-relevance
+  summaries. Threshold suggestions are advisory and cannot change rollout
+  without human approval.
+- Extended standalone and NakliOS Chrome journeys plus the visual guide to
+  cover the complete explorer/review/report flow. Real-library usefulness
+  labels and the default-rollout choice remain deliberately human.
+
 ## Delivered in this run
 
 ### Release hygiene and operations

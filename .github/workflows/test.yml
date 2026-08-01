@@ -24,6 +24,7 @@ jobs:
           test -f dist/semantic-library.js
           test -f dist/semantic-processing.js
           test -f dist/semantic-ai.js
+          test -f dist/echo-review.js
           test -f dist/local-ai-sidecar.js
           test -f dist/_headers
           test -f dist/favicon.svg

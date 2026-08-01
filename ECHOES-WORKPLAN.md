@@ -412,6 +412,143 @@ pipeline can generate them.
 - Release behind an explicit Background Intelligence opt-in, then measure
   hides/wrong labels locally before considering a broader default.
 
+### Next execution batch — Connection Calibration & Explorer
+
+> **State:** Engineering complete. The stratified queue, portable judgments,
+> review/search-check workspace, quality report, library explorer, and exact
+> source routes are implemented and verified by automated contracts. Human
+> usefulness judgments and the default-rollout decision remain the release
+> gate and must not be inferred by a model or fabricated by automation.
+
+This is the next active Echoes batch. It turns the functioning production
+graph into a calibrated, inspectable library experience without enabling
+inline connections by default prematurely.
+
+#### 8.1 — Portable evaluation queue
+
+- Build a deterministic, versioned review queue from the production Echo
+  graph rather than reviewing whichever high-scoring pairs happen to appear
+  first.
+- Stratify the initial queue across fiction↔fiction,
+  nonfiction↔nonfiction, nonfiction↔fiction, likely false positives,
+  repeated/generic concepts, and spoiler-sensitive targets.
+- Target an initial review set of approximately 200 diverse connection pairs
+  and 25–40 representative library-search queries. Sampling must limit
+  repeated works, concepts, and relation kinds.
+- Store evaluator judgments separately from generated graph records. The
+  portable evaluation record must retain connection/link IDs, graph and
+  extractor versions, evidence hashes, evaluator labels, timestamps, and any
+  relation override without copying entire books.
+- Support at least: `useful`, `obvious`, `weak`, `wrong`, `repetitive`, and
+  `spoiler-sensitive`, plus evidence-validity and suggested-relation fields.
+- Preserve existing reader feedback (`hide`, `unhelpful`, `wrong`, `spoiler`,
+  and work exclusion) as canonical user curation; evaluation labels are a
+  quality corpus and do not silently rewrite user preferences.
+
+#### 8.2 — Connections Review workspace
+
+- Add a library-level review surface that presents the two source passages
+  side by side with book, location, unit kind, relation, confidence, spoiler
+  state, and generation provenance.
+- Provide fast keyboard-accessible labeling, skip/defer, exact source opening,
+  return-to-review, progress, filters, and a resumable place in the queue.
+- Make missing or stale evidence explicit. A reviewer must never be asked to
+  judge a generated explanation when either source passage cannot be
+  resolved.
+- Export a privacy-safe quality report and the portable judgment record; do
+  not export source passages unless the user explicitly chooses an
+  evidence-inclusive local file.
+
+#### 8.3 — Calibration and noise suppression
+
+- Report precision, evidence validity, novelty, repetition, spoiler safety,
+  and label distribution separately for all three genre directions.
+- Identify and suppress low-value generic concepts, vocabulary-only matches,
+  duplicate editions/passages, and one-book or one-theme domination.
+- Tune candidate, classification, work-details, search, and stricter inline
+  thresholds independently. Every change must update
+  `SEMANTIC-QUALITY-GATE.md`, increment the relevant derived-artifact version,
+  and preserve portable curation.
+- Compare the deterministic baseline with optional model-assisted extraction
+  and relation classification. A stronger model may improve ranking but
+  cannot replace evidence checks or overwrite accepted human labels.
+- Rebuild the full production collection after calibration and compare the
+  new graph against the frozen pre-calibration report.
+
+#### 8.4 — Library-wide Ideas & Connections explorer
+
+- Promote the existing graph beyond per-book details into a first-class
+  library surface for themes, connected works, contrasting arguments, and
+  concept-to-story examples.
+- Begin with navigable theme trails, ranked evidence cards, and book clusters;
+  do not make an unstructured force-directed “hairball” graph the primary
+  interface.
+- Every visible relationship must open evidence in both works and expose its
+  relation, confidence, provenance, spoiler state, and available user
+  curation.
+- Reuse the same graph, units, review labels, and exact-passage routes as
+  hybrid search and reader Echoes. Do not create a second semantic truth
+  layer for the explorer.
+- Keep hidden concepts, excluded works, wrong links, and backend boundaries
+  consistent across Book details, search, the explorer, and Native reading.
+
+#### 8.5 — Beta rollout and soak
+
+- Run a complete background-processing and graph-rebuild soak while reading,
+  searching, opening Echo cards, and switching books.
+- Verify the review workspace, explorer, and reader routes in standalone and
+  NakliOS modes, including keyboard, small viewport, Firefox fallback, worker
+  failure, cancellation, and missing derived artifacts.
+- Release the explorer and indicator-only Echoes behind explicit Background
+  Intelligence opt-in once the labeled gate passes.
+- Keep `Indicators + asides` separately opt-in. No connection may interrupt
+  reading, appear automatically as a popover, speak automatically, or trigger
+  inference on scroll.
+
+#### Human boundary
+
+The following work can be completed unattended: queue generation, portable
+schemas, review UI, report generation, explorer UI, exact navigation,
+calibration tooling, rebuilds, and automated verification. A human reader must
+still label the representative pairs and queries, assess whether the results
+are surprising or useful, approve threshold changes, and decide whether
+indicator-only Echoes may become the recommended setting.
+
+#### Engineering delivery ledger
+
+- [x] Deterministic, bounded pair/query queue with genre, noise, and spoiler
+  strata plus curation exclusions.
+- [x] Portable, privacy-safe connection and query judgments with progress,
+  conflict-safe merging, export/import, and derived-rebuild survival.
+- [x] Accessible four-tab Ideas & connections workspace: explorer, pair
+  review, search checks, and quality report.
+- [x] Side-by-side source evidence with relation, score, confidence, location,
+  spoiler state, and deterministic/model-assisted provenance.
+- [x] Exact source navigation in either work and a stable return route to the
+  prior review/query state.
+- [x] Browser and native quality reporting, advisory-only threshold hooks,
+  guide coverage, and standalone/NakliOS regression journeys.
+- [ ] Label the representative real-library pairs and queries, approve any
+  calibrated version change, and record the rollout setting. This is the
+  intentionally human gate.
+
+#### Batch exit gate
+
+- The initial stratified pair and query targets are reviewed with no unresolved
+  evidence pointers in accepted results.
+- 100% of displayable connections retain valid evidence in both works and no
+  known high-risk spoiler is revealed by default.
+- Quality results are reported separately by genre direction, relation,
+  deterministic/model-assisted route, and product surface.
+- Generic, repetitive, and vocabulary-only connections meet the versioned
+  suppression gate established from the labels.
+- Browser and native rebuilds agree on identities and accepted labels survive
+  regeneration.
+- The explorer, exact related-passage route, return route, and opt-out behavior
+  pass standalone and NakliOS browser journeys.
+- The default remains `Off` until the human-reviewed inline threshold is met
+  and the rollout decision is recorded explicitly.
+
 ### Initial acceptance criteria
 
 - 100% of displayed Echoes retain valid evidence in both works.

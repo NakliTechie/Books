@@ -64,6 +64,8 @@ ROLE_PLANS = (
             Capture(5, "ask-the-library", "standalone:ask", "ask"),
             Capture(6, "ai-providers", "standalone:providers", "providers"),
             Capture(7, "ideas-and-connections", "standalone:intelligence", "intelligence", 900),
+            Capture(8, "connections-explorer", "standalone:connections", "connections", 900),
+            Capture(9, "connections-review", "standalone:connection-review", "connection-review", 900),
         ),
     ),
     RolePlan(
@@ -337,6 +339,181 @@ def show_intelligence(page: Page, base: str) -> None:
     page.locator("#background-intelligence-enabled").wait_for(state="visible")
 
 
+def stage_connections_workspace(page: Page) -> None:
+    result = page.evaluate(
+        """async () => {
+          const db = await new Promise((resolve, reject) => {
+            const request = indexedDB.open('naklios-books-library-v1', 2);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+          const read = path => new Promise((resolve, reject) => {
+            const tx = db.transaction('files', 'readonly');
+            const request = tx.objectStore('files').get(path);
+            request.onsuccess = () => {
+              const stored = request.result;
+              if (!stored) return resolve(null);
+              try { resolve(JSON.parse(stored.data)); }
+              catch (error) { reject(error); }
+            };
+            request.onerror = () => reject(request.error);
+          });
+          const write = (path, value) => new Promise((resolve, reject) => {
+            const tx = db.transaction('files', 'readwrite');
+            tx.objectStore('files').put({
+              kind:'text',
+              data:JSON.stringify(value, null, 2),
+            }, path);
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+          });
+          const remove = path => new Promise((resolve, reject) => {
+            const tx = db.transaction('files', 'readwrite');
+            tx.objectStore('files').delete(path);
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+          });
+          const catalog = await read('catalog/catalog.json');
+          const leftWorkId = catalog?.aliases?.sourceFilenames?.['Seeing Systems.md'];
+          const rightWorkId = catalog?.aliases?.sourceFilenames?.['The Library Within.txt'];
+          if (!leftWorkId || !rightWorkId) {
+            db.close();
+            return { ready:false, reason:'work identities are not ready' };
+          }
+          const leftRecord = await read('semantic/' + leftWorkId + '/passages.json');
+          const rightRecord = await read('semantic/' + rightWorkId + '/passages.json');
+          const indexedLeftParagraph = leftRecord?.paragraphs?.find(row => row.text?.trim());
+          const indexedRightParagraph = rightRecord?.paragraphs?.find(row => row.text?.trim());
+          const indexedLeftPassage = leftRecord?.passages?.find(
+            passage => passage.passageId === indexedLeftParagraph?.passageId
+          );
+          const indexedRightPassage = rightRecord?.passages?.find(
+            passage => passage.passageId === indexedRightParagraph?.passageId
+          );
+          const leftParagraph = indexedLeftParagraph || {
+            paragraphId:'paragraph_guide_feedback',
+            passageId:'passage_guide_feedback',
+            text:'A useful feedback loop is not merely a signal. It becomes memory when the reader can return to the evidence, compare it, and revise what they believe.',
+            anchor:{ quoteHash:'sha256:guide-left', textHash:'sha256:guide-left-text' },
+          };
+          const rightParagraph = indexedRightParagraph || {
+            paragraphId:'paragraph_guide_library',
+            passageId:'passage_guide_library',
+            text:'The private library is external memory with a source attached: each idea can be revisited without surrendering the book or mistaking generated interpretation for authored text.',
+            anchor:{ quoteHash:'sha256:guide-right', textHash:'sha256:guide-right-text' },
+          };
+          const leftPassage = indexedLeftPassage || {
+            passageId:leftParagraph.passageId,
+          };
+          const rightPassage = indexedRightPassage || {
+            passageId:rightParagraph.passageId,
+          };
+          const evidence = (paragraph, passage, positionFraction) => ({
+            passageId:passage.passageId,
+            paragraphId:paragraph.paragraphId,
+            quoteHash:paragraph.anchor?.quoteHash || null,
+            textHash:paragraph.anchor?.textHash || null,
+            excerpt:paragraph.text,
+            positionFraction,
+          });
+          const leftUnit = {
+            unitId:'unit_guide_feedback_memory',
+            workId:leftWorkId,
+            kind:'principle',
+            lens:'expository',
+            label:'Feedback turns experience into memory',
+            statement:'Delayed feedback becomes useful when it can be revisited as durable memory.',
+            confidence:0.93,
+            evidence:[evidence(leftParagraph, leftPassage, 0.18)],
+            generatedBy:{ mode:'deterministic-local', extractor:'guide-fixture' },
+            userState:{ hidden:false },
+          };
+          const rightUnit = {
+            unitId:'unit_guide_private_library',
+            workId:rightWorkId,
+            kind:'concept',
+            lens:'expository',
+            label:'A private library is external memory',
+            statement:'A durable private library lets ideas remain inspectable and returnable.',
+            confidence:0.95,
+            evidence:[evidence(rightParagraph, rightPassage, 0.24)],
+            generatedBy:{ mode:'model-assisted', extractor:'guide-fixture', model:'local-guide-model' },
+            userState:{ hidden:false },
+          };
+          await write('semantic/' + leftWorkId + '/units.json', {
+            schemaVersion:1,
+            recordType:'books.semantic-units',
+            workId:leftWorkId,
+            units:[leftUnit],
+          });
+          await write('semantic/' + rightWorkId + '/units.json', {
+            schemaVersion:1,
+            recordType:'books.semantic-units',
+            workId:rightWorkId,
+            units:[rightUnit],
+          });
+          await write('indexes/library-echo-graph.json', {
+            schemaVersion:1,
+            recordType:'books.library-echo-graph',
+            graphVersion:'library-echo-links-v2',
+            model:'local-guide-encoder',
+            links:[{
+              linkId:'echo-link_guide_feedback_memory',
+              leftUnitId:leftUnit.unitId,
+              rightUnitId:rightUnit.unitId,
+              leftWorkId,
+              rightWorkId,
+              relation:'supports',
+              score:0.94,
+              classification:{
+                confidence:0.96,
+                explanation:'The durable private library supports the claim that feedback becomes useful when it can be revisited as memory.',
+                provider:'browser-local',
+                model:'local-guide-model',
+              },
+              generatedBy:{
+                graph:'library-echo-links-v2',
+                relationMethod:'source-grounded-echo-classifier',
+              },
+              userState:{ hidden:false },
+            }],
+            updatedAt:'2026-08-01T12:00:00.000Z',
+          });
+          await remove('indexes/echo-review-queue.json');
+          await remove('annotations/echo-evaluations.json');
+          db.close();
+          return { ready:true };
+        }"""
+    )
+    if not result.get("ready"):
+        raise RuntimeError(
+            f"Connection guide fixture unavailable: {result.get('reason')}"
+        )
+
+
+def show_connections(page: Page, base: str) -> None:
+    close_dialogs(page)
+    if page.locator("#main .library .row").count() == 0:
+        seed_library(page, base)
+    stage_connections_workspace(page)
+    open_library_options(page)
+    page.locator("#library-connections-btn").click()
+    page.locator("#connections-dialog[open]").wait_for(state="visible")
+    page.locator("[data-explorer-review]").first.wait_for(
+        state="visible", timeout=15000
+    )
+
+
+def show_connection_review(page: Page, base: str) -> None:
+    if not page.locator("#connections-dialog[open]").count():
+        show_connections(page, base)
+    page.locator("[data-explorer-review]").first.click()
+    page.locator("#connections-review-left-evidence").wait_for(state="visible")
+    page.locator("#connections-review-right-evidence").wait_for(state="visible")
+
+
 def show_ask(page: Page, base: str) -> None:
     close_dialogs(page)
     open_library_options(page)
@@ -560,7 +737,12 @@ def hosted_page(page: Page, base: str) -> Page:
 
 
 def show_hosted_storage(page: Page, base: str) -> None:
-    hosted_page(page, base)
+    root = base.rsplit("/dist/", 1)[0]
+    hosted_url = root + "/test/host-harness.html?autorun=1&app=/dist/index.html"
+    page.goto(hosted_url, wait_until="load")
+    page.locator("#harness-status[data-state='pass']").wait_for(
+        state="visible", timeout=30000
+    )
     frame = page.frame_locator("#books")
     frame.locator("#storage-btn").click()
     frame.locator("#storage-dialog[open]").wait_for(state="visible")
@@ -574,6 +756,8 @@ ACTIONS: dict[str, Callable[[Page, str], None]] = {
     "details": show_details,
     "tools": show_tools,
     "intelligence": show_intelligence,
+    "connections": show_connections,
+    "connection-review": show_connection_review,
     "ask": show_ask,
     "providers": show_providers,
     "reader": open_reader,

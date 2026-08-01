@@ -20,6 +20,7 @@ for (const asset of [
   'semantic-embedding-sidecar.js',
   'idea-graph.js',
   'echoes.js',
+  'echo-review.js',
   'open-library-metadata.js',
   'embedding-binary.js',
   'favicon.svg',
@@ -106,6 +107,7 @@ assert.match(workflow, /npm ci/);
 assert.match(workflow, /npm test/);
 assert.match(workflow, /npm run build/);
 assert.match(workflow, /test -f dist\/semantic-ai\.js/);
+assert.match(workflow, /test -f dist\/echo-review\.js/);
 assert.match(workflow, /wrangler deploy --dry-run/);
 
 console.log('Books Cloudflare deploy artifact contract: PASS');

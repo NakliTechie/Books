@@ -32,6 +32,7 @@ await Promise.all([
   cp(resolve(projectRoot, 'semantic-embedding-sidecar.js'), resolve(outputDir, 'semantic-embedding-sidecar.js')),
   cp(resolve(projectRoot, 'idea-graph.js'), resolve(outputDir, 'idea-graph.js')),
   cp(resolve(projectRoot, 'echoes.js'), resolve(outputDir, 'echoes.js')),
+  cp(resolve(projectRoot, 'echo-review.js'), resolve(outputDir, 'echo-review.js')),
   cp(resolve(projectRoot, 'library-report.js'), resolve(outputDir, 'library-report.js')),
   cp(resolve(projectRoot, 'open-library-metadata.js'), resolve(outputDir, 'open-library-metadata.js')),
   cp(resolve(projectRoot, 'embedding-binary.js'), resolve(outputDir, 'embedding-binary.js')),

@@ -11,6 +11,7 @@ const embeddingBinary = read('embedding-binary.js');
 const library = read('semantic-library.js');
 const openLibrary = read('open-library-metadata.js');
 const echoes = read('echoes.js');
+const echoReview = read('echo-review.js');
 const report = read('scripts/books-report.mjs');
 const headers = read('_headers');
 
@@ -123,6 +124,21 @@ assert.match(
   'duplicate source evidence is rejected before it can become an Echo',
 );
 assert.match(
+  echoReview,
+  /makeEchoEvaluationRecord[\s\S]*?SAFE_PORTABLE_ID\.test\(key\)[\s\S]*?notes:String\(judgment\.notes[\s\S]*?provenance:sanitizeReviewProvenance/,
+  'portable connection judgments use a bounded allowlist and compact provenance',
+);
+assert.match(
+  echoReview,
+  /evidence:\{[\s\S]*?leftQuoteHash[\s\S]*?rightQuoteHash[\s\S]*?surface:'connections-review'/,
+  'connection judgments retain evidence hashes and surface rather than source excerpts',
+);
+assert.doesNotMatch(
+  echoReview.match(/export function makeEchoEvaluationRecord[\s\S]*?export function updateEchoEvaluation/)?.[0] || '',
+  /excerpt:/,
+  'evaluation normalization cannot serialize source excerpts',
+);
+assert.match(
   ai,
   /grounded:validCitations\.length > 0 && unknownCitations\.length === 0/,
   'Ask verification rejects missing or invented citations',
@@ -132,6 +148,11 @@ assert.match(
   library,
   /function safeBundleFilename\(value\)[\s\S]*?!value\.includes\('\/'\)[\s\S]*?!value\.includes\('\\\\'\)/,
   'portable bundle filenames reject path traversal',
+);
+assert.match(
+  library,
+  /containsUnsafeEchoEvaluationData[\s\S]*?\['excerpt', 'sourceText', 'bookText', 'results'\][\s\S]*?unsafe-echo-evaluations/,
+  'portable imports recursively reject book text inside evaluation records',
 );
 assert.match(
   library,

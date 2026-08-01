@@ -31,26 +31,37 @@ metadata.
       catalog.json
       views.json
       works/<workId>.json
-    annotations/<workId>.json
+    annotations/
+      <workId>.json
+      echoes.json
+      echo-evaluations.json
     notes/<legacyBookId>.json
     semantic/<workId>/
       passages.json
       records.json
       ideas.json
+      units.json
+      reader-connections.json
     indexes/
       works/<workId>.json
       idea-embeddings/<workId>.json
       idea-embeddings/<workId>.f32
       library-idea-graph.json
+      echo-unit-embeddings/<workId>.json
+      echo-unit-embeddings/<workId>.f32
+      library-echo-graph.json
+      echo-review-queue.json
     jobs/<workId>.json
     covers/
     trash/
 ```
 
 Work manifests, annotations, user metadata, reading state, saved views, and
-curation are canonical. The catalog projection, passages, deterministic/model
-semantics, embeddings, graph, jobs, and covers are derived and rebuildable.
-Legacy `notes/` remain readable during migration.
+curation are canonical. `annotations/echo-evaluations.json` is also portable
+canonical data: it stores quality labels and evidence hashes, not source
+excerpts. The catalog projection, passages, deterministic/model semantics,
+embeddings, graphs, `indexes/echo-review-queue.json`, jobs, and covers are
+derived and rebuildable. Legacy `notes/` remain readable during migration.
 
 ## Root manifest
 

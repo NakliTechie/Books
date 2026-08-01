@@ -1229,11 +1229,133 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 .metadata-candidate-actions {
   display:flex; flex-wrap:wrap; gap:5px; margin-top:3px;
 }
+.connections-dialog {
+  width:min(1080px,calc(100vw - 28px)) !important;
+  height:min(780px,calc(100vh - 28px)); max-height:calc(100vh - 28px);
+}
+.connections-dialog .books-dialog-body {
+  height:100%; box-sizing:border-box; display:flex; flex-direction:column;
+  min-height:0;
+}
+.connections-head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
+.connections-head p { margin:3px 0 0; }
+.connections-status {
+  flex:none; padding:5px 8px; border:1px solid var(--line); border-radius:999px;
+  color:var(--muted); background:var(--body); font-size:10px;
+}
+.connections-tabs {
+  display:flex; gap:5px; margin:14px 0 10px; padding-bottom:9px;
+  overflow:auto; border-bottom:1px solid var(--line);
+}
+.connections-tabs button,.connections-toolbar button,.connections-toolbar select,
+.connections-toolbar input,.connections-nav button,.connections-review-labels button,
+.connections-query-labels button,.connections-evidence-card button {
+  border:1px solid var(--line); border-radius:7px; background:var(--body);
+  color:var(--ink); padding:7px 9px; font:11px/1.2 inherit; cursor:pointer;
+}
+.connections-tabs button[aria-selected="true"],
+.connections-review-labels button[aria-pressed="true"],
+.connections-query-labels button[aria-pressed="true"] {
+  border-color:var(--brand); background:var(--row); color:var(--brand);
+}
+.connections-panel { flex:1; min-height:0; overflow:auto; }
+.connections-toolbar {
+  display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin-bottom:10px;
+}
+.connections-toolbar input { flex:1 1 220px; min-width:140px; }
+.connections-summary {
+  display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px;
+  margin-bottom:10px;
+}
+.connections-summary div {
+  padding:9px; border:1px solid var(--line); border-radius:8px; background:var(--body);
+}
+.connections-summary strong,.connections-summary span { display:block; }
+.connections-summary strong { font:700 18px/1 Georgia,serif; }
+.connections-summary span { margin-top:3px; color:var(--muted); font-size:9px; }
+.connections-explorer-layout {
+  display:grid; grid-template-columns:minmax(190px,260px) minmax(0,1fr);
+  gap:10px; min-height:0;
+}
+.connections-theme-list,.connections-card-list { display:grid; gap:7px; align-content:start; }
+.connections-theme {
+  width:100%; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:7px;
+  text-align:left; padding:9px 10px; border:1px solid var(--line); border-radius:8px;
+  background:var(--body); color:var(--ink); cursor:pointer; font:inherit;
+}
+.connections-theme[aria-current="true"] { border-color:var(--brand); background:var(--row); }
+.connections-theme strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
+.connections-theme span { color:var(--muted); font-size:9px; }
+.connection-card {
+  padding:11px; border:1px solid var(--line); border-radius:9px; background:var(--body);
+}
+.connection-card-head { display:flex; justify-content:space-between; gap:10px; }
+.connection-card-head strong { font-size:12px; }
+.connection-card-head span { color:var(--brand); font-size:9px; white-space:nowrap; }
+.connection-card p { margin:7px 0 !important; color:var(--ink) !important; font-size:11px !important; }
+.connection-card-meta { color:var(--muted); font-size:9px; }
+.connection-card-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.connection-card-actions button {
+  border:1px solid var(--line); border-radius:6px; background:var(--row);
+  color:var(--ink); padding:6px 8px; cursor:pointer; font-size:10px;
+}
+.connections-review-shell { display:grid; gap:10px; }
+.connections-review-meta {
+  display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px;
+  color:var(--muted); font-size:10px;
+}
+.connections-evidence-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.connections-evidence-card {
+  display:flex; flex-direction:column; gap:7px; min-width:0; padding:12px;
+  border:1px solid var(--line); border-radius:9px; background:var(--body);
+}
+.connections-evidence-card h4 { margin:0; font-size:13px; }
+.connections-evidence-card small { color:var(--muted); }
+.connections-evidence-card blockquote {
+  flex:1; margin:0; padding:10px; border-left:3px solid var(--line);
+  background:var(--panel); color:var(--ink); font:12px/1.55 Georgia,serif;
+}
+.connections-review-explanation {
+  margin:0 !important; padding:9px 10px; border:1px solid var(--line);
+  border-radius:8px; background:var(--row); color:var(--ink) !important;
+}
+.connections-review-labels,.connections-query-labels {
+  display:flex; flex-wrap:wrap; gap:6px;
+}
+.connections-review-fields {
+  display:grid; grid-template-columns:minmax(170px,.45fr) minmax(0,1fr); gap:8px;
+}
+.connections-review-fields label { display:grid; gap:5px; color:var(--muted); font-size:10px; }
+.connections-review-fields select,.connections-review-fields input {
+  width:100%; box-sizing:border-box; border:1px solid var(--line); border-radius:7px;
+  background:var(--body); color:var(--ink); padding:7px 9px;
+}
+.connections-evidence-valid { display:flex !important; grid-auto-flow:column; justify-content:start; align-items:center; }
+.connections-nav { display:flex; justify-content:space-between; gap:7px; }
+.connections-nav-group { display:flex; gap:7px; }
+.connections-query-card {
+  display:grid; gap:10px; max-width:720px; padding:16px; margin:0 auto;
+  border:1px solid var(--line); border-radius:10px; background:var(--body);
+}
+.connections-query-card h4 { margin:0; font:700 24px/1.15 Georgia,serif; }
+.connections-query-card p { margin:0 !important; }
+.connections-query-checks { display:flex; flex-wrap:wrap; gap:14px; color:var(--muted); font-size:10px; }
+.connections-report {
+  white-space:pre-wrap; user-select:text; min-height:260px; margin:0;
+  padding:12px; border:1px solid var(--line); border-radius:9px;
+  background:var(--body); color:var(--ink); font:11px/1.55 ui-monospace,monospace;
+}
+.connections-empty {
+  padding:28px; text-align:center; border:1px dashed var(--line); border-radius:10px;
+  color:var(--muted);
+}
 @media (max-width:900px) {
   .reader-library.is-open {
     position:absolute; inset:0 auto 0 0; width:min(82vw,300px);
     box-shadow:8px 0 26px rgba(0,0,0,.16);
   }
+  .connections-explorer-layout { grid-template-columns:1fr; }
+  .connections-theme-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @media (max-width:600px) {
   .topbar { gap:8px; padding:10px 12px; }
@@ -1260,6 +1382,10 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     position:absolute; inset:0 0 0 auto; width:min(100%,390px); max-width:100%;
     box-shadow:-8px 0 26px rgba(0,0,0,.16);
   }
+  .connections-dialog { width:100% !important; height:100%; max-height:100%; border-radius:0 !important; }
+  .connections-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .connections-evidence-grid,.connections-review-fields { grid-template-columns:1fr; }
+  .connections-theme-list { grid-template-columns:1fr; }
 }
 @media (pointer:coarse), (max-width:600px) {
   button, summary, a.help-link, .library-search input,
@@ -1575,6 +1701,146 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     <div class="books-dialog-actions">
       <button type="button" id="annotations-export-btn">Export Markdown</button>
       <button type="button" data-close-dialog="annotations-browser-dialog">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="books-dialog connections-dialog" id="connections-dialog"
+        aria-labelledby="connections-title">
+  <div class="books-dialog-body">
+    <div class="connections-head">
+      <div>
+        <h3 id="connections-title">Ideas &amp; connections</h3>
+        <p>Explore source-grounded relationships and help Lorewell learn which
+          ones are genuinely useful. Reviews never alter your books.</p>
+      </div>
+      <span class="connections-status" id="connections-status">Loading…</span>
+    </div>
+    <div class="connections-tabs" role="tablist" aria-label="Ideas and connections views">
+      <button type="button" role="tab" id="connections-tab-explore"
+              data-connections-tab="explore" aria-controls="connections-panel-explore"
+              aria-selected="true">Explore</button>
+      <button type="button" role="tab" id="connections-tab-review"
+              data-connections-tab="review" aria-controls="connections-panel-review"
+              aria-selected="false">Review</button>
+      <button type="button" role="tab" id="connections-tab-queries"
+              data-connections-tab="queries" aria-controls="connections-panel-queries"
+              aria-selected="false">Search checks</button>
+      <button type="button" role="tab" id="connections-tab-report"
+              data-connections-tab="report" aria-controls="connections-panel-report"
+              aria-selected="false">Quality report</button>
+    </div>
+    <section class="connections-panel" id="connections-panel-explore"
+             role="tabpanel" aria-labelledby="connections-tab-explore">
+      <div class="connections-toolbar">
+        <input id="connections-explorer-search" type="search" autocomplete="off"
+               placeholder="Filter themes, books, relations…"
+               aria-label="Filter ideas and connections">
+        <select id="connections-explorer-direction" aria-label="Connection direction">
+          <option value="all">All connections</option>
+          <option value="fiction-to-fiction">Fiction ↔ fiction</option>
+          <option value="nonfiction-to-nonfiction">Nonfiction ↔ nonfiction</option>
+          <option value="nonfiction-to-fiction">Concept ↔ story</option>
+        </select>
+      </div>
+      <div class="connections-summary" id="connections-summary"></div>
+      <div class="connections-explorer-layout">
+        <div class="connections-theme-list" id="connections-theme-list"></div>
+        <div class="connections-card-list" id="connections-card-list"></div>
+      </div>
+    </section>
+    <section class="connections-panel" id="connections-panel-review"
+             role="tabpanel" aria-labelledby="connections-tab-review" hidden>
+      <div class="connections-toolbar">
+        <select id="connections-review-filter" aria-label="Review filter">
+          <option value="unreviewed">Unreviewed first</option>
+          <option value="all">All sampled pairs</option>
+          <option value="fiction-to-fiction">Fiction ↔ fiction</option>
+          <option value="nonfiction-to-nonfiction">Nonfiction ↔ nonfiction</option>
+          <option value="nonfiction-to-fiction">Concept ↔ story</option>
+          <option value="likely-false-positive">Likely false positives</option>
+          <option value="generic-or-repetitive">Generic or repetitive</option>
+          <option value="spoiler-sensitive">Spoiler-sensitive</option>
+        </select>
+        <span id="connections-review-progress" aria-live="polite"></span>
+      </div>
+      <div class="connections-review-shell" id="connections-review-shell">
+        <div class="connections-review-meta" id="connections-review-meta"></div>
+        <div class="connections-evidence-grid">
+          <article class="connections-evidence-card">
+            <small id="connections-review-left-kind"></small>
+            <h4 id="connections-review-left-title"></h4>
+            <strong id="connections-review-left-label"></strong>
+            <blockquote id="connections-review-left-evidence"></blockquote>
+            <button type="button" data-review-open="left">Open source passage</button>
+          </article>
+          <article class="connections-evidence-card">
+            <small id="connections-review-right-kind"></small>
+            <h4 id="connections-review-right-title"></h4>
+            <strong id="connections-review-right-label"></strong>
+            <blockquote id="connections-review-right-evidence"></blockquote>
+            <button type="button" data-review-open="right">Open source passage</button>
+          </article>
+        </div>
+        <p class="connections-review-explanation" id="connections-review-explanation"></p>
+        <div class="connections-review-labels" id="connections-review-labels"
+             aria-label="Connection judgment"></div>
+        <div class="connections-review-fields">
+          <label>Suggested relation
+            <select id="connections-review-relation"></select>
+          </label>
+          <label>Optional note
+            <input id="connections-review-note" type="text" maxlength="1200"
+                   placeholder="Why is this useful or wrong?">
+          </label>
+        </div>
+        <label class="connections-evidence-valid">
+          <input id="connections-review-evidence-valid" type="checkbox" checked>
+          Both passages support the displayed connection
+        </label>
+        <div class="connections-nav">
+          <div class="connections-nav-group">
+            <button type="button" id="connections-review-prev">← Previous</button>
+            <button type="button" id="connections-review-next">Next →</button>
+          </div>
+          <button type="button" id="connections-review-defer">Skip for now</button>
+        </div>
+      </div>
+    </section>
+    <section class="connections-panel" id="connections-panel-queries"
+             role="tabpanel" aria-labelledby="connections-tab-queries" hidden>
+      <div class="connections-toolbar">
+        <span id="connections-query-progress" aria-live="polite"></span>
+      </div>
+      <div class="connections-query-card" id="connections-query-card">
+        <small id="connections-query-lens"></small>
+        <h4 id="connections-query-text"></h4>
+        <p>Try this query in the library, then record whether the first results
+          are relevant. Lorewell stores only the query and your judgment.</p>
+        <button type="button" id="connections-query-try">Try in library search</button>
+        <div class="connections-query-labels" id="connections-query-labels"
+             aria-label="Search judgment"></div>
+        <div class="connections-query-checks">
+          <label><input type="checkbox" id="connections-query-at1"> Relevant result at #1</label>
+          <label><input type="checkbox" id="connections-query-at3"> Relevant result within top 3</label>
+        </div>
+        <label>Optional note
+          <input id="connections-query-note" type="text" maxlength="1200">
+        </label>
+        <div class="connections-nav">
+          <button type="button" id="connections-query-prev">← Previous</button>
+          <button type="button" id="connections-query-next">Next →</button>
+        </div>
+      </div>
+    </section>
+    <section class="connections-panel" id="connections-panel-report"
+             role="tabpanel" aria-labelledby="connections-tab-report" hidden>
+      <pre class="connections-report" id="connections-report" tabindex="0"></pre>
+    </section>
+    <div class="books-dialog-actions">
+      <button type="button" id="connections-export-evaluations">Export judgments</button>
+      <button type="button" id="connections-export-report">Export quality report</button>
+      <button type="button" data-close-dialog="connections-dialog">Close</button>
     </div>
   </div>
 </dialog>
@@ -3013,6 +3279,19 @@ import {
   updateEchoWorkExclusion,
 } from './echoes.js';
 import {
+  buildEchoQualityReport,
+  buildEchoReviewQueue,
+  ECHO_EVALUATION_PATH,
+  ECHO_QUERY_REVIEW_LABELS,
+  ECHO_REVIEW_LABELS,
+  ECHO_REVIEW_QUEUE_PATH,
+  makeEchoEvaluationRecord,
+  mergeEchoEvaluationRecords,
+  updateEchoEvaluation,
+  updateEchoEvaluationProgress,
+  updateEchoQueryEvaluation,
+} from './echo-review.js';
+import {
   buildLibraryReport,
   formatLibraryReport,
   processingOutcome,
@@ -3096,6 +3375,47 @@ const annotationsBrowserDialog = document.getElementById('annotations-browser-di
 const annotationsBrowserSearch = document.getElementById('annotations-browser-search');
 const annotationsBrowserList = document.getElementById('annotations-browser-list');
 const annotationsExportBtn = document.getElementById('annotations-export-btn');
+const connectionsDialog = document.getElementById('connections-dialog');
+const connectionsStatus = document.getElementById('connections-status');
+const connectionsExplorerSearch = document.getElementById('connections-explorer-search');
+const connectionsExplorerDirection = document.getElementById('connections-explorer-direction');
+const connectionsSummary = document.getElementById('connections-summary');
+const connectionsThemeList = document.getElementById('connections-theme-list');
+const connectionsCardList = document.getElementById('connections-card-list');
+const connectionsReviewFilter = document.getElementById('connections-review-filter');
+const connectionsReviewProgress = document.getElementById('connections-review-progress');
+const connectionsReviewShell = document.getElementById('connections-review-shell');
+const connectionsReviewMeta = document.getElementById('connections-review-meta');
+const connectionsReviewLeftKind = document.getElementById('connections-review-left-kind');
+const connectionsReviewLeftTitle = document.getElementById('connections-review-left-title');
+const connectionsReviewLeftLabel = document.getElementById('connections-review-left-label');
+const connectionsReviewLeftEvidence = document.getElementById('connections-review-left-evidence');
+const connectionsReviewRightKind = document.getElementById('connections-review-right-kind');
+const connectionsReviewRightTitle = document.getElementById('connections-review-right-title');
+const connectionsReviewRightLabel = document.getElementById('connections-review-right-label');
+const connectionsReviewRightEvidence = document.getElementById('connections-review-right-evidence');
+const connectionsReviewExplanation = document.getElementById('connections-review-explanation');
+const connectionsReviewLabels = document.getElementById('connections-review-labels');
+const connectionsReviewRelation = document.getElementById('connections-review-relation');
+const connectionsReviewNote = document.getElementById('connections-review-note');
+const connectionsReviewEvidenceValid = document.getElementById('connections-review-evidence-valid');
+const connectionsReviewPrev = document.getElementById('connections-review-prev');
+const connectionsReviewNext = document.getElementById('connections-review-next');
+const connectionsReviewDefer = document.getElementById('connections-review-defer');
+const connectionsQueryProgress = document.getElementById('connections-query-progress');
+const connectionsQueryCard = document.getElementById('connections-query-card');
+const connectionsQueryLens = document.getElementById('connections-query-lens');
+const connectionsQueryText = document.getElementById('connections-query-text');
+const connectionsQueryTry = document.getElementById('connections-query-try');
+const connectionsQueryLabels = document.getElementById('connections-query-labels');
+const connectionsQueryAt1 = document.getElementById('connections-query-at1');
+const connectionsQueryAt3 = document.getElementById('connections-query-at3');
+const connectionsQueryNote = document.getElementById('connections-query-note');
+const connectionsQueryPrev = document.getElementById('connections-query-prev');
+const connectionsQueryNext = document.getElementById('connections-query-next');
+const connectionsReport = document.getElementById('connections-report');
+const connectionsExportEvaluations = document.getElementById('connections-export-evaluations');
+const connectionsExportReport = document.getElementById('connections-export-report');
 const savedViewDialog = document.getElementById('saved-view-dialog');
 const savedViewForm = document.getElementById('saved-view-form');
 const savedViewName = document.getElementById('saved-view-name');
@@ -3298,6 +3618,16 @@ let readerLibraryOpen = localStorage.getItem(READER_LIBRARY_OPEN_KEY) === 'true'
 let activeAnnotationRecord = null;
 let pendingHighlightTarget = null;
 let libraryAnnotationRows = [];
+let connectionsQueue = null;
+let connectionsEvaluations = makeEchoEvaluationRecord();
+let connectionsWorkspaceUnits = [];
+let connectionsReviewRows = [];
+let connectionsReviewIndex = 0;
+let connectionsQueryIndex = 0;
+let connectionsActiveTab = 'explore';
+let connectionsSelectedTheme = null;
+let connectionsWorkspaceLoading = null;
+let connectionsReturnState = null;
 let bookOpenInProgress = false;
 let libraryCache = [];
 let semanticCatalog = null;
@@ -6453,6 +6783,18 @@ async function rebuildLibraryEchoGraph(backendId) {
   graph = await classifyLibraryEchoGraph(graph, units);
   if (!processingStillOwnsBackend(backendId)) return null;
   await naklios.fs.write(LIBRARY_ECHO_GRAPH_PATH, JSON.stringify(graph));
+  const reviewQueue = buildEchoReviewQueue({
+    graph,
+    units,
+    manifests,
+    curation,
+    targetPairs:200,
+    targetQueries:32,
+  });
+  await naklios.fs.write(
+    ECHO_REVIEW_QUEUE_PATH,
+    JSON.stringify(reviewQueue),
+  );
   for (const manifest of manifests) {
     const readerConnections = buildReaderConnectionsForWork({
       workId:manifest.workId,
@@ -6486,6 +6828,7 @@ async function rebuildLibraryEchoGraph(backendId) {
           || link.rightWorkId === storedRun.workId
         ).length,
         connectionCount:readerConnections?.connectionCount || 0,
+        reviewCandidateCount:reviewQueue.pairs.length,
         artifact:{
           kind:'reader-connections',
           path:readerConnectionsPath(storedRun.workId),
@@ -8717,6 +9060,672 @@ annotationsBrowserList.addEventListener('click', (event) => {
 });
 annotationsExportBtn.addEventListener('click', exportLibraryAnnotations);
 
+function connectionLabel(value) {
+  return String(value || '').replaceAll('-', ' ').replaceAll('_', ' ')
+    .replace(/^./, (character) => character.toLocaleUpperCase());
+}
+
+function connectionThemeKey(value) {
+  return String(value || '').normalize('NFKC').toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+function connectionCohortLabel(item) {
+  return Array.from(new Set([item?.direction, item?.stratum].filter(Boolean)))
+    .map(connectionLabel)
+    .join(' · ');
+}
+
+function connectionWorkspaceReport() {
+  return buildEchoQualityReport(connectionsQueue, connectionsEvaluations, {
+    targetPairReviews:200,
+    targetQueryReviews:25,
+  });
+}
+
+function connectionJudgment(item) {
+  return item
+    ? connectionsEvaluations.connectionJudgments?.[item.reviewId] || null
+    : null;
+}
+
+function activeConnectionReviewItem() {
+  return connectionsReviewRows[connectionsReviewIndex] || null;
+}
+
+function activeConnectionQuery() {
+  return connectionsQueue?.queries?.[connectionsQueryIndex] || null;
+}
+
+function setConnectionsTab(tab, { focus = false } = {}) {
+  const allowed = new Set(['explore', 'review', 'queries', 'report']);
+  connectionsActiveTab = allowed.has(tab) ? tab : 'explore';
+  connectionsDialog.querySelectorAll('[data-connections-tab]').forEach((button) => {
+    const active = button.dataset.connectionsTab === connectionsActiveTab;
+    button.setAttribute('aria-selected', String(active));
+    button.tabIndex = active ? 0 : -1;
+    if (active && focus) button.focus();
+  });
+  connectionsDialog.querySelectorAll('.connections-panel').forEach((panel) => {
+    panel.hidden = panel.id !== 'connections-panel-' + connectionsActiveTab;
+  });
+  if (connectionsActiveTab === 'explore') renderConnectionsExplorer();
+  if (connectionsActiveTab === 'review') renderConnectionReview();
+  if (connectionsActiveTab === 'queries') renderConnectionQuery();
+  if (connectionsActiveTab === 'report') renderConnectionsReport();
+}
+
+function filteredExplorerPairs() {
+  const needle = connectionsExplorerSearch.value.trim().toLocaleLowerCase();
+  const direction = connectionsExplorerDirection.value;
+  return (connectionsQueue?.pairs || []).filter((item) => {
+    if (direction !== 'all' && item.direction !== direction) return false;
+    if (!needle) return true;
+    return [
+      item.left.label,
+      item.right.label,
+      item.left.workTitle,
+      item.right.workTitle,
+      item.relation,
+      item.explanation,
+    ].filter(Boolean).join(' ').toLocaleLowerCase().includes(needle);
+  });
+}
+
+function explorerThemes(pairs) {
+  const themes = new Map();
+  for (const item of pairs) {
+    for (const side of [item.left, item.right]) {
+      const key = connectionThemeKey(side.label);
+      if (!key) continue;
+      const theme = themes.get(key) || {
+        key,
+        label:side.label,
+        workIds:new Set(),
+        reviewIds:new Set(),
+        maxScore:0,
+      };
+      theme.workIds.add(item.left.workId);
+      theme.workIds.add(item.right.workId);
+      theme.reviewIds.add(item.reviewId);
+      theme.maxScore = Math.max(theme.maxScore, item.score);
+      themes.set(key, theme);
+    }
+  }
+  return Array.from(themes.values()).sort((left, right) =>
+    right.workIds.size - left.workIds.size
+    || right.reviewIds.size - left.reviewIds.size
+    || right.maxScore - left.maxScore
+    || left.label.localeCompare(right.label));
+}
+
+function renderConnectionsExplorer() {
+  if (!connectionsQueue?.pairs?.length) {
+    connectionsSummary.innerHTML = '';
+    connectionsThemeList.innerHTML = '';
+    connectionsCardList.innerHTML =
+      '<div class="connections-empty"><strong>No connection graph yet.</strong><br>' +
+      'Enable Background Intelligence in Indexing settings and process the queued books.</div>';
+    return;
+  }
+  const pairs = filteredExplorerPairs();
+  const themes = explorerThemes(pairs);
+  if (!themes.some((theme) => theme.key === connectionsSelectedTheme)) {
+    connectionsSelectedTheme = themes[0]?.key || null;
+  }
+  const report = connectionWorkspaceReport();
+  connectionsSummary.innerHTML = [
+    [connectionsQueue.available?.pairs || connectionsQueue.pairs.length, 'eligible graph links'],
+    [connectionsQueue.pairs.length, 'diverse review sample'],
+    [themes.length, 'visible themes'],
+    [report.connections.reviewed, 'human judgments'],
+  ].map(([value, label]) =>
+    '<div><strong>' + escapeHtml(value) + '</strong><span>' +
+      escapeHtml(label) + '</span></div>'
+  ).join('');
+  connectionsThemeList.innerHTML = themes.length
+    ? themes.slice(0, 60).map((theme) =>
+        '<button class="connections-theme" type="button" data-connections-theme="' +
+          escapeHtml(theme.key) + '" aria-current="' +
+          String(theme.key === connectionsSelectedTheme) + '">' +
+          '<strong>' + escapeHtml(theme.label) + '</strong>' +
+          '<span>' + theme.workIds.size + ' books</span>' +
+        '</button>'
+      ).join('')
+    : '<div class="connections-empty">No themes match this filter.</div>';
+  const selectedPairs = pairs.filter((item) =>
+    connectionThemeKey(item.left.label) === connectionsSelectedTheme
+    || connectionThemeKey(item.right.label) === connectionsSelectedTheme);
+  connectionsCardList.innerHTML = selectedPairs.length
+    ? selectedPairs.slice(0, 40).map((item) => {
+        const reviewed = connectionJudgment(item);
+        const relation = ECHO_RELATION_LABELS[item.relation]
+          || connectionLabel(item.relation);
+        return '<article class="connection-card" data-connection-card="' +
+          escapeHtml(item.reviewId) + '">' +
+          '<div class="connection-card-head"><strong>' +
+            escapeHtml(item.left.workTitle + ' ↔ ' + item.right.workTitle) +
+          '</strong><span>' + escapeHtml(
+            reviewed ? connectionLabel(reviewed.label) : Math.round(item.score * 100) + '%',
+          ) + '</span></div>' +
+          '<p>' + escapeHtml(item.left.label + ' · ' + relation + ' · ' + item.right.label) + '</p>' +
+          '<div class="connection-card-meta">' + escapeHtml(
+            connectionCohortLabel(item),
+          ) + '</div>' +
+          '<div class="connection-card-actions">' +
+            '<button type="button" data-explorer-review="' + escapeHtml(item.reviewId) + '">Review evidence</button>' +
+            '<button type="button" data-explorer-open="left" data-review-id="' + escapeHtml(item.reviewId) + '">Open ' + escapeHtml(item.left.workTitle) + '</button>' +
+            '<button type="button" data-explorer-open="right" data-review-id="' + escapeHtml(item.reviewId) + '">Open ' + escapeHtml(item.right.workTitle) + '</button>' +
+          '</div>' +
+        '</article>';
+      }).join('')
+    : '<div class="connections-empty">Choose a theme to follow its evidence trail.</div>';
+}
+
+function refreshConnectionReviewRows(preferredReviewId = null) {
+  const filter = connectionsReviewFilter.value;
+  const pairs = connectionsQueue?.pairs || [];
+  if (filter === 'unreviewed') {
+    connectionsReviewRows = pairs.filter((item) => !connectionJudgment(item));
+  } else if (filter === 'all') {
+    connectionsReviewRows = pairs.slice();
+  } else {
+    connectionsReviewRows = pairs.filter((item) =>
+      item.direction === filter || item.stratum === filter);
+  }
+  if (!connectionsReviewRows.length && filter === 'unreviewed') {
+    connectionsReviewRows = pairs.slice();
+  }
+  const requested = preferredReviewId
+    || activeConnectionReviewItem()?.reviewId
+    || connectionsEvaluations.progress?.connectionReviewId;
+  const requestedIndex = connectionsReviewRows.findIndex((item) =>
+    item.reviewId === requested);
+  connectionsReviewIndex = requestedIndex >= 0
+    ? requestedIndex
+    : Math.min(connectionsReviewIndex, Math.max(0, connectionsReviewRows.length - 1));
+}
+
+function renderConnectionReview(preferredReviewId = null) {
+  refreshConnectionReviewRows(preferredReviewId);
+  const item = activeConnectionReviewItem();
+  const report = connectionWorkspaceReport();
+  connectionsReviewProgress.textContent = report.connections.reviewed + ' reviewed · ' +
+    report.connections.remaining + ' to gate';
+  if (!item) {
+    connectionsReviewShell.hidden = true;
+    connectionsReviewProgress.textContent += ' · no pairs in this filter';
+    return;
+  }
+  connectionsReviewShell.hidden = false;
+  const judgment = connectionJudgment(item);
+  connectionsReviewMeta.innerHTML =
+    '<span>' + escapeHtml(connectionCohortLabel(item)) + '</span>' +
+    '<span>' + escapeHtml(
+      (ECHO_RELATION_LABELS[item.relation] || connectionLabel(item.relation)) +
+      ' · ' + Math.round(item.score * 100) + '% match · ' +
+      Math.round(item.confidence * 100) + '% confidence · ' +
+      connectionLabel(
+        item.classification?.model || item.classification?.provider
+          ? 'model-assisted' : 'deterministic-local',
+      ) + ' · ' + String(
+        item.classification?.model
+          || item.classification?.provider
+          || item.generatedBy?.relationMethod
+          || item.generatedBy?.method
+          || 'embedding-neighbour',
+      ),
+    ) + '</span>';
+  const renderSide = (side, kind, title, label, evidence) => {
+    kind.textContent = connectionLabel(side.kind) + ' · ' + connectionLabel(side.lens) +
+      ' · ' + Math.round((side.evidence?.positionFraction || 0) * 100) + '% through source' +
+      (side.spoilerRisk !== 'low' ? ' · ' + side.spoilerRisk + ' spoiler risk' : '');
+    title.textContent = side.workTitle;
+    label.textContent = side.label;
+    evidence.textContent = side.evidence?.excerpt || 'Source evidence is unavailable.';
+  };
+  renderSide(item.left, connectionsReviewLeftKind, connectionsReviewLeftTitle,
+    connectionsReviewLeftLabel, connectionsReviewLeftEvidence);
+  renderSide(item.right, connectionsReviewRightKind, connectionsReviewRightTitle,
+    connectionsReviewRightLabel, connectionsReviewRightEvidence);
+  connectionsReviewExplanation.textContent = item.explanation
+    || 'Embedding candidate only. Judge the evidence, not the generated wording.';
+  connectionsReviewLabels.innerHTML = ECHO_REVIEW_LABELS.map((label) =>
+    '<button type="button" data-review-label="' + escapeHtml(label) +
+      '" aria-pressed="' + String(judgment?.label === label) + '">' +
+      escapeHtml(connectionLabel(label)) + '</button>'
+  ).join('');
+  connectionsReviewRelation.innerHTML =
+    '<option value="">Keep ' + escapeHtml(connectionLabel(item.relation)) + '</option>' +
+    ECHO_RELATION_TYPES.map((relation) =>
+      '<option value="' + escapeHtml(relation) + '">' +
+        escapeHtml(ECHO_RELATION_LABELS[relation] || connectionLabel(relation)) +
+      '</option>'
+    ).join('');
+  connectionsReviewRelation.value = judgment?.suggestedRelation || '';
+  connectionsReviewNote.value = judgment?.notes || '';
+  connectionsReviewEvidenceValid.checked = judgment
+    ? judgment.evidenceValid === true : true;
+  connectionsReviewPrev.disabled = connectionsReviewRows.length <= 1;
+  connectionsReviewNext.disabled = connectionsReviewRows.length <= 1;
+  connectionsReviewDefer.disabled = connectionsReviewRows.length <= 1;
+}
+
+async function recordConnectionReview(label) {
+  const item = activeConnectionReviewItem();
+  if (!item) return;
+  const previous = connectionsEvaluations;
+  try {
+    connectionsEvaluations = updateEchoEvaluation(
+      connectionsEvaluations,
+      item,
+      {
+        label,
+        evidenceValid:connectionsReviewEvidenceValid.checked,
+        suggestedRelation:connectionsReviewRelation.value || null,
+        notes:connectionsReviewNote.value,
+      },
+    );
+    await naklios.fs.write(
+      ECHO_EVALUATION_PATH,
+      JSON.stringify(connectionsEvaluations, null, 2),
+    );
+    const nextId = connectionsReviewRows[
+      (connectionsReviewIndex + 1) % connectionsReviewRows.length
+    ]?.reviewId;
+    renderConnectionReview(nextId);
+    renderConnectionsReport();
+  } catch (error) {
+    connectionsEvaluations = previous;
+    showToast("Couldn't save this judgment: " + String(error?.message || error), {
+      error:true,
+      duration:5500,
+    });
+  }
+}
+
+async function persistConnectionsProgress(values) {
+  const previous = connectionsEvaluations;
+  try {
+    connectionsEvaluations = updateEchoEvaluationProgress(
+      connectionsEvaluations,
+      values,
+    );
+    await naklios.fs.write(
+      ECHO_EVALUATION_PATH,
+      JSON.stringify(connectionsEvaluations, null, 2),
+    );
+  } catch (error) {
+    connectionsEvaluations = previous;
+    console.warn('Lorewell: connection review progress was not saved', error);
+  }
+}
+
+function moveConnectionReview(delta) {
+  if (!connectionsReviewRows.length) return;
+  connectionsReviewIndex = (
+    connectionsReviewIndex + delta + connectionsReviewRows.length
+  ) % connectionsReviewRows.length;
+  renderConnectionReview(activeConnectionReviewItem()?.reviewId);
+  void persistConnectionsProgress({
+    connectionReviewId:activeConnectionReviewItem()?.reviewId || null,
+  });
+}
+
+function renderConnectionQuery(preferredQueryId = null) {
+  const queries = connectionsQueue?.queries || [];
+  const preferredIndex = queries.findIndex((query) =>
+    query.queryId === (preferredQueryId || connectionsEvaluations.progress?.queryId));
+  if (preferredIndex >= 0) connectionsQueryIndex = preferredIndex;
+  connectionsQueryIndex = Math.min(connectionsQueryIndex, Math.max(0, queries.length - 1));
+  const query = activeConnectionQuery();
+  const report = connectionWorkspaceReport();
+  connectionsQueryProgress.textContent = report.queries.reviewed + ' reviewed · ' +
+    report.queries.remaining + ' to gate';
+  if (!query) {
+    connectionsQueryCard.hidden = true;
+    connectionsQueryProgress.textContent += ' · no query suggestions available';
+    return;
+  }
+  connectionsQueryCard.hidden = false;
+  const judgment = connectionsEvaluations.queryJudgments?.[query.queryId] || null;
+  connectionsQueryLens.textContent = connectionLabel(query.lens) + ' · ' +
+    query.sourceWorkIds.length + ' source book' + (query.sourceWorkIds.length === 1 ? '' : 's');
+  connectionsQueryText.textContent = query.query;
+  connectionsQueryLabels.innerHTML = ECHO_QUERY_REVIEW_LABELS.map((label) =>
+    '<button type="button" data-query-label="' + escapeHtml(label) +
+      '" aria-pressed="' + String(judgment?.label === label) + '">' +
+      escapeHtml(connectionLabel(label)) + '</button>'
+  ).join('');
+  connectionsQueryAt1.checked = judgment?.relevantAt1 === true;
+  connectionsQueryAt3.checked = judgment?.relevantAt3 === true;
+  connectionsQueryNote.value = judgment?.notes || '';
+  connectionsQueryPrev.disabled = queries.length <= 1;
+  connectionsQueryNext.disabled = queries.length <= 1;
+}
+
+async function recordConnectionQueryReview(label) {
+  const query = activeConnectionQuery();
+  if (!query) return;
+  const previous = connectionsEvaluations;
+  try {
+    connectionsEvaluations = updateEchoQueryEvaluation(
+      connectionsEvaluations,
+      query,
+      {
+        label,
+        relevantAt1:connectionsQueryAt1.checked,
+        relevantAt3:connectionsQueryAt3.checked,
+        notes:connectionsQueryNote.value,
+      },
+    );
+    await naklios.fs.write(
+      ECHO_EVALUATION_PATH,
+      JSON.stringify(connectionsEvaluations, null, 2),
+    );
+    connectionsQueryIndex = (
+      connectionsQueryIndex + 1
+    ) % Math.max(1, connectionsQueue.queries.length);
+    renderConnectionQuery(activeConnectionQuery()?.queryId);
+    renderConnectionsReport();
+  } catch (error) {
+    connectionsEvaluations = previous;
+    showToast("Couldn't save this search judgment: " + String(error?.message || error), {
+      error:true,
+      duration:5500,
+    });
+  }
+}
+
+function moveConnectionQuery(delta) {
+  const queries = connectionsQueue?.queries || [];
+  if (!queries.length) return;
+  connectionsQueryIndex = (connectionsQueryIndex + delta + queries.length) % queries.length;
+  renderConnectionQuery(queries[connectionsQueryIndex]?.queryId);
+  void persistConnectionsProgress({
+    queryId:queries[connectionsQueryIndex]?.queryId || null,
+  });
+}
+
+function formatConnectionsQualityReport(report) {
+  const percentage = (value) => value == null ? 'pending' : Math.round(value * 100) + '%';
+  const labelRows = (values) => Object.entries(values || {})
+    .map(([label, count]) => '  ' + label + ': ' + count).join('\n') || '  none';
+  return [
+    'Lorewell connection quality report',
+    'Generated: ' + report.generatedAt,
+    'Graph: ' + report.graphVersion,
+    '',
+    'Connection review',
+    '  Reviewed: ' + report.connections.reviewed + ' / ' + report.connections.target,
+    '  Accepted precision: ' + percentage(report.connections.precision),
+    '  Invalid evidence: ' + report.connections.invalidEvidence,
+    '  Remaining: ' + report.connections.remaining,
+    'Labels',
+    labelRows(report.connections.labels),
+    'Directions',
+    labelRows(report.connections.directions),
+    'Generation routes',
+    labelRows(report.connections.routes),
+    '',
+    'Search review',
+    '  Reviewed: ' + report.queries.reviewed + ' / ' + report.queries.target,
+    '  Relevant at #1: ' + percentage(report.queries.relevantAt1),
+    '  Relevant within top 3: ' + percentage(report.queries.relevantAt3),
+    'Labels',
+    labelRows(report.queries.labels),
+    '',
+    'Calibration',
+    '  Current inline threshold: ' + report.calibration.currentInlineThreshold,
+    '  Advisory threshold: ' + (
+      report.calibration.advisoryInlineThreshold?.threshold ?? 'needs at least 20 judgments'
+    ),
+    '  Threshold changes require human approval: yes',
+    '',
+    'Rollout gate',
+    '  Pair review complete: ' + report.gate.pairReviewComplete,
+    '  Query review complete: ' + report.gate.queryReviewComplete,
+    '  Evidence complete: ' + report.gate.evidenceComplete,
+    '  Recommended default: ' + report.gate.recommendedDefault,
+    '',
+    report.privacy,
+  ].join('\n');
+}
+
+function renderConnectionsReport() {
+  if (!connectionsQueue) {
+    connectionsReport.textContent = 'The review queue has not been built yet.';
+    return;
+  }
+  connectionsReport.textContent = formatConnectionsQualityReport(
+    connectionWorkspaceReport(),
+  );
+}
+
+async function loadConnectionsWorkspace({ force = false } = {}) {
+  if (connectionsWorkspaceLoading) return connectionsWorkspaceLoading;
+  if (connectionsQueue && !force) return connectionsQueue;
+  connectionsWorkspaceLoading = (async () => {
+    connectionsStatus.textContent = 'Loading local graph…';
+    const [graph, curation, evaluations] = await Promise.all([
+      readJsonRecord(LIBRARY_ECHO_GRAPH_PATH),
+      readJsonRecord(ECHO_CURATION_PATH),
+      readJsonRecord(ECHO_EVALUATION_PATH),
+    ]);
+    const manifests = Array.from(semanticManifests.values())
+      .filter((manifest) => manifest.recordState !== 'merged');
+    const unitRecords = await Promise.all(manifests.map((manifest) =>
+      readJsonRecord(semanticUnitsPath(manifest.workId))));
+    connectionsWorkspaceUnits = unitRecords.flatMap((record) => record?.units || []);
+    connectionsEvaluations = makeEchoEvaluationRecord(evaluations || {});
+    connectionsQueue = buildEchoReviewQueue({
+      graph,
+      units:connectionsWorkspaceUnits,
+      manifests,
+      curation,
+      targetPairs:200,
+      targetQueries:32,
+    });
+    if (naklios.capabilities.fs) {
+      await naklios.fs.write(
+        ECHO_REVIEW_QUEUE_PATH,
+        JSON.stringify(connectionsQueue),
+      );
+    }
+    connectionsStatus.textContent = graph?.links?.length
+      ? connectionsQueue.pairs.length + ' sampled · ' + graph.links.length + ' graph links'
+      : 'Indexing required';
+    return connectionsQueue;
+  })().finally(() => {
+    connectionsWorkspaceLoading = null;
+  });
+  return connectionsWorkspaceLoading;
+}
+
+async function openConnectionsWorkspace({
+  tab = null,
+  reviewId = null,
+  queryId = null,
+  theme = null,
+  force = false,
+} = {}) {
+  if (!connectionsDialog.open) connectionsDialog.showModal();
+  connectionsStatus.textContent = 'Loading…';
+  try {
+    await loadConnectionsWorkspace({ force });
+    if (theme) connectionsSelectedTheme = theme;
+    renderConnectionsExplorer();
+    refreshConnectionReviewRows(reviewId);
+    renderConnectionReview(reviewId);
+    renderConnectionQuery(queryId);
+    renderConnectionsReport();
+    setConnectionsTab(tab || connectionsActiveTab);
+  } catch (error) {
+    connectionsStatus.textContent = 'Unavailable';
+    connectionsCardList.innerHTML = '<div class="connections-empty">' +
+      escapeHtml(String(error?.message || error)) + '</div>';
+    showToast("Couldn't open Ideas & connections: " + String(error?.message || error), {
+      error:true,
+      duration:6500,
+    });
+  }
+}
+
+function connectionsWorkspaceState(overrides = {}) {
+  return {
+    tab:connectionsActiveTab,
+    reviewId:activeConnectionReviewItem()?.reviewId || null,
+    queryId:activeConnectionQuery()?.queryId || null,
+    theme:connectionsSelectedTheme,
+    ...overrides,
+  };
+}
+
+async function openConnectionEvidence(item, sideName) {
+  const side = item?.[sideName];
+  const entry = side && libraryCache.find((candidate) =>
+    candidate.work?.workId === side.workId);
+  if (!side || !entry) {
+    showToast('That source book is unavailable in this library.', { error:true });
+    return;
+  }
+  const passages = await readJsonRecord(passagesPath(side.workId));
+  const passage = passages?.passages?.find((candidate) =>
+    candidate.passageId === side.evidence?.passageId);
+  if (!passage) {
+    showToast('That source passage is stale or missing. Rebuild its index before review.', {
+      error:true,
+      duration:6000,
+    });
+    return;
+  }
+  const state = connectionsWorkspaceState({ reviewId:item.reviewId });
+  connectionsReturnState = state;
+  connectionsDialog.close();
+  activeEchoReturnRoute = {
+    kind:'connections-workspace',
+    connectionsState:state,
+  };
+  readerEchoReturn.textContent = '↩ Ideas & connections';
+  readerEchoReturn.hidden = false;
+  await openBookFromLibrary(entry.filename);
+  if (!activeEngine) return;
+  if (activeReaderMode !== 'native' && activeNativePassageRecord?.passages?.length) {
+    await switchToNativeMode();
+  }
+  if (activeReaderMode === 'native') {
+    await activeEngine.jumpTo({
+      passageId:side.evidence.passageId,
+      paragraphId:side.evidence.paragraphId,
+    });
+  } else {
+    await activeEngine.jumpTo(faithfulPositionForPassage(
+      passage,
+      passages.passages.length,
+    ));
+  }
+  readerStatus.textContent = 'Connection evidence · ' + side.label;
+  readerEchoReturn.focus({ preventScroll:true });
+}
+
+function tryConnectionQuery() {
+  const query = activeConnectionQuery();
+  if (!query) return;
+  void persistConnectionsProgress({ queryId:query.queryId });
+  connectionsReturnState = connectionsWorkspaceState({ tab:'queries', queryId:query.queryId });
+  connectionsDialog.close();
+  libraryFilter = query.query;
+  semanticLibraryQuery = query.query;
+  renderLibraryRows();
+  const input = document.getElementById('library-filter');
+  if (input) input.value = query.query;
+  clearTimeout(semanticSearchTimer);
+  semanticSearchTimer = setTimeout(
+    () => void runSemanticLibrarySearch(query.query),
+    0,
+  );
+  const resume = document.getElementById('resume-connections-btn');
+  if (resume) {
+    resume.hidden = false;
+    resume.focus();
+  }
+}
+
+function exportConnectionsEvaluations() {
+  downloadBlob(
+    new Blob([JSON.stringify(connectionsEvaluations, null, 2)], {
+      type:'application/json;charset=utf-8',
+    }),
+    'lorewell-connection-judgments-' + new Date().toISOString().slice(0, 10) + '.json',
+  );
+}
+
+function exportConnectionsQualityReport() {
+  const report = connectionWorkspaceReport();
+  downloadBlob(
+    new Blob([JSON.stringify(report, null, 2)], {
+      type:'application/json;charset=utf-8',
+    }),
+    'lorewell-connection-quality-' + new Date().toISOString().slice(0, 10) + '.json',
+  );
+}
+
+connectionsDialog.querySelector('.connections-tabs').addEventListener('click', (event) => {
+  const tab = event.target.closest('[data-connections-tab]');
+  if (tab) setConnectionsTab(tab.dataset.connectionsTab);
+});
+connectionsDialog.querySelector('.connections-tabs').addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+  event.preventDefault();
+  const tabs = ['explore', 'review', 'queries', 'report'];
+  const delta = event.key === 'ArrowRight' ? 1 : -1;
+  const index = (tabs.indexOf(connectionsActiveTab) + delta + tabs.length) % tabs.length;
+  setConnectionsTab(tabs[index], { focus:true });
+});
+connectionsExplorerSearch.addEventListener('input', renderConnectionsExplorer);
+connectionsExplorerDirection.addEventListener('change', renderConnectionsExplorer);
+connectionsThemeList.addEventListener('click', (event) => {
+  const theme = event.target.closest('[data-connections-theme]');
+  if (!theme) return;
+  connectionsSelectedTheme = theme.dataset.connectionsTheme;
+  renderConnectionsExplorer();
+});
+connectionsCardList.addEventListener('click', (event) => {
+  const reviewId = event.target.closest('[data-explorer-review]')?.dataset.explorerReview;
+  const open = event.target.closest('[data-explorer-open]');
+  if (reviewId) {
+    connectionsReviewFilter.value = 'all';
+    setConnectionsTab('review');
+    renderConnectionReview(reviewId);
+    void persistConnectionsProgress({ connectionReviewId:reviewId });
+  } else if (open) {
+    const item = connectionsQueue?.pairs?.find((row) =>
+      row.reviewId === open.dataset.reviewId);
+    if (item) void openConnectionEvidence(item, open.dataset.explorerOpen);
+  }
+});
+connectionsReviewFilter.addEventListener('change', () => renderConnectionReview());
+connectionsReviewLabels.addEventListener('click', (event) => {
+  const label = event.target.closest('[data-review-label]')?.dataset.reviewLabel;
+  if (label) void recordConnectionReview(label);
+});
+connectionsReviewShell.addEventListener('click', (event) => {
+  const side = event.target.closest('[data-review-open]')?.dataset.reviewOpen;
+  if (side) void openConnectionEvidence(activeConnectionReviewItem(), side);
+});
+connectionsReviewPrev.addEventListener('click', () => moveConnectionReview(-1));
+connectionsReviewNext.addEventListener('click', () => moveConnectionReview(1));
+connectionsReviewDefer.addEventListener('click', () => moveConnectionReview(1));
+connectionsQueryLabels.addEventListener('click', (event) => {
+  const label = event.target.closest('[data-query-label]')?.dataset.queryLabel;
+  if (label) void recordConnectionQueryReview(label);
+});
+connectionsQueryTry.addEventListener('click', tryConnectionQuery);
+connectionsQueryPrev.addEventListener('click', () => moveConnectionQuery(-1));
+connectionsQueryNext.addEventListener('click', () => moveConnectionQuery(1));
+connectionsExportEvaluations.addEventListener('click', exportConnectionsEvaluations);
+connectionsExportReport.addEventListener('click', exportConnectionsQualityReport);
+
 async function readAllPortableAnnotations() {
   const records = await Promise.all(
     Array.from(semanticManifests.keys()).map(
@@ -9301,6 +10310,8 @@ async function storageAccountingSnapshot() {
     portable:new Set([
       SEMANTIC_CATALOG_PATH,
       SEMANTIC_VIEWS_PATH,
+      ECHO_CURATION_PATH,
+      ECHO_EVALUATION_PATH,
       ...manifestIds.map(semanticManifestPath),
       ...manifestIds.map(semanticAnnotationsPath),
       ...(await listedDataPaths('notes/')),
@@ -9314,6 +10325,7 @@ async function storageAccountingSnapshot() {
       ...workIds.map(semanticUnitEmbeddingVectorPath),
       LIBRARY_IDEA_GRAPH_PATH,
       LIBRARY_ECHO_GRAPH_PATH,
+      ECHO_REVIEW_QUEUE_PATH,
     ]),
     semantics:new Set([
       ...workIds.map(semanticRecordsPath),
@@ -9583,11 +10595,18 @@ async function exportPortableLibrary() {
     '<div class="library-health-summary">Preparing original files and portable records…</div>';
   try {
     await flushPendingWrites();
-    const [annotations, legacySidecars, libraryViews, echoCuration] = await Promise.all([
+    const [
+      annotations,
+      legacySidecars,
+      libraryViews,
+      echoCuration,
+      echoEvaluations,
+    ] = await Promise.all([
       readAllPortableAnnotations(),
       readAllLegacySidecars(),
       readJsonRecord(SEMANTIC_VIEWS_PATH),
       readJsonRecord(ECHO_CURATION_PATH),
+      readJsonRecord(ECHO_EVALUATION_PATH),
     ]);
     const assets = [];
     for (let index = 0; index < libraryCache.length; index++) {
@@ -9613,6 +10632,8 @@ async function exportPortableLibrary() {
         ? libraryViews : null,
       echoCuration:echoCuration?.recordType === 'books.echo-curation'
         ? echoCuration : null,
+      echoEvaluations:echoEvaluations?.recordType === 'books.echo-evaluations'
+        ? echoEvaluations : null,
       assets,
       libraryLabel: backendLabel(activeBackendId()),
     });
@@ -9688,6 +10709,8 @@ async function importPortableLibraryFile(file) {
   let shouldWriteImportedViews = false;
   let importedEchoCuration = null;
   let shouldWriteImportedEchoCuration = false;
+  let importedEchoEvaluations = null;
+  let shouldWriteImportedEchoEvaluations = false;
   for (const asset of bundle.assets) {
     try {
       const bytes = base64ToBytes(asset.dataBase64);
@@ -9752,6 +10775,19 @@ async function importPortableLibraryFile(file) {
       importedEchoCuration,
     );
   }
+  if (bundle.records.echoEvaluations) {
+    const existingEchoEvaluations = await readJsonRecord(ECHO_EVALUATION_PATH);
+    importedEchoEvaluations = existingEchoEvaluations
+      ? mergeEchoEvaluationRecords(
+          existingEchoEvaluations,
+          bundle.records.echoEvaluations,
+        )
+      : makeEchoEvaluationRecord(bundle.records.echoEvaluations);
+    shouldWriteImportedEchoEvaluations = !jsonRecordsEqual(
+      existingEchoEvaluations,
+      importedEchoEvaluations,
+    );
+  }
   if (conflicts.length) {
     libraryHealth.innerHTML =
       '<div class="library-health-summary" data-state="error">' +
@@ -9812,6 +10848,13 @@ async function importPortableLibraryFile(file) {
       await naklios.fs.write(
         ECHO_CURATION_PATH,
         JSON.stringify(importedEchoCuration, null, 2),
+      );
+      written++;
+    }
+    if (shouldWriteImportedEchoEvaluations && importedEchoEvaluations) {
+      await naklios.fs.write(
+        ECHO_EVALUATION_PATH,
+        JSON.stringify(importedEchoEvaluations, null, 2),
       );
       written++;
     }
@@ -10807,7 +11850,10 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
           '<div class="library-header-actions">' +
             '<button class="library-header-action" id="library-ask-btn" type="button">Ask library</button>' +
             '<button class="library-header-action" id="annotations-browser-btn" type="button">Annotations</button>' +
-            '<button class="library-header-action" id="library-intelligence-btn" type="button">Indexing &amp; connections</button>' +
+            '<button class="library-header-action" id="library-connections-btn" type="button">Ideas &amp; connections</button>' +
+            '<button class="library-header-action" id="resume-connections-btn" type="button"' +
+              (connectionsReturnState ? '' : ' hidden') + '>Resume connection review</button>' +
+            '<button class="library-header-action" id="library-intelligence-btn" type="button">Indexing settings</button>' +
             '<button class="library-header-action" id="library-tools-btn" type="button">Safety &amp; portability</button>' +
             (!naklios.capabilities.hosted && globalThis.showDirectoryPicker
               ? '<button class="library-header-action" id="add-folder-btn" type="button">Open folder library…</button>'
@@ -10846,6 +11892,19 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   if (annotationsBtn) annotationsBtn.addEventListener('click', () => {
     void openAnnotationsBrowser();
   });
+  document.getElementById('library-connections-btn')?.addEventListener(
+    'click',
+    () => void openConnectionsWorkspace({ tab:'explore', force:true }),
+  );
+  document.getElementById('resume-connections-btn')?.addEventListener(
+    'click',
+    () => {
+      const state = connectionsReturnState || { tab:'review' };
+      connectionsReturnState = null;
+      document.getElementById('resume-connections-btn').hidden = true;
+      void openConnectionsWorkspace({ ...state, force:true });
+    },
+  );
   const filter = document.getElementById('library-filter');
   const sort = document.getElementById('library-sort');
   const viewSelect = document.getElementById('library-view-select');
@@ -12077,6 +13136,13 @@ async function openActiveEchoTarget() {
 
 async function returnFromEchoRoute() {
   const route = activeEchoReturnRoute;
+  if (route?.kind === 'connections-workspace') {
+    const state = route.connectionsState || { tab:'review' };
+    await exitReaderView();
+    connectionsReturnState = null;
+    await openConnectionsWorkspace({ ...state, force:true });
+    return;
+  }
   if (!route?.filename) return;
   await openBookFromLibrary(route.filename);
   if (!activeEngine) return;

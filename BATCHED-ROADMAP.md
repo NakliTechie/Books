@@ -204,6 +204,11 @@ The approved product direction is in [ECHOES-VISION.md](ECHOES-VISION.md).
 Paragraph anchors, typed semantic units, graph v2, materialized reader
 connections, Native-reader indicators, optional audio, executor parity, and
 rollout gates are sequenced in [ECHOES-WORKPLAN.md](ECHOES-WORKPLAN.md).
+The **Connection Calibration & Explorer** engineering slice in Phase 8 is now
+complete: it includes a portable stratified review queue, side-by-side
+evidence and search checks, privacy-safe reports, a library-wide theme-trail
+explorer, and exact source/return navigation. The remaining slice is the human
+labeling and explicit beta-rollout decision.
 
 ### Gate
 
@@ -213,6 +218,9 @@ rollout gates are sequenced in [ECHOES-WORKPLAN.md](ECHOES-WORKPLAN.md).
   exact related-passage route, and return route in the hosted Chrome harness.
 - [x] Add bounded scale, adversarial text, negative similarity, duplicate,
   high-spoiler, deploy, and security contracts to the regular suite.
+- [x] Add the library-wide explorer, resumable pair/query review, portable
+  judgments, quality reports, exact evidence routes, and guide/browser
+  coverage in standalone and NakliOS modes.
 - Do not enable inline indicators by default until the real-library Batch 2
   labels establish a stricter reader-quality threshold.
 - Every Echo must retain evidence in both works, respect spoiler controls, and

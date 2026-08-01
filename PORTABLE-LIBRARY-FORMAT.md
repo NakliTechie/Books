@@ -26,6 +26,9 @@ recursive collection without base64-copying its sources. See
 - Legacy sidecars while the v1.4 compatibility window remains open.
 - Portable saved library views, including query, structured shelf/tag/reading
   filters, and sort order.
+- Portable Echo curation and connection/query evaluation judgments. Evaluation
+  rows retain stable IDs, evidence hashes, bounded notes, and model/extractor
+  provenance, but never copy source excerpts or search-result passages.
 - The semantic schema and export timestamp.
 
 ## Deliberately omitted
@@ -62,6 +65,22 @@ bundle.
       "revision": 1,
       "views": [],
       "updatedAt": "2026-07-30T12:00:00.000Z"
+    },
+    "echoCuration": {
+      "recordType": "books.echo-curation",
+      "connectionFeedback": {},
+      "workExclusions": {}
+    },
+    "echoEvaluations": {
+      "schemaVersion": 1,
+      "recordType": "books.echo-evaluations",
+      "evaluationVersion": "echo-evaluations-v1",
+      "connectionJudgments": {},
+      "queryJudgments": {},
+      "progress": {
+        "connectionReviewId": null,
+        "queryId": null
+      }
     }
   },
   "omittedRebuildableData": [
@@ -87,8 +106,9 @@ Import has a read-only preflight before confirmation or storage writes:
 2. Reject unsafe filenames and record identities.
 3. Decode every source and verify its byte length and SHA-256 fingerprint.
 4. Compare every destination path with existing data.
-5. Merge saved views with different stable identities, but stop if the same
-   view identity contains different data.
+5. Merge saved views and Echo evaluation judgments by stable identity and
+   revision/review time; sanitize all evaluation fields and reject embedded
+   source text.
 6. Stop the complete import if any other destination contains different bytes
    or JSON. Books never silently overwrites a conflicting book or portable
    record.

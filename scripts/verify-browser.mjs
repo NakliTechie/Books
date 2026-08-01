@@ -353,9 +353,270 @@ async function runChrome(chromePath, url, profilePath, mode = 'harness') {
           : null;
       })()`, 'the persisted standalone book to reopen');
       if (reopened.error) throw new Error(reopened.error);
+      await evaluate(`document.getElementById('back-btn').click()`);
+      await waitForValue(
+        `document.querySelector('.row[data-filename="Standalone Journey.txt"]')`,
+        'the standalone library before connection staging',
+      );
+      await evaluate(`(async () => {
+        const response = await fetch('/demo/seed/Seeing%20Systems.md');
+        if (!response.ok) throw new Error('Could not load the connection fixture.');
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([await response.text()], 'Seeing Systems.md', {
+          type:'text/markdown',
+        }));
+        const input = document.getElementById('library-fileinput');
+        input.files = transfer.files;
+        input.dispatchEvent(new Event('change', { bubbles:true }));
+        return true;
+      })()`, true);
+      const secondOpened = await waitForValue(`(() => {
+        const error = document.querySelector('.reader-error')?.textContent || '';
+        if (error) return { error };
+        return document.getElementById('reader')?.classList.contains('is-open')
+          && document.getElementById('reader-title')?.textContent.includes('Seeing Systems')
+          ? { ok:true }
+          : null;
+      })()`, 'the standalone connection source to open', 60000);
+      if (secondOpened.error) throw new Error(secondOpened.error);
+      const secondPassagesReady = await evaluate(`(async () => {
+        const db = await new Promise((resolve, reject) => {
+          const request = indexedDB.open('naklios-books-library-v1', 2);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const read = path => new Promise((resolve, reject) => {
+          const tx = db.transaction('files', 'readonly');
+          const request = tx.objectStore('files').get(path);
+          request.onsuccess = () => {
+            try { resolve(request.result ? JSON.parse(request.result.data) : null); }
+            catch (error) { reject(error); }
+          };
+          request.onerror = () => reject(request.error);
+        });
+        const catalog = await read('catalog/catalog.json');
+        const workId = catalog?.aliases?.sourceFilenames?.['Seeing Systems.md'];
+        for (let attempt = 0; attempt < 150; attempt += 1) {
+          const record = workId
+            ? await read('semantic/' + workId + '/passages.json') : null;
+          if (record?.passages?.length) {
+            db.close();
+            return true;
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        db.close();
+        return false;
+      })()`, true);
+      if (!secondPassagesReady) {
+        throw new Error('The standalone connection source did not finish passage indexing.');
+      }
+      await evaluate(`document.getElementById('back-btn').click()`);
+      await waitForValue(
+        `document.querySelectorAll('#main .library .row').length >= 2`,
+        'two standalone connection sources',
+      );
+      const stagedConnections = await evaluate(`(async () => {
+        const db = await new Promise((resolve, reject) => {
+          const request = indexedDB.open('naklios-books-library-v1', 2);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const read = path => new Promise((resolve, reject) => {
+          const tx = db.transaction('files', 'readonly');
+          const request = tx.objectStore('files').get(path);
+          request.onsuccess = () => {
+            try { resolve(request.result ? JSON.parse(request.result.data) : null); }
+            catch (error) { reject(error); }
+          };
+          request.onerror = () => reject(request.error);
+        });
+        const write = (path, value) => new Promise((resolve, reject) => {
+          const tx = db.transaction('files', 'readwrite');
+          tx.objectStore('files').put({
+            kind:'text',
+            data:JSON.stringify(value, null, 2),
+          }, path);
+          tx.oncomplete = resolve;
+          tx.onerror = () => reject(tx.error);
+          tx.onabort = () => reject(tx.error);
+        });
+        const catalog = await read('catalog/catalog.json');
+        const leftWorkId = catalog?.aliases?.sourceFilenames?.['Standalone Journey.txt'];
+        const rightWorkId = catalog?.aliases?.sourceFilenames?.['Seeing Systems.md'];
+        const leftRecord = leftWorkId
+          ? await read('semantic/' + leftWorkId + '/passages.json') : null;
+        const rightRecord = rightWorkId
+          ? await read('semantic/' + rightWorkId + '/passages.json') : null;
+        const leftPassage = leftRecord?.passages?.find(row =>
+          row.paragraphs?.some(paragraph => paragraph.text?.trim())
+        );
+        const rightPassage = rightRecord?.passages?.find(row =>
+          row.paragraphs?.some(paragraph => paragraph.text?.trim())
+        );
+        const leftParagraph = leftPassage?.paragraphs?.find(row => row.text?.trim());
+        const rightParagraph = rightPassage?.paragraphs?.find(row => row.text?.trim());
+        if (
+          !leftWorkId || !rightWorkId || !leftParagraph || !rightParagraph
+          || !leftPassage || !rightPassage
+        ) {
+          db.close();
+          return {
+            ready:false,
+            leftWorkId:leftWorkId || null,
+            rightWorkId:rightWorkId || null,
+            leftPassages:leftRecord?.passages?.length || 0,
+            rightPassages:rightRecord?.passages?.length || 0,
+            leftParagraphs:leftRecord?.passages?.reduce(
+              (sum, row) => sum + (row.paragraphs?.length || 0), 0
+            ) || 0,
+            rightParagraphs:rightRecord?.passages?.reduce(
+              (sum, row) => sum + (row.paragraphs?.length || 0), 0
+            ) || 0,
+          };
+        }
+        const evidence = (paragraph, passage, positionFraction) => ({
+          passageId:passage.passageId,
+          paragraphId:paragraph.paragraphId,
+          quoteHash:paragraph.anchor?.quoteHash || null,
+          textHash:paragraph.anchor?.textHash || null,
+          excerpt:paragraph.text,
+          positionFraction,
+        });
+        const leftUnit = {
+          unitId:'unit_standalone_private_memory',
+          workId:leftWorkId,
+          kind:'concept',
+          lens:'expository',
+          label:'A private library becomes external memory',
+          statement:'Private source ownership keeps memory inspectable.',
+          confidence:0.92,
+          evidence:[evidence(leftParagraph, leftPassage, 0.2)],
+          generatedBy:{ mode:'deterministic-local', extractor:'standalone-release' },
+          userState:{ hidden:false },
+        };
+        const rightUnit = {
+          unitId:'unit_standalone_feedback_loop',
+          workId:rightWorkId,
+          kind:'principle',
+          lens:'expository',
+          label:'Feedback loops preserve learning',
+          statement:'A durable loop makes revisiting and correction possible.',
+          confidence:0.94,
+          evidence:[evidence(rightParagraph, rightPassage, 0.22)],
+          generatedBy:{ mode:'model-assisted', extractor:'standalone-release', model:'fixture-model' },
+          userState:{ hidden:false },
+        };
+        await write('semantic/' + leftWorkId + '/units.json', {
+          schemaVersion:1,
+          recordType:'books.semantic-units',
+          workId:leftWorkId,
+          units:[leftUnit],
+        });
+        await write('semantic/' + rightWorkId + '/units.json', {
+          schemaVersion:1,
+          recordType:'books.semantic-units',
+          workId:rightWorkId,
+          units:[rightUnit],
+        });
+        await write('indexes/library-echo-graph.json', {
+          schemaVersion:1,
+          recordType:'books.library-echo-graph',
+          graphVersion:'library-echo-links-v2',
+          model:'standalone-release-encoder',
+          links:[{
+            linkId:'echo-link_standalone-release',
+            leftUnitId:leftUnit.unitId,
+            rightUnitId:rightUnit.unitId,
+            leftWorkId,
+            rightWorkId,
+            relation:'supports',
+            score:0.93,
+            classification:{
+              confidence:0.95,
+              explanation:'The feedback loop supports the private-library memory principle.',
+              provider:'browser-local',
+              model:'fixture-model',
+            },
+            generatedBy:{
+              graph:'library-echo-links-v2',
+              relationMethod:'source-grounded-release-fixture',
+            },
+            userState:{ hidden:false },
+          }],
+          updatedAt:'2026-08-01T12:00:00.000Z',
+        });
+        db.close();
+        return { ready:true };
+      })()`, true);
+      if (!stagedConnections?.ready) {
+        throw new Error(
+          'Standalone connection evidence was not ready: '
+          + JSON.stringify(stagedConnections),
+        );
+      }
+      await evaluate(`document.getElementById('library-connections-btn').click()`);
+      await waitForValue(`(() => {
+        const dialog = document.getElementById('connections-dialog');
+        return dialog?.open && document.querySelector('[data-explorer-review]')
+          ? { ok:true }
+          : null;
+      })()`, 'the standalone Ideas and connections explorer');
+      await evaluate(`document.querySelector('[data-explorer-review]').click()`);
+      await waitForValue(`(() => {
+        const left = document.getElementById('connections-review-left-evidence');
+        const right = document.getElementById('connections-review-right-evidence');
+        return !document.getElementById('connections-panel-review')?.hidden
+          && left?.textContent && right?.textContent
+          ? { ok:true }
+          : null;
+      })()`, 'the standalone side-by-side connection review');
+      await evaluate(`document.querySelector('[data-review-label="useful"]').click()`);
+      await waitForValue(
+        `document.querySelector('[data-review-label="useful"]')?.getAttribute('aria-pressed') === 'true'`,
+        'the standalone portable connection judgment',
+      );
+      const portableJudgment = await evaluate(`(async () => {
+        const db = await new Promise((resolve, reject) => {
+          const request = indexedDB.open('naklios-books-library-v1', 2);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const stored = await new Promise((resolve, reject) => {
+          const tx = db.transaction('files', 'readonly');
+          const request = tx.objectStore('files').get('annotations/echo-evaluations.json');
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        db.close();
+        const record = stored ? JSON.parse(stored.data) : null;
+        return {
+          useful:Object.values(record?.connectionJudgments || {})
+            .some(row => row.label === 'useful'),
+          containsSourceText:JSON.stringify(record || {}).includes('external memory with doors'),
+        };
+      })()`, true);
+      if (!portableJudgment?.useful || portableJudgment.containsSourceText) {
+        throw new Error('Standalone connection judgment was missing or retained source text.');
+      }
+      await evaluate(`document.querySelector('[data-review-open="right"]').click()`);
+      await waitForValue(`(() => {
+        return document.getElementById('reader')?.classList.contains('is-open')
+          && document.getElementById('reader-title')?.textContent.includes('Seeing Systems')
+          && document.getElementById('reader-echo-return')?.textContent.includes('Ideas & connections')
+          ? { ok:true }
+          : null;
+      })()`, 'the standalone exact connection source route');
+      await evaluate(`document.getElementById('reader-echo-return').click()`);
+      await waitForValue(
+        `document.getElementById('connections-dialog')?.open
+          && !document.getElementById('connections-panel-review')?.hidden`,
+        'the standalone return to connection review',
+      );
+      await evaluate(`document.getElementById('connections-dialog').close()`);
       return {
         state:'pass',
-        status:'standalone persistence, reading, AI-sidecar navigation, and reopen; context-aware Help',
+        status:'standalone persistence, reading, AI-sidecar navigation, reopen, and connection review; context-aware Help',
         observed:observedSummary(cdp.observed),
       };
     }
@@ -428,7 +689,7 @@ try {
     label:'standalone-library',
     query:'',
     mode:'standalone',
-    expected:'standalone persistence, reading, AI-sidecar navigation, and reopen',
+    expected:'standalone persistence, reading, AI-sidecar navigation, reopen, and connection review',
   });
   await verifyJourney(chromePath, origin, {
     label:'hosted-library',

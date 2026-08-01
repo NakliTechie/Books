@@ -689,6 +689,14 @@ const portableBundle = createPortableBundle({
     workExclusions:{},
     updatedAt:'2026-07-30T00:00:00.000Z',
   },
+  echoEvaluations:{
+    schemaVersion:1,
+    recordType:'books.echo-evaluations',
+    connectionJudgments:{},
+    queryJudgments:{},
+    progress:{ connectionReviewId:null, queryId:null },
+    updatedAt:'2026-08-01T00:00:00.000Z',
+  },
   assets: [{
     filename: 'Pride & Prejudice.epub',
     byteLength: sourceBytes.byteLength,
@@ -702,6 +710,10 @@ assert.equal(portableBundle.recordType, 'books.portable-library');
 assert.deepEqual(portableBundle.records.works, [fingerprinted.manifest]);
 assert.equal(portableBundle.records.views.views.length, 1);
 assert.equal(portableBundle.records.echoCuration.recordType, 'books.echo-curation');
+assert.equal(
+  portableBundle.records.echoEvaluations.recordType,
+  'books.echo-evaluations',
+);
 assert.ok(
   portableBundle.omittedRebuildableData.includes('indexes/'),
   'portable bundles explicitly document omitted rebuildable indexes',
@@ -717,6 +729,7 @@ assert.deepEqual(validatePortableBundle(portableBundle), {
     legacySidecars: 1,
     savedViews: 1,
     echoCuration: 1,
+    echoEvaluations: 1,
   },
 });
 const unsafeBundle = structuredClone(portableBundle);
@@ -727,6 +740,33 @@ assert.ok(
     (error) => error.code === 'unsafe-asset-filename',
   ),
   'bundle import rejects paths that could escape the Books library namespace',
+);
+const unsafeEvaluations = structuredClone(portableBundle);
+unsafeEvaluations.records.echoEvaluations.connectionJudgments.review_bad = {
+  label:'useful',
+  linkId:'echo-link-bad',
+  excerpt:'A source passage does not belong in portable judgments.',
+};
+assert.ok(
+  validatePortableBundle(unsafeEvaluations).errors.some(
+    (error) => error.code === 'unsafe-echo-evaluations',
+  ),
+  'portable evaluation import rejects embedded source excerpts',
+);
+const nestedUnsafeEvaluations = structuredClone(portableBundle);
+nestedUnsafeEvaluations.records.echoEvaluations.connectionJudgments.review_bad = {
+  label:'useful',
+  linkId:'echo-link-bad',
+  provenance:{
+    route:'model-assisted',
+    sourceText:'Nested source text does not belong in portable judgments.',
+  },
+};
+assert.ok(
+  validatePortableBundle(nestedUnsafeEvaluations).errors.some(
+    (error) => error.code === 'unsafe-echo-evaluations',
+  ),
+  'portable evaluation import rejects source text nested in provenance',
 );
 
 console.log('Books semantic-library foundation contract: PASS');

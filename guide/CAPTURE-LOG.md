@@ -1,6 +1,6 @@
 # Lorewell guide capture log
 
-19/19 routes rendered ok · 0 console errors · 0 console warnings
+21/21 routes rendered ok · 0 console errors · 0 console warnings
 
 | Role | Feature | Route | Result | Console |
 | --- | --- | --- | --- | --- |
@@ -14,6 +14,8 @@
 | library-owner | ask-the-library | `standalone:ask` | ok | — |
 | library-owner | ai-providers | `standalone:providers` | ok | — |
 | library-owner | ideas-and-connections | `standalone:intelligence` | ok | — |
+| library-owner | connections-explorer | `standalone:connections` | ok | — |
+| library-owner | connections-review | `standalone:connection-review` | ok | — |
 | active-reader | faithful-reader | `reader:faithful` | ok | — |
 | active-reader | native-reader | `reader:native` | ok | — |
 | active-reader | find-in-book | `reader:search` | ok | — |

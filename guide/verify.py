@@ -43,9 +43,9 @@ def main() -> int:
 
         cards = page.locator(".feature-card")
         sections = page.locator(".role-section")
-        if cards.count() != 19 or sections.count() != 5:
+        if cards.count() != 21 or sections.count() != 5:
             raise RuntimeError(
-                f"Expected 19 feature cards across 5 roles; found "
+                f"Expected 21 feature cards across 5 roles; found "
                 f"{cards.count()} cards across {sections.count()} roles."
             )
         broken_images = page.evaluate(
@@ -65,7 +65,7 @@ def main() -> int:
         if not matches or any("echo" not in row["search"] for row in matches):
             raise RuntimeError(f"Inline Echo search returned invalid cards: {matches}")
         search.press("Escape")
-        if page.locator(".feature-card:not(.hidden)").count() != 19:
+        if page.locator(".feature-card:not(.hidden)").count() != 21:
             raise RuntimeError("Escape did not restore every guide card.")
 
         active_reader_link = page.locator('.toc a[href="#active-reader"]')
@@ -78,7 +78,7 @@ def main() -> int:
         browser.close()
 
     print(
-        "Guide verification passed: 5 roles · 19 features · "
+        "Guide verification passed: 5 roles · 21 features · "
         f"{len(matches)} Echo search matches · images and TOC ready."
     )
     return 0

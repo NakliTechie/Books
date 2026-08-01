@@ -61,3 +61,33 @@ Store evaluator judgments separately from generated records. A threshold
 change increments the relevant extractor/index version and invalidates only
 derived artifacts. User labels, hides, merges, annotations, and source files
 remain untouched.
+
+## Connection calibration contract
+
+Lorewell materializes a rebuildable, deterministic queue at
+`indexes/echo-review-queue.json`. `echo-review-queue-v1` samples valid
+evidence pairs across fiction↔fiction, nonfiction↔nonfiction, cross-genre,
+likely-false-positive, generic/repetitive, and spoiler-sensitive strata while
+bounding repeated works and relation kinds. It also creates a balanced set of
+library-query checks. Hidden links and excluded works never enter the queue.
+
+Human judgments live separately at `annotations/echo-evaluations.json` as
+`echo-evaluations-v1`. A connection row retains stable review/link IDs, graph
+version, direction, relation, score, evidence hashes, compact
+extractor/classifier provenance, evidence validity, label, optional relation
+suggestion, note, and timestamp. A query row retains the bounded query, label,
+relevance-at-1/3 checks, note, and timestamp. Neither record contains source
+excerpts or result passages.
+
+The in-app and native CLI report the same `echo-quality-report-v1`: accepted
+precision, invalid evidence, label/direction/relation/route distributions,
+score bins, search relevance, and remaining review counts. Once enough labels
+exist, Lorewell may calculate an advisory inline threshold, but it never
+applies that threshold automatically. The current inline floor remains `0.82`
+and Echoes remains Off by default until a human approves a versioned change.
+
+The engineering gate is covered by deterministic unit tests, portable import
+validation, and standalone/NakliOS browser journeys through the explorer,
+side-by-side review, exact source opening, return, query check, and report.
+The product gate remains the representative real-library labels and explicit
+rollout decision.

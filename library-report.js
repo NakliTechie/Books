@@ -72,6 +72,7 @@ export function buildLibraryReport({
   semanticUnits = [],
   echoGraph = null,
   readerConnections = [],
+  echoQuality = null,
   generatedAt = new Date().toISOString(),
 } = {}) {
   const manifestById = new Map(
@@ -236,8 +237,17 @@ export function buildLibraryReport({
         (sum, work) => sum + work.readerConnectionCount,
         0,
       ),
+      connectionReviews:Number(echoQuality?.connections?.reviewed) || 0,
+      queryReviews:Number(echoQuality?.queries?.reviewed) || 0,
       issues:issues.length,
     },
+    echoQuality:echoQuality ? {
+      graphVersion:echoQuality.graphVersion || null,
+      connections:echoQuality.connections || null,
+      queries:echoQuality.queries || null,
+      calibration:echoQuality.calibration || null,
+      gate:echoQuality.gate || null,
+    } : null,
     processingOutcomes:countBy(works, (work) => work.processing.outcome),
     issueCounts:countBy(issues, 'code'),
     works,
@@ -263,6 +273,7 @@ export function formatLibraryReport(report) {
     `- Concepts / scenes / ideas: ${report.totals.concepts} / ${report.totals.scenes} / ${report.totals.ideas}`,
     `- Cross-book relationships: ${report.totals.relationships}`,
     `- Semantic units / Echo links / reader connections: ${report.totals.semanticUnits} / ${report.totals.echoes} / ${report.totals.readerConnections}`,
+    `- Connection / query judgments: ${report.totals.connectionReviews} / ${report.totals.queryReviews}`,
     `- Issues: ${report.totals.issues}`,
     '',
     '## Processing',
@@ -270,6 +281,17 @@ export function formatLibraryReport(report) {
   ];
   for (const [outcome, count] of Object.entries(report.processingOutcomes)) {
     lines.push(`- ${outcome}: ${count}`);
+  }
+  if (report.echoQuality) {
+    lines.push(
+      '',
+      '## Connection quality',
+      '',
+      `- Pair review: ${report.echoQuality.connections?.reviewed || 0} / ${report.echoQuality.connections?.target || 0}`,
+      `- Query review: ${report.echoQuality.queries?.reviewed || 0} / ${report.echoQuality.queries?.target || 0}`,
+      `- Evidence complete: ${report.echoQuality.gate?.evidenceComplete === true}`,
+      `- Recommended default: ${report.echoQuality.gate?.recommendedDefault || 'off'}`,
+    );
   }
   lines.push('', '## Works', '');
   for (const work of report.works) {

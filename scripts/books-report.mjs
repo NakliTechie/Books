@@ -6,6 +6,10 @@ import {
   buildLibraryReport,
   formatLibraryReport,
 } from '../library-report.js';
+import {
+  buildEchoQualityReport,
+  buildEchoReviewQueue,
+} from '../echo-review.js';
 
 function parseArgs(argv) {
   const values = argv.slice(2);
@@ -88,7 +92,18 @@ async function readSemanticRecords(sidecar, workIds, filename) {
 const { folder, json } = parseArgs(process.argv);
 const sidecar = basename(folder) === '.books' ? folder : resolve(folder, '.books');
 await assertSafeSidecar(sidecar);
-const [library, inventory, catalog, manifests, jobs, graph, echoGraph] = await Promise.all([
+const [
+  library,
+  inventory,
+  catalog,
+  manifests,
+  jobs,
+  graph,
+  echoGraph,
+  echoReviewQueue,
+  echoEvaluations,
+  echoCuration,
+] = await Promise.all([
   readJson(resolve(sidecar, 'library.json')),
   readJson(resolve(sidecar, 'inventory', 'current.json')),
   readJson(resolve(sidecar, 'catalog', 'catalog.json')),
@@ -96,6 +111,9 @@ const [library, inventory, catalog, manifests, jobs, graph, echoGraph] = await P
   readValidatedRecordDirectory(resolve(sidecar, 'jobs')),
   readJson(resolve(sidecar, 'indexes', 'library-idea-graph.json')),
   readJson(resolve(sidecar, 'indexes', 'library-echo-graph.json')),
+  readJson(resolve(sidecar, 'indexes', 'echo-review-queue.json')),
+  readJson(resolve(sidecar, 'annotations', 'echo-evaluations.json')),
+  readJson(resolve(sidecar, 'annotations', 'echoes.json')),
 ]);
 if (!library && !inventory && !catalog) {
   throw new Error(`No Books sidecar found at ${sidecar}`);
@@ -111,6 +129,16 @@ const [passages, semantics, ideas, semanticUnits, readerConnections] = await Pro
   readSemanticRecords(sidecar, workIds, 'units.json'),
   readSemanticRecords(sidecar, workIds, 'reader-connections.json'),
 ]);
+const effectiveEchoReviewQueue = echoReviewQueue || (
+  echoGraph
+    ? buildEchoReviewQueue({
+        graph:echoGraph,
+        units:semanticUnits.flatMap((record) => record.units || []),
+        manifests,
+        curation:echoCuration,
+      })
+    : null
+);
 const report = buildLibraryReport({
   library,
   inventory,
@@ -124,6 +152,9 @@ const report = buildLibraryReport({
   semanticUnits,
   echoGraph,
   readerConnections,
+  echoQuality:effectiveEchoReviewQueue
+    ? buildEchoQualityReport(effectiveEchoReviewQueue, echoEvaluations)
+    : null,
 });
 process.stdout.write(json
   ? JSON.stringify(report, null, 2) + '\n'

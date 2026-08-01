@@ -51,6 +51,14 @@ CAPTIONS = {
         "Build ideas and connections quietly",
         "Opt into local semantic indexing, inspect each queued book, and add richer provider-assisted concepts only when you choose; originals and authored metadata remain independent.",
     ),
+    "connections-explorer": (
+        "Follow an idea across the whole library",
+        "Ideas & connections ranks recurring themes by the books and grounded links they touch, then lets you inspect the evidence trail or open either source without leaving the private library.",
+    ),
+    "connections-review": (
+        "Calibrate connections against the sources",
+        "A resumable, stratified review queue places both excerpts side by side with relation, confidence, spoiler risk, provenance, and durable judgments; thresholds remain advisory until a human approves rollout.",
+    ),
     "faithful-reader": (
         "Read the authored source faithfully",
         "The primary reader preserves the book’s own structure on a full canvas while keeping the library available from the top bar.",
@@ -92,6 +100,8 @@ CAPTIONS = {
 SEARCH_TERMS = {
     "native-reader": "echoes connections concepts scenes plots",
     "ideas-and-connections": "semantic indexing ingestion embeddings graph concepts scenes processing queue",
+    "connections-explorer": "semantic library graph themes explorer cross-book fiction nonfiction evidence",
+    "connections-review": "calibration review queue judgments quality confidence provenance evidence search checks",
     "source-grounded-echo": "echoes cross-book fiction nonfiction concepts plot snippets related passage",
 }
 
@@ -128,6 +138,8 @@ SECTIONS = (
             "ask-the-library",
             "ai-providers",
             "ideas-and-connections",
+            "connections-explorer",
+            "connections-review",
         ),
     ),
     (

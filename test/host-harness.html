@@ -1323,6 +1323,200 @@
         throw new Error('Splitting did not restore format-grounded reading data');
       }
 
+      stores.fsa.set(
+        'semantic/' + sampleWorkId + '/units.json',
+        JSON.stringify({
+          schemaVersion:1,
+          recordType:'books.semantic-units',
+          workId:sampleWorkId,
+          units:[{
+            unitId:'unit_sample_quiet_review',
+            workId:sampleWorkId,
+            kind:'principle',
+            lens:'expository',
+            label:'A quiet local test',
+            statement:'A quiet local test keeps private reading dependable.',
+            confidence:0.91,
+            evidence:[{
+              passageId:sourcePassage.passageId,
+              paragraphId:sourceParagraph.paragraphId,
+              quoteHash:sourceParagraph.anchor?.quoteHash || null,
+              textHash:sourceParagraph.anchor?.textHash || null,
+              excerpt:sourceParagraph.text,
+              positionFraction:0.1,
+            }],
+            generatedBy:{ mode:'deterministic-local', extractor:'harness' },
+            userState:{ hidden:false },
+          }],
+        }),
+      );
+      stores.fsa.set(
+        'semantic/' + harnessWorkId + '/units.json',
+        JSON.stringify({
+          schemaVersion:1,
+          recordType:'books.semantic-units',
+          workId:harnessWorkId,
+          units:[{
+            unitId:'unit_harness_opening_review',
+            workId:harnessWorkId,
+            kind:'scene',
+            lens:'narrative',
+            label:'The deterministic opening',
+            statement:'The opening scene makes the local test concrete.',
+            confidence:0.9,
+            evidence:[{
+              passageId:targetPassage.passageId,
+              paragraphId:targetParagraph.paragraphId,
+              quoteHash:targetParagraph.anchor?.quoteHash || null,
+              textHash:targetParagraph.anchor?.textHash || null,
+              excerpt:targetParagraph.text,
+              positionFraction:0.92,
+            }],
+            generatedBy:{ mode:'model-assisted', extractor:'harness', model:'harness-model' },
+            userState:{ hidden:false },
+          }],
+        }),
+      );
+      stores.fsa.set(
+        'indexes/library-echo-graph.json',
+        JSON.stringify({
+          schemaVersion:1,
+          recordType:'books.library-echo-graph',
+          graphVersion:'library-echo-links-v2',
+          model:'harness-encoder',
+          links:[{
+            linkId:'echo-link_harness_workspace',
+            leftUnitId:'unit_sample_quiet_review',
+            rightUnitId:'unit_harness_opening_review',
+            leftWorkId:sampleWorkId,
+            rightWorkId:harnessWorkId,
+            relation:'illustrates',
+            score:0.94,
+            classification:{
+              confidence:0.96,
+              explanation:'The fictional opening illustrates the quiet local principle.',
+              provider:'naklios',
+              model:'harness-model',
+            },
+            generatedBy:{
+              graph:'library-echo-links-v2',
+              relationMethod:'source-grounded-echo-classifier',
+            },
+            userState:{ hidden:false },
+          }],
+          updatedAt:'2026-08-01T12:00:00.000Z',
+        }),
+      );
+      app.getElementById('library-connections-btn').click();
+      await waitFor(
+        () => app.getElementById('connections-dialog').open
+          && app.getElementById('connections-status').textContent.includes('graph links')
+          && app.querySelector('[data-explorer-review]')
+          && stores.fsa.has('indexes/echo-review-queue.json'),
+        'library-wide Ideas and connections explorer',
+      );
+      app.querySelector('[data-explorer-review]').click();
+      await waitFor(
+        () => !app.getElementById('connections-panel-review').hidden
+          && app.getElementById('connections-review-left-evidence')
+            .textContent.includes('quiet test book')
+          && app.getElementById('connections-review-right-evidence')
+            .textContent.includes('deterministic opening page'),
+        'side-by-side connection evidence review',
+      );
+      app.querySelector('[data-review-label="useful"]').click();
+      const storedEvaluations = await waitFor(
+        () => jsonFromStore('annotations/echo-evaluations.json'),
+        'portable connection judgment write',
+      );
+      if (
+        !Object.values(storedEvaluations.connectionJudgments || {})
+          .some((judgment) => judgment.label === 'useful')
+        || JSON.stringify(storedEvaluations).includes('quiet test book')
+      ) {
+        throw new Error('Connection judgment was missing or copied source text');
+      }
+      app.querySelector('[data-review-open="right"]').click();
+      await waitFor(
+        () => app.getElementById('reader-title').textContent.includes('Harness')
+          && app.getElementById('reader-mode-btn').getAttribute('aria-pressed') === 'true'
+          && app.querySelector('[data-paragraph-id="' + targetParagraph.paragraphId + '"]')
+          && app.getElementById('reader-echo-return').textContent.includes(
+            'Ideas & connections'
+          ),
+        'connection review exact source navigation',
+      );
+      app.getElementById('reader-echo-return').click();
+      await waitFor(
+        () => app.getElementById('connections-dialog').open
+          && !app.getElementById('connections-panel-review').hidden,
+        'return from source passage to connection review',
+      );
+      app.querySelector('[data-connections-tab="queries"]').click();
+      await waitFor(
+        () => !app.getElementById('connections-panel-queries').hidden
+          && app.getElementById('connections-query-text').textContent,
+        'stratified library query review',
+      );
+      app.getElementById('connections-query-try').click();
+      const resumeConnections = await waitFor(
+        () => !app.getElementById('resume-connections-btn')?.hidden
+          ? app.getElementById('resume-connections-btn') : null,
+        'resume connection review after trying a query',
+      );
+      resumeConnections.click();
+      await waitFor(
+        () => app.getElementById('connections-dialog').open
+          && !app.getElementById('connections-panel-queries').hidden,
+        'restored query review context',
+      );
+      app.getElementById('connections-query-at1').checked = true;
+      app.getElementById('connections-query-at3').checked = true;
+      app.querySelector('[data-query-label="good"]').click();
+      await waitFor(
+        () => Object.values(
+          jsonFromStore('annotations/echo-evaluations.json')?.queryJudgments || {}
+        ).some((judgment) => judgment.label === 'good'),
+        'portable search judgment write',
+      );
+      app.querySelector('[data-connections-tab="report"]').click();
+      await waitFor(
+        () => app.getElementById('connections-report').textContent.includes(
+          'Connection review'
+        ) && app.getElementById('connections-report').textContent.includes(
+          'Search review'
+        ),
+        'privacy-safe connection quality report',
+      );
+      const reportTab = app.querySelector('[data-connections-tab="report"]');
+      reportTab.focus();
+      reportTab.dispatchEvent(new app.defaultView.KeyboardEvent('keydown', {
+        key:'ArrowRight',
+        bubbles:true,
+      }));
+      await waitFor(
+        () => app.activeElement === app.querySelector('[data-connections-tab="explore"]')
+          && !app.getElementById('connections-panel-explore').hidden,
+        'keyboard-accessible connection workspace tabs',
+      );
+      app.querySelector('[data-connections-tab="review"]').click();
+      frame.style.width = '520px';
+      frame.style.justifySelf = 'center';
+      await waitFor(() => {
+        const view = app.defaultView;
+        const dialog = app.getElementById('connections-dialog').getBoundingClientRect();
+        const evidenceColumns = view.getComputedStyle(
+          app.querySelector('.connections-evidence-grid'),
+        ).gridTemplateColumns.trim().split(/\s+/);
+        return view.innerWidth <= 520
+          && dialog.left >= -1
+          && dialog.right <= view.innerWidth + 1
+          && evidenceColumns.length === 1;
+      }, 'narrow connection workspace layout');
+      frame.style.width = '100%';
+      frame.style.justifySelf = '';
+      app.getElementById('connections-dialog').close();
+
       app.getElementById('library-ask-btn').click();
       await waitFor(
         () => app.getElementById('library-ask-dialog').open,

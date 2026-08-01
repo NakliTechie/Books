@@ -54,6 +54,11 @@ tag, and annotation views. Queries, facets, and sort order can be saved as a
 portable view inside the active Browser, Folder, or Crate library. Generated
 concepts remain inspectable and can be renamed, hidden, merged, or split
 through portable work-manifest overrides that survive derived-data rebuilds.
+Ideas & connections now has a library-wide theme-trail explorer plus a
+resumable calibration workspace. Reviewers see both grounded excerpts side by
+side, can open either exact source, label connection and search quality, and
+export privacy-safe judgments and reports. Those human labels—not model
+self-evaluation—remain the gate for changing the default Echo setting.
 
 ## v2.0 highlights — library intelligence
 
@@ -112,6 +117,13 @@ implementation plan in
 - Hide, wrong, unhelpful, spoiler, and work-exclusion feedback is durable user
   metadata; the graph, vectors, and reader indexes remain removable and
   rebuildable.
+- A first-class Ideas & connections workspace ranks themes across books,
+  exposes grounded evidence trails, and shares exact-passage navigation with
+  Native-reader Echoes rather than creating a second graph.
+- A deterministic review queue samples fiction↔fiction,
+  nonfiction↔nonfiction, cross-genre, likely-noisy, generic, and
+  spoiler-sensitive pairs. Portable judgments and query checks survive index
+  rebuilds while source excerpts remain out of exports.
 - The synthetic quality corpus, browser/native identity fixtures, 3,000-idea
   scale contract, security boundary, and live NakliOS reader round trip pass.
   Broad default rollout still awaits human usefulness labels on a real
@@ -262,6 +274,9 @@ naklios-universe/
 - [x] Echoes release candidate — paragraph anchors, typed fiction/nonfiction
       units, graph v2, materialized reader connections, Native indicators and
       cards, spoiler controls, speech, curation, and exact cross-book routes
+- [x] Connection calibration engineering — stratified portable queues,
+      side-by-side review, query checks, privacy-safe quality reports,
+      library-wide theme trails, and exact source/return navigation
 - [x] Scale contracts — 10,000-book inventory and 3,000-idea bounded graph
 - [x] Contract test at `scripts/test-books-v1_1.mjs`
 - [x] Safe two-backend browser fixture at `test/host-harness.html`

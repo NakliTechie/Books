@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const harness = readFileSync(new URL('../test/host-harness.html', import.meta.url), 'utf8');
+const browserVerifier = readFileSync(
+  new URL('./verify-browser.mjs', import.meta.url),
+  'utf8',
+);
 const guide = readFileSync(new URL('../guide/index.html', import.meta.url), 'utf8');
 const paginator = readFileSync(
   new URL('../vendor/foliate-js@1.0.1/paginator.js', import.meta.url),
@@ -819,6 +823,41 @@ assert.match(
   harness,
   /echoMode\.value = 'indicators'[\s\S]*?grounded spoiler-aware Echo card[\s\S]*?Echo exact related-passage route[\s\S]*?Echo return route to original paragraph/,
   'hosted regression opts in through the real control and covers the Echo round trip',
+);
+assert.match(
+  html,
+  /id="connections-dialog"[\s\S]*?data-connections-tab="explore"[\s\S]*?data-connections-tab="review"[\s\S]*?data-connections-tab="queries"[\s\S]*?data-connections-tab="report"/,
+  'Ideas & connections has explorer, review, search-check, and quality-report views',
+);
+assert.match(
+  html,
+  /buildEchoReviewQueue\(\{[\s\S]*?ECHO_REVIEW_QUEUE_PATH[\s\S]*?reviewCandidateCount/,
+  'background graph rebuilds materialize a deterministic review queue',
+);
+assert.match(
+  html,
+  /updateEchoEvaluation\([\s\S]*?ECHO_EVALUATION_PATH[\s\S]*?updateEchoQueryEvaluation/,
+  'pair and query judgments persist in a portable evaluation record',
+);
+assert.match(
+  html,
+  /async function openConnectionEvidence[\s\S]*?kind:'connections-workspace'[\s\S]*?paragraphId:side\.evidence\.paragraphId[\s\S]*?route\?\.kind === 'connections-workspace'/,
+  'connection review opens exact source evidence and retains a workspace return route',
+);
+assert.match(
+  html,
+  /echoEvaluations:echoEvaluations\?\.recordType[\s\S]*?mergeEchoEvaluationRecords/,
+  'portable library export and import preserve connection judgments',
+);
+assert.match(
+  harness,
+  /library-wide Ideas and connections explorer[\s\S]*?side-by-side connection evidence review[\s\S]*?portable connection judgment write[\s\S]*?connection review exact source navigation[\s\S]*?return from source passage to connection review[\s\S]*?portable search judgment write[\s\S]*?privacy-safe connection quality report[\s\S]*?keyboard-accessible connection workspace tabs[\s\S]*?narrow connection workspace layout/,
+  'hosted regression covers the full connection calibration workflow',
+);
+assert.match(
+  browserVerifier,
+  /the standalone Ideas and connections explorer[\s\S]*?the standalone side-by-side connection review[\s\S]*?the standalone portable connection judgment[\s\S]*?the standalone exact connection source route[\s\S]*?the standalone return to connection review/,
+  'standalone release regression covers persisted review and the exact source round trip',
 );
 
 console.log('Books persistent storage and library contract: PASS');
