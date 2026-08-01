@@ -94,6 +94,27 @@ body { display: flex; flex-direction: column; }
   padding: 20px;
   min-height: 0;
 }
+/* Static first-paint shell (UX-M5) — visible from HTML before hydration. */
+.first-paint-shell { max-width: 960px; margin: 0 auto; padding: 8px 4px; }
+.first-paint-title { font-size: 20px; font-weight: 600; color: var(--ink); }
+.first-paint-hint { margin: 6px 0 20px; color: var(--muted); font-size: 14px; }
+.first-paint-skeleton { display: grid; gap: 12px; }
+.first-paint-skeleton span {
+  display: block; height: 64px; border-radius: 10px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--panel) 70%, transparent),
+    color-mix(in srgb, var(--line) 35%, transparent),
+    color-mix(in srgb, var(--panel) 70%, transparent));
+  background-size: 200% 100%;
+  animation: first-paint-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .first-paint-skeleton span { animation: none; }
+}
+@keyframes first-paint-pulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
 .center {
   min-height: 100%;
@@ -1008,6 +1029,11 @@ dialog.books-dialog {
 dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:blur(2px); }
 .books-dialog-body { padding:20px; }
 .books-dialog h3 { margin:0 0 8px; font-size:17px; }
+.books-dialog-subhead {
+  margin:18px 0 4px; font-size:12px; font-weight:600; letter-spacing:.04em;
+  text-transform:uppercase; color:var(--muted);
+  border-bottom:1px solid var(--line); padding-bottom:4px;
+}
 .books-dialog p { margin:0 0 16px; color:var(--muted); line-height:1.5; font-size:13px; }
 .books-dialog-list { display:flex; flex-direction:column; gap:7px; }
 .books-dialog-choice {
@@ -1430,7 +1456,18 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   </div>
 </div>
 
-<main class="main" id="main"><!-- view rendered by JS --></main>
+<main class="main" id="main">
+  <!-- Static first-paint shell: renders from HTML before the app module parses
+       and the library is restored, so the first meaningful paint is immediate
+       and stable rather than a blank main (UX-M5). Replaced on hydration. -->
+  <div class="first-paint-shell" id="first-paint-shell" aria-hidden="true">
+    <div class="first-paint-title">Your private semantic library</div>
+    <div class="first-paint-hint">Preparing your library…</div>
+    <div class="first-paint-skeleton">
+      <span></span><span></span><span></span><span></span>
+    </div>
+  </div>
+</main>
 
 <div class="reader" id="reader" aria-hidden="true">
   <div class="reader-header">
@@ -2073,8 +2110,9 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 
 <dialog class="books-dialog" id="reader-prefs-dialog">
   <div class="books-dialog-body">
-    <h3>Reading appearance</h3>
+    <h3>Reading settings</h3>
     <p>Typography applies to reflowable books and plain text. PDF pages retain their original layout.</p>
+    <h4 class="books-dialog-subhead">Typography</h4>
     <div class="books-dialog-field">
       <label for="reader-font-size">Font size</label>
       <input id="reader-font-size" type="range" min="12" max="28" step="1">
@@ -2107,6 +2145,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <input id="reader-paragraph-spacing" type="range"
              min="0.4" max="1.8" step="0.1">
     </div>
+    <h4 class="books-dialog-subhead">Reading &amp; connections</h4>
     <div class="books-dialog-field">
       <label for="reader-profile">Profile</label>
       <select id="reader-profile">
