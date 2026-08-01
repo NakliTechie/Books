@@ -1769,6 +1769,9 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <button type="button" role="tab" id="connections-tab-report"
               data-connections-tab="report" aria-controls="connections-panel-report"
               aria-selected="false">Quality report</button>
+      <button type="button" role="tab" id="connections-tab-settings"
+              data-connections-tab="settings" aria-controls="connections-panel-settings"
+              aria-selected="false">Settings</button>
     </div>
     <section class="connections-panel" id="connections-panel-explore"
              role="tabpanel" aria-labelledby="connections-tab-explore">
@@ -1877,6 +1880,57 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
              role="tabpanel" aria-labelledby="connections-tab-report" hidden>
       <pre class="connections-report" id="connections-report" tabindex="0"></pre>
     </section>
+    <section class="connections-panel" id="connections-panel-settings"
+             role="tabpanel" aria-labelledby="connections-tab-settings" hidden>
+      <h4 class="books-dialog-subhead">While reading</h4>
+      <div class="books-dialog-field">
+        <label for="reader-echo-mode">Echoes</label>
+        <select id="reader-echo-mode">
+          <option value="off">Off</option>
+          <option value="indicators">Indicators</option>
+          <option value="asides">Indicators + asides</option>
+        </select>
+        <small>Available in Native mode. Generated asides are visually separate from authored text. Appearance follows the This book / All books scope in Reading settings.</small>
+      </div>
+      <h4 class="books-dialog-subhead">Local indexing</h4>
+      <section class="derived-storage-section"
+               aria-labelledby="background-intelligence-title">
+        <div class="derived-storage-head">
+          <strong id="background-intelligence-title">Semantic indexing</strong>
+          <span id="background-intelligence-status">Off</span>
+        </div>
+        <p>
+          A compact local encoder quietly processes queued books one at a time.
+          Its first download is about 23 MB; no book text leaves this device.
+        </p>
+        <label>
+          <input type="checkbox" id="background-intelligence-enabled">
+          Enable semantic indexing for this browser
+        </label>
+        <label>
+          <input type="checkbox" id="background-provider-enabled">
+          Use the configured AI provider for richer source-grounded ideas
+        </label>
+        <p>
+          Local endpoints stay on your machine. Remote BYOK runs only after its
+          destination-specific provider consent and this background opt-in.
+        </p>
+        <progress id="background-intelligence-progress" max="100" value="0"
+                  hidden></progress>
+        <div class="processing-queue-summary" id="processing-queue-summary"
+             aria-live="polite"></div>
+        <div class="derived-storage-actions">
+          <button type="button" id="background-intelligence-run" disabled>
+            Process queued books
+          </button>
+          <button type="button" id="processing-report-btn">
+            Build processing report
+          </button>
+        </div>
+        <pre class="processing-report-output" id="processing-report-output"
+             tabindex="0" hidden></pre>
+      </section>
+    </section>
     <div class="books-dialog-actions">
       <button type="button" id="connections-export-evaluations">Export judgments</button>
       <button type="button" id="connections-export-report">Export quality report</button>
@@ -1932,43 +1986,6 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
         <button type="button" id="processing-toggle-btn">Pause processing</button>
         <button type="button" id="derived-clear-btn">Clear derived data…</button>
       </div>
-    </section>
-    <section class="derived-storage-section"
-             aria-labelledby="background-intelligence-title">
-      <div class="derived-storage-head">
-        <strong id="background-intelligence-title">Ideas &amp; connections</strong>
-        <span id="background-intelligence-status">Off</span>
-      </div>
-      <p>
-        A compact local encoder quietly processes queued books one at a time.
-        Its first download is about 23 MB; no book text leaves this device.
-      </p>
-      <label>
-        <input type="checkbox" id="background-intelligence-enabled">
-        Enable semantic indexing for this browser
-      </label>
-      <label>
-        <input type="checkbox" id="background-provider-enabled">
-        Use the configured AI provider for richer source-grounded ideas
-      </label>
-      <p>
-        Local endpoints stay on your machine. Remote BYOK runs only after its
-        destination-specific provider consent and this background opt-in.
-      </p>
-      <progress id="background-intelligence-progress" max="100" value="0"
-                hidden></progress>
-      <div class="processing-queue-summary" id="processing-queue-summary"
-           aria-live="polite"></div>
-      <div class="derived-storage-actions">
-        <button type="button" id="background-intelligence-run" disabled>
-          Process queued books
-        </button>
-        <button type="button" id="processing-report-btn">
-          Build processing report
-        </button>
-      </div>
-      <pre class="processing-report-output" id="processing-report-output"
-           tabindex="0" hidden></pre>
     </section>
     <section class="trash-section" aria-labelledby="trash-section-title">
       <div class="trash-section-head">
@@ -2145,7 +2162,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <input id="reader-paragraph-spacing" type="range"
              min="0.4" max="1.8" step="0.1">
     </div>
-    <h4 class="books-dialog-subhead">Reading &amp; connections</h4>
+    <h4 class="books-dialog-subhead">Reading preferences</h4>
     <div class="books-dialog-field">
       <label for="reader-profile">Profile</label>
       <select id="reader-profile">
@@ -2154,15 +2171,6 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
         <option value="sepia">Sepia</option>
         <option value="night">Night</option>
       </select>
-    </div>
-    <div class="books-dialog-field">
-      <label for="reader-echo-mode">Echoes</label>
-      <select id="reader-echo-mode">
-        <option value="off">Off</option>
-        <option value="indicators">Indicators</option>
-        <option value="asides">Indicators + asides</option>
-      </select>
-      <small>Available in Native mode. Generated asides are visually separate from authored text.</small>
     </div>
     <div class="books-dialog-field">
       <label for="reader-prefs-scope">These settings apply to</label>
@@ -9167,7 +9175,7 @@ function activeConnectionQuery() {
 }
 
 function setConnectionsTab(tab, { focus = false } = {}) {
-  const allowed = new Set(['explore', 'review', 'queries', 'report']);
+  const allowed = new Set(['explore', 'review', 'queries', 'report', 'settings']);
   connectionsActiveTab = allowed.has(tab) ? tab : 'explore';
   connectionsDialog.querySelectorAll('[data-connections-tab]').forEach((button) => {
     const active = button.dataset.connectionsTab === connectionsActiveTab;
@@ -9619,6 +9627,11 @@ async function openConnectionsWorkspace({
   force = false,
 } = {}) {
   if (!connectionsDialog.open) connectionsDialog.showModal();
+  // Keep the relocated Settings-tab controls (Echoes display + semantic
+  // indexing, moved here from Reading settings and Library safety) in sync (UX-M1).
+  syncReaderPrefsControls();
+  syncBackgroundIntelligenceControls();
+  void refreshProcessingQueueSummary();
   connectionsStatus.textContent = 'Loading…';
   try {
     await loadConnectionsWorkspace({ force });
