@@ -12,6 +12,7 @@
     "report": "node scripts/books-report.mjs",
     "benchmark:indexer": "node scripts/benchmark-native-indexer.mjs",
     "benchmark:semantic": "python3 scripts/benchmark-semantic-quality.py",
+    "benchmark:semantic-scale": "python3 scripts/benchmark-semantic-scale.py",
     "corpus:ocr": "python3 scripts/generate-ocr-corpus.py",
     "corpus:ocr-public": "python3 scripts/download-ocr-public-corpus.py",
     "check:deploy": "npm run build && wrangler deploy --dry-run",
