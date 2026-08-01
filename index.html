@@ -2125,6 +2125,14 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       </select>
       <small>Available in Native mode. Generated asides are visually separate from authored text.</small>
     </div>
+    <div class="books-dialog-field">
+      <label for="reader-prefs-scope">These settings apply to</label>
+      <select id="reader-prefs-scope">
+        <option value="global">All books</option>
+        <option value="book">This book only</option>
+      </select>
+      <small>“All books” follows your global defaults; “This book only” keeps its own settings and can return to the global defaults at any time.</small>
+    </div>
     <div class="books-dialog-actions">
       <button type="button" data-close-dialog="reader-prefs-dialog">Done</button>
     </div>
@@ -3575,6 +3583,7 @@ const readerTextAlign = document.getElementById('reader-text-align');
 const readerParagraphSpacing = document.getElementById('reader-paragraph-spacing');
 const readerProfile = document.getElementById('reader-profile');
 const readerEchoMode = document.getElementById('reader-echo-mode');
+const readerPrefsScope = document.getElementById('reader-prefs-scope');
 const readerSearchBtn = document.getElementById('reader-search-btn');
 const readerSearchbar = document.getElementById('reader-searchbar');
 const readerSearchInput = document.getElementById('reader-search-input');
@@ -3970,6 +3979,19 @@ function loadReaderPrefs() {
 function saveReaderPrefs(prefs) {
   activeReaderPrefs = normaliseReaderPrefs(prefs);
   localStorage.setItem(READER_PREFS_KEY, JSON.stringify(activeReaderPrefs));
+}
+
+// Whether the open book keeps its own reading settings ('book') or follows the
+// global defaults ('global'). An older sidecar that carries a readerPrefs
+// snapshot with no explicit scope is treated as an implicit per-book override
+// so existing per-book settings are preserved (M9).
+function activeReaderPrefsScope() {
+  if (!activeSidecar) return 'global';
+  if (activeSidecar.readerPrefsScope === 'book'
+    || activeSidecar.readerPrefsScope === 'global') {
+    return activeSidecar.readerPrefsScope;
+  }
+  return activeSidecar.readerPrefs ? 'book' : 'global';
 }
 
 function readerPalette(profile) {
@@ -12716,7 +12738,11 @@ async function openBookFromFile(file, persistInfo) {
           sourceFilename: persistInfo.sourceFilename,
           engineKey: key,
         });
-      activeReaderPrefs = normaliseReaderPrefs(activeSidecar.readerPrefs || loadReaderPrefs());
+      // A book following global defaults keeps no override; only an explicit
+      // per-book scope reads its own snapshot (M9).
+      const bookScopedPrefs = activeReaderPrefsScope() === 'book'
+        && activeSidecar.readerPrefs;
+      activeReaderPrefs = normaliseReaderPrefs(bookScopedPrefs || loadReaderPrefs());
       if (activeEngine.applyPreferences) activeEngine.applyPreferences(activeReaderPrefs);
 
       // Lazy metadata enrichment
@@ -13409,6 +13435,12 @@ function syncReaderPrefsControls() {
   readerParagraphSpacing.value = String(p.paragraphSpacing);
   readerProfile.value = p.profile;
   readerEchoMode.value = p.echoMode;
+  if (readerPrefsScope) {
+    readerPrefsScope.value = activeReaderPrefsScope();
+    // Scope only applies with a book open; global edits from the library have
+    // nowhere per-book to land.
+    readerPrefsScope.disabled = !activeSidecar;
+  }
 }
 
 function readReaderPrefsControls() {
@@ -13429,14 +13461,45 @@ function applyReaderPrefsFromDialog() {
   if (activeReaderPrefs.echoMode === 'off') {
     closeReaderEchoSidecar({ restoreFocus:false });
   }
-  saveReaderPrefs(activeReaderPrefs);
   if (activeEngine && activeEngine.applyPreferences) {
     activeEngine.applyPreferences(activeReaderPrefs);
   }
-  if (activeSidecar && activeBookId) {
+  const scope = (activeSidecar && readerPrefsScope) ? readerPrefsScope.value : 'global';
+  if (scope === 'book' && activeSidecar && activeBookId) {
+    // Per-book override; leave the global defaults untouched.
     activeSidecar.readerPrefs = { ...activeReaderPrefs };
+    activeSidecar.readerPrefsScope = 'book';
     writeSidecarDebounced(activeBookId, activeSidecar);
+  } else {
+    // Global default; a book following global keeps no override of its own.
+    saveReaderPrefs(activeReaderPrefs);
+    if (activeSidecar && activeBookId) {
+      activeSidecar.readerPrefs = null;
+      activeSidecar.readerPrefsScope = 'global';
+      writeSidecarDebounced(activeBookId, activeSidecar);
+    }
   }
+}
+
+// Switching scope is not a value edit: adopting "This book only" snapshots the
+// current settings as the override, and returning to "All books" drops the
+// override and re-adopts the existing global defaults rather than pushing this
+// book's values onto every other book (M9).
+function onReaderPrefsScopeChange() {
+  if (!activeSidecar || !activeBookId) return;
+  if (readerPrefsScope.value === 'book') {
+    activeSidecar.readerPrefs = { ...activeReaderPrefs };
+    activeSidecar.readerPrefsScope = 'book';
+  } else {
+    activeSidecar.readerPrefs = null;
+    activeSidecar.readerPrefsScope = 'global';
+    activeReaderPrefs = loadReaderPrefs();
+    syncReaderPrefsControls();
+    if (activeEngine && activeEngine.applyPreferences) {
+      activeEngine.applyPreferences(activeReaderPrefs);
+    }
+  }
+  writeSidecarDebounced(activeBookId, activeSidecar);
 }
 
 readerPrefsBtn.addEventListener('click', () => {
@@ -13456,6 +13519,9 @@ readerPrefsBtn.addEventListener('click', () => {
   control.addEventListener('input', applyReaderPrefsFromDialog);
   control.addEventListener('change', applyReaderPrefsFromDialog);
 });
+if (readerPrefsScope) {
+  readerPrefsScope.addEventListener('change', onReaderPrefsScopeChange);
+}
 
 function updateReaderAiButton() {
   readerAiBtn.hidden = !(
