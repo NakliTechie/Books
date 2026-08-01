@@ -25,7 +25,7 @@ import {
 } from '../semantic-processing.js';
 
 assert.equal(normalizePassageText(' One  two\r\n\r\n\r\nThree '), 'One two\n\nThree');
-assert.equal(PASSAGE_EXTRACTOR_VERSION, 'passages-v4');
+assert.equal(PASSAGE_EXTRACTOR_VERSION, 'passages-v5');
 assert.equal(DEFAULT_MAX_PASSAGE_CHARS, 1400);
 assert.equal(DEFAULT_MAX_CONCEPTS, 16);
 assert.equal(DEFAULT_MAX_SCENES, 12);
@@ -66,9 +66,11 @@ assert.deepEqual(passages[0].structure.unsupportedStructures, [
 assert.match(passages[0].anchor.quoteHash, /^sha256:[a-f0-9]{64}$/);
 assert.equal(passages[0].passageId, 'passage_asset_test_0_0_35');
 assert.equal(passages[0].paragraphs.length, 1);
+// Paragraph IDs are content-addressed (asset + text hash + occurrence) and no
+// longer embed the positional section index, so they survive section moves (M3).
 assert.match(
   passages[0].paragraphs[0].paragraphId,
-  /^paragraph_asset_test_0_[a-f0-9]{16}_0$/,
+  /^paragraph_asset_test_[a-f0-9]{16}_0$/,
 );
 assert.equal(passages[0].paragraphs[0].passageId, passages[0].passageId);
 assert.equal(passages[0].paragraphs[0].anchor.normalizedRange.start, 0);
@@ -226,5 +228,29 @@ assert.equal(passagesPath('work_test'), 'semantic/work_test/passages.json');
 assert.equal(semanticRecordsPath('work_test'), 'semantic/work_test/records.json');
 assert.equal(workLexicalIndexPath('work_test'), 'indexes/works/work_test.json');
 assert.equal(processingRunPath('work_test'), 'jobs/work_test.json');
+
+// M3 — the same paragraph text in different sections is disambiguated by a
+// whole-asset occurrence counter (not a per-section one), and the paragraph ID
+// does not encode the section index, so moving a paragraph between sections
+// keeps its identity.
+const repeated = 'A repeated line that recurs verbatim across two sections.';
+const crossSection = await segmentSections({
+  workId:'work_x',
+  assetId:'asset_x',
+  format:'md',
+  sections:[
+    { text:repeated, anchor:{ kind:'text-offset', sectionIndex:0 } },
+    { text:repeated, anchor:{ kind:'text-offset', sectionIndex:1 } },
+  ],
+});
+const crossIds = crossSection.flatMap((passage) =>
+  passage.paragraphs.map((paragraph) => paragraph.paragraphId));
+assert.equal(crossIds.length, 2);
+assert.ok(crossIds.every((id) => /^paragraph_asset_x_[a-f0-9]{16}_[01]$/.test(id)),
+  'IDs are content-addressed with no section index');
+const [tokenA, occA] = crossIds[0].replace('paragraph_asset_x_', '').split('_');
+const [tokenB, occB] = crossIds[1].replace('paragraph_asset_x_', '').split('_');
+assert.equal(tokenA, tokenB, 'identical text shares one content hash token');
+assert.notEqual(occA, occB, 'occurrence disambiguates across sections globally');
 
 console.log('Books semantic processing contract: PASS');

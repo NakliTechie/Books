@@ -1,6 +1,6 @@
 export const PROCESSING_SCHEMA_VERSION = 2;
 export const PROCESSING_PIPELINE_VERSION = 'library-intelligence-v2';
-export const PASSAGE_EXTRACTOR_VERSION = 'passages-v4';
+export const PASSAGE_EXTRACTOR_VERSION = 'passages-v5';
 export const LEXICAL_INDEX_VERSION = 'lexical-v1';
 export const DETERMINISTIC_SEMANTICS_VERSION = 'deterministic-semantics-v2';
 export const IDEA_EMBEDDING_INDEX_VERSION = 'idea-embeddings-v2';
@@ -180,11 +180,13 @@ export async function segmentSections({
 }) {
   const passages = [];
   let paragraphOrder = 0;
+  // Occurrence disambiguation is whole-asset, not per-section, so paragraph IDs
+  // can drop the positional section index and stay content-addressed (M3).
+  const paragraphHashOccurrences = new Map();
   for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
     const section = sections[sectionIndex] || {};
     const normalized = normalizePassageText(section.text);
     const chunks = splitSection(normalized, maxChars);
-    const paragraphHashOccurrences = new Map();
     for (const chunk of chunks) {
       const quote = chunk.text.slice(0, 240);
       const passageId = [
@@ -204,7 +206,6 @@ export async function segmentSections({
         const paragraphId = [
           'paragraph',
           assetId,
-          sectionIndex,
           hashToken,
           occurrence,
         ].join('_');

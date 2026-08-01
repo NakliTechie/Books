@@ -59,7 +59,7 @@ STOP_WORDS = {
     "work", "works",
 }
 SIDECAR = ".books"
-PASSAGE_VERSION = "passages-v4"
+PASSAGE_VERSION = "passages-v5"
 LEXICAL_VERSION = "lexical-v1"
 SEMANTIC_VERSION = "deterministic-semantics-v2"
 IDEA_VERSION = "source-grounded-ideas-v1"
@@ -884,6 +884,9 @@ def extract_sections(source: Path, extension: str) -> list[dict]:
 def segment_sections(work_id: str, asset_id: str, extension: str, sections: list[dict]):
     passages = []
     paragraph_order = 0
+    # Occurrence disambiguation is whole-asset, not per-section, so paragraph IDs
+    # can drop the positional section index and stay content-addressed (M3).
+    paragraph_hash_occurrences: dict[str, int] = {}
     for section_index, section in enumerate(sections):
         text = normalize_text(section.get("text") or "")
         if not text:
@@ -958,7 +961,6 @@ def segment_sections(work_id: str, asset_id: str, extension: str, sections: list
                     "fragmentCount": 1,
                 })
         push_chunk()
-        paragraph_hash_occurrences = {}
         for chunk in chunks:
             start = chunk["start"]
             end = chunk["end"]
@@ -975,7 +977,6 @@ def segment_sections(work_id: str, asset_id: str, extension: str, sections: list
                 paragraph_id = "_".join([
                     "paragraph",
                     asset_id,
-                    str(section_index),
                     hash_token,
                     str(occurrence),
                 ])
