@@ -2338,26 +2338,22 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 (function () {
   var inNakliOS = false;
   try { inNakliOS = !!(window.parent && window.parent !== window); } catch (_) {}
+  var naklFlag = false;
+  try { naklFlag = new URLSearchParams(window.location.search).has('naklios'); } catch (_) {}
+  // Origin learned on first contact. The NakliOS shell embeds apps with
+  // referrerpolicy="no-referrer", so document.referrer is EMPTY — verifying the
+  // parent via referrer set inNakliOS=false for every embed and forced the
+  // standalone showDirectoryPicker path (blocked in an iframe). Detect via
+  // window.parent instead, and lock the parent origin from the first naklios:*
+  // message (matches sdk/naklios.js).
   var trustedParentOrigin = null;
-  if (inNakliOS) {
-    try {
-      var referrerOrigin = new URL(document.referrer).origin;
-      var referrerHost = new URL(document.referrer).hostname;
-      if (
-        referrerOrigin === 'https://naklios.dev'
-        || referrerHost === 'localhost'
-        || referrerHost === '127.0.0.1'
-      ) trustedParentOrigin = referrerOrigin;
-      else inNakliOS = false;
-    } catch (_) { inNakliOS = false; }
-  }
   var standaloneFsAvailable = !inNakliOS && typeof indexedDB !== 'undefined';
   var currentTheme = null;
   var themeListeners = new Set();
   var capListeners = new Set();
   var beforeCloseCb = null;
   var capabilities = {
-    hosted: inNakliOS,
+    hosted: inNakliOS || naklFlag,
     version: 1,
     fs: standaloneFsAvailable,
     fsBackends: standaloneFsAvailable ? ['browser'] : [],
@@ -2870,7 +2866,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     if (!inNakliOS) return;
     try {
       var msg = Object.assign({ type: type }, data || {});
-      window.parent.postMessage(msg, trustedParentOrigin);
+      window.parent.postMessage(msg, trustedParentOrigin || '*');
     } catch (_) {}
   }
   function rpc(type, payload) {
@@ -2994,9 +2990,12 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   }
   window.addEventListener('message', function (e) {
     if (inNakliOS && e.source !== window.parent) return;
-    if (inNakliOS && e.origin !== trustedParentOrigin) return;
     var msg = e.data;
     if (!msg || typeof msg !== 'object') return;
+    if (inNakliOS && typeof msg.type === 'string' && msg.type.indexOf('naklios:') === 0) {
+      if (!trustedParentOrigin) trustedParentOrigin = e.origin;
+      else if (e.origin !== trustedParentOrigin) return;
+    }
     if (msg.type === 'naklios:theme') {
       currentTheme = { id: msg.theme, colors: msg.colors, mood: msg.mood };
       themeListeners.forEach(function (cb) { try { cb(currentTheme); } catch (_) {} });
