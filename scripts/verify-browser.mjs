@@ -659,6 +659,11 @@ async function runChrome(chromePath, url, profilePath, mode = 'harness') {
     try { await cdp?.send('Browser.close'); } catch (_) {}
     cdp?.close();
     if (child.exitCode == null) child.kill('SIGKILL');
+    // Wait for Chrome to be gone before the profile is deleted: a killed Chrome can still be flushing
+    // into <profile>/Default, and the final rm raced it on CI (ENOTEMPTY) after every journey passed.
+    if (child.exitCode == null) {
+      await Promise.race([new Promise((done) => child.once('exit', done)), delay(5000)]);
+    }
   }
 }
 
@@ -715,5 +720,5 @@ try {
   });
 } finally {
   await new Promise((resolveClose) => server.close(() => resolveClose()));
-  await rm(temporaryRoot, { recursive:true, force:true });
+  await rm(temporaryRoot, { recursive:true, force:true, maxRetries:5, retryDelay:200 });
 }
