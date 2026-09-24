@@ -2335,7 +2335,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   Canonical source: https://naklios.dev/sdk/naklios.js. License: MIT.
 -->
 <script>
-/* naklios-sdk:begin ver=2 sha256=3d63ce56aaaeb74a16c010bb738fbf56ce621ea27ece824cef3353c64898361f — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
+/* naklios-sdk:begin ver=2 sha256=727cb3e12f17f4a3872d0119b0719bae3ef8c5fc0389eb10ecc2f635876a8617 — DO NOT EDIT until :end; run `node scripts/vendor-naklios-sdk.mjs` */
 /*!
  * naklios.js — cooperative SDK for apps hosted inside NakliOS (Immersive mode)
  *
@@ -2410,6 +2410,10 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
  *
  *   v2 = learn-on-contact origin + ?naklios flag (no-referrer-safe). v1 (pre-2026-08)
  *   posted to '*' and skipped inbound-origin checks — a v1 copy is a drift bug.
+ *
+ *   New public members ship as `experimental_<name>` with a line in docs/sdk-api-audit.md
+ *   naming what stabilizes them; stabilizing drops the prefix in one fleet change
+ *   (this file, the host, every vendored copy). fs.autosave was the first, 2026-09-24.
  * License: MIT.
  */
 (function () {
@@ -2504,6 +2508,118 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
         }
       }, timeoutMs || 30000);
     });
+  }
+
+  // Autosave (DUR, 2026-09-24): the SDK owns WHEN an app's state is written; the app owns WHAT and
+  // WHERE through its own save(). `beforeunload` cannot await, so a save that starts there is lost on
+  // close — the reliable moments are visibilitychange → hidden and pagehide, which fire while the page
+  // can still post a message, and the host's beforeclose, which waits. The timing half runs standalone
+  // too (the save is the app's own); only the dirty report to the host needs a frame.
+  var savers = new Set();
+  var reportedDirty = false;
+  var autosaveWired = false;
+  function noop() {}
+  function anyUnsaved() {
+    var out = false;
+    savers.forEach(function (s) { if (s._guard && s.dirty) out = true; });
+    return out;
+  }
+  function reportDirty() {
+    var d = anyUnsaved();
+    if (d === reportedDirty) return;
+    reportedDirty = d;
+    send('naklios:fs:dirty', { dirty: d });
+  }
+  // urgent: issue every unsaved save NOW, in this task — never behind an in-flight one
+  function flushSavers(urgent) {
+    var all = [];
+    savers.forEach(function (s) { all.push(s._flush(urgent).catch(noop)); });
+    return Promise.all(all);
+  }
+  function wireAutosave() {
+    if (autosaveWired) return;
+    autosaveWired = true;
+    try {
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden') flushSavers(true);
+      });
+    } catch (_) {}
+    try {
+      window.addEventListener('pagehide', function () { flushSavers(true); });
+      window.addEventListener('beforeunload', function (e) {
+        if (!anyUnsaved()) return;
+        flushSavers(true);
+        // Hosted, the NakliOS host arms its own guard from the dirty report; a second prompt from
+        // the frame would be noise. Standalone, this is the only thing that can interpose.
+        if (inNakliOS) return;
+        e.preventDefault();
+        e.returnValue = '';
+      });
+    } catch (_) {}
+  }
+  function makeAutosave(opts) {
+    if (!opts || typeof opts.save !== 'function') {
+      throw new Error('naklios.fs.autosave requires { save: function }');
+    }
+    var delay = typeof opts.delay === 'number' && opts.delay >= 0 ? opts.delay : 1000;
+    var onError = typeof opts.onError === 'function' ? opts.onError : null;
+    // guard:false — a background save (a remote push, say) that keeps the timing but never holds a close
+    var guard = opts.guard !== false;
+    // generations: gen counts changes, issuedGen the newest handed to save(), savedGen the newest durable
+    var gen = 0, issuedGen = 0, savedGen = 0;
+    var timer = null, tail = Promise.resolve(), last = Promise.resolve(), queued = null, disposed = false;
+    function issue() {
+      queued = null;
+      if (gen <= issuedGen) return last;
+      var g = gen;
+      issuedGen = g;
+      var p;
+      try { p = Promise.resolve(opts.save()); } catch (err) { p = Promise.reject(err); }
+      p = p.then(function () {
+        if (g > savedGen) savedGen = g;
+        reportDirty();
+      }, function (err) {
+        if (issuedGen === g) issuedGen = savedGen; // the next flush retries
+        reportDirty();
+        if (onError) { try { onError(err); } catch (_) {} }
+        throw err;
+      });
+      last = p;
+      tail = p.catch(noop);
+      return p;
+    }
+    function flush(urgent) {
+      clearTimeout(timer);
+      timer = null;
+      if (gen <= issuedGen) return last;
+      if (urgent) return issue();
+      if (!queued) queued = tail.then(issue);
+      return queued;
+    }
+    var saver = {
+      // State changed. The save runs at most `delay` ms after the first unsaved change.
+      markDirty: function () {
+        if (disposed) return;
+        gen++;
+        reportDirty();
+        if (!timer) timer = setTimeout(function () { timer = null; flush(false).catch(noop); }, delay);
+      },
+      // Save now (after any save already running). Resolves when the state as of this call is durable.
+      flush: function () { return flush(false); },
+      get dirty() { return gen > savedGen; },
+      dispose: function () {
+        disposed = true;
+        clearTimeout(timer);
+        timer = null;
+        savers.delete(saver);
+        reportDirty();
+      },
+      _flush: flush,
+      _guard: guard,
+    };
+    savers.add(saver);
+    wireAutosave();
+    return saver;
   }
 
   // Typed egress error so an app can branch (fall back / prompt to connect) rather
@@ -2687,7 +2803,7 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
     } else if (msg.type === 'naklios:beforeclose') {
       var closeWork;
       try { closeWork = beforeCloseCb ? beforeCloseCb() : null; } catch (_) { closeWork = null; }
-      Promise.resolve(closeWork).catch(function () {}).then(function () {
+      Promise.all([Promise.resolve(closeWork).catch(function () {}), flushSavers(true)]).then(function () {
         send('naklios:beforeclose-ready', { requestId: msg.requestId });
       });
     } else if (msg.type === 'naklios:capabilities') {
@@ -2909,6 +3025,12 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       // Explicit backend changes are always confirmed by the NakliOS host.
       // Switching changes the app-scoped view; it never copies or deletes data.
       useBackend: function (backend)    { return rpc('naklios:fs:selectBackend', { backend: backend }); },
+      // Autosave: the app says WHEN state changed (markDirty) and HOW to save it ({ save }); the SDK
+      // owns the timing — a throttled save, an immediate one when the page hides or the host closes
+      // the window, and a close guard only while something is unsaved. Returns
+      // { markDirty, flush, dirty, dispose }. { guard: false } keeps the timing but never holds a
+      // close (a background push, not the user's data). Runs standalone too. See docs/app-contract.md "Durability".
+      autosave: function (opts) { return makeAutosave(opts); },
     },
     // System-scoped filesystem — the WHOLE store on the active backend, not just
     // this app's apps/<id>/ namespace. Available to same-origin system apps only
@@ -3961,45 +4083,32 @@ async function readSidecar(bookId) {
 }
 
 // Pending writes are coalesced per bookId — rapid relocate events get one write.
-const pendingWrites = new Map();   // bookId → { timer, data }
-
-function writeSidecarDebounced(bookId, data) {
-  const existing = pendingWrites.get(bookId);
-  if (existing) clearTimeout(existing.timer);
-  const timer = setTimeout(() => {
-    pendingWrites.delete(bookId);
-    naklios.fs.write('notes/' + bookId + '.json', JSON.stringify(data, null, 2))
-      .then(() => syncPortableAnnotationsForSidecar(data).catch((error) => {
-        console.warn('Lorewell: portable annotation sync failed for', bookId, error);
-      }))
-      .catch((err) => console.warn('Lorewell: sidecar write failed for', bookId, err));
-  }, 1000);
-  pendingWrites.set(bookId, { timer, data });
+// The NakliOS SDK owns WHEN they are written (docs/app-contract.md "Durability"): at most 1 s after
+// the first change, and at once when the page hides or NakliOS closes the window. There used to be a
+// 1 s timer per book and a sync flush that nothing called, so a highlight or position changed in the
+// last second before a close was lost. guard:false — the sidecar is rewritten on every page turn, and
+// a leave-page prompt after each turn would be a nag; the hide/close flush is what lands it.
+const pendingWrites = new Map();   // bookId → { data }
+let _sidecarSaver = null;
+function sidecarSaver() {
+  return _sidecarSaver || (_sidecarSaver = naklios.fs.autosave({ save: flushPendingWrites, delay: 1000, guard: false }));
 }
 
-function flushPendingWritesSync() {
-  // Fire writes immediately (we still can't wait on them in beforeunload,
-  // but firing the RPC ensures the host receives the postMessage).
-  for (const [bookId, { timer, data }] of pendingWrites.entries()) {
-    clearTimeout(timer);
-    naklios.fs.write('notes/' + bookId + '.json', JSON.stringify(data, null, 2))
-      .then(() => syncPortableAnnotationsForSidecar(data).catch((error) => {
-        console.warn('Lorewell: portable annotation flush failed for', bookId, error);
-      }))
-      .catch((err) => console.warn('Lorewell: sidecar flush failed for', bookId, err));
-  }
-  pendingWrites.clear();
+function writeSidecarDebounced(bookId, data) {
+  pendingWrites.set(bookId, { data });
+  sidecarSaver().markDirty();
 }
 
 async function flushPendingWrites() {
   const writes = [];
-  for (const [bookId, { timer, data }] of pendingWrites.entries()) {
-    clearTimeout(timer);
+  for (const [bookId, { data }] of pendingWrites.entries()) {
     writes.push(
       naklios.fs.write('notes/' + bookId + '.json', JSON.stringify(data, null, 2))
         .then(() => syncPortableAnnotationsForSidecar(data))
         .catch((err) => {
           console.warn('Lorewell: sidecar flush failed for', bookId, err);
+          // back in the queue unless a newer state for this book was queued meanwhile — the next flush retries it
+          if (!pendingWrites.has(bookId)) pendingWrites.set(bookId, { data });
           throw err;
         })
     );
@@ -14812,12 +14921,11 @@ function boot() {
     rescanT = setTimeout(listLibrary, 500);
   });
 
-  // Flush pending sidecar writes on close
-  window.addEventListener('beforeunload', flushPendingWritesSync);
+  // Pending sidecar writes are flushed by the SDK autosave (sidecarSaver) on hide, pagehide and the
+  // host's beforeclose; a flush started in beforeunload could not complete, so there is none here.
   window.addEventListener('beforeunload', clearCoverObjectUrls);
   window.addEventListener('beforeunload', () => browserLocalAi.dispose());
   window.addEventListener('beforeunload', () => semanticEncoder.dispose());
-  naklios.beforeClose(flushPendingWritesSync);
 
   if (backgroundIntelligenceOn) {
     void semanticEncoder.hasCachedModel().then((cached) => {
