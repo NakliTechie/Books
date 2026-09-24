@@ -134,6 +134,10 @@ function connectCdp(socketUrl) {
           else request.resolve(message.result);
           return;
         }
+        // Chrome's own environment notice on a machine with no GPU (the CI runners): WebGPU's
+        // requestAdapter() resolves null and Chrome logs this line itself. It is not an app error — the
+        // hosted-harness job failed on it alone from 2026-08-01 to 2026-09-24 while every journey passed.
+        if (message.method === 'Log.entryAdded' && IGNORED_BROWSER_LOG.has(String(message.params?.entry?.text || ''))) return;
         if (
           message.method === 'Runtime.exceptionThrown'
           || message.method === 'Log.entryAdded'
@@ -173,6 +177,9 @@ function connectCdp(socketUrl) {
     });
   });
 }
+
+// Exact browser-generated log lines that say nothing about the app. Keep this list tiny and exact.
+const IGNORED_BROWSER_LOG = new Set(['No available adapters.']);
 
 function observedSummary(messages) {
   return messages.map((message) => {
