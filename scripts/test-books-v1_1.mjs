@@ -30,21 +30,20 @@ assert.match(
   'visual guide uses the deployed Lorewell favicon instead of requesting a missing favicon.ico',
 );
 
-assert.match(
-  html,
-  /standaloneFsAvailable\s*=\s*!inNakliOS\s*&&\s*typeof indexedDB !== 'undefined'/,
-  'standalone mode detects persistent browser storage',
-);
-assert.match(
-  html,
-  /fsBackends:\s*standaloneFsAvailable\s*\?\s*\['browser'\]\s*:\s*\[\]/,
-  'standalone mode exposes its Browser storage backend',
-);
-assert.match(
-  html,
-  /fsBackend:\s*standaloneFsAvailable\s*\?\s*'browser'\s*:\s*null/,
-  'standalone mode selects Browser storage',
-);
+// LW1 (2026-09-24): standalone storage lives in an app-side adapter OUTSIDE the SDK markers — the
+// canonical naklios.js is host-only, and the SDK adoption (833c267) had dropped it with the bespoke SDK.
+const adapter = html.slice(html.indexOf('<!-- Lorewell standalone storage (LW1'), html.indexOf('<!-- Books app boot + engines + persistence -->'));
+assert.ok(adapter.length > 1000 && html.indexOf('/* naklios-sdk:end */') < html.indexOf('<!-- Lorewell standalone storage (LW1'),
+  'the standalone storage adapter sits after the vendored SDK, outside its markers');
+assert.match(adapter, /if \(inNakliOS\) \{[\s\S]*?return;\n  \}\n  var standaloneFsAvailable = typeof indexedDB !== 'undefined';/,
+  'standalone mode detects persistent browser storage (and a hosted Lorewell is left to NakliOS)');
+assert.match(adapter, /capabilities\.fs = true;\n  capabilities\.fsBackends = \['browser'\];\n  capabilities\.fsBackend = 'browser';/,
+  'standalone mode exposes and selects its Browser storage backend');
+assert.match(adapter, /STANDALONE_DB_NAME = 'naklios-books-library-v1'/, 'the SAME database the bespoke SDK used — existing libraries come back');
+assert.match(adapter, /read: function \(path\) \{ return capabilities\.fsBackend === 'fsa' \? standaloneFolderRead\(path\) : standaloneRead\(path\); \}/,
+  'fs is routed to the folder or the browser library, as before');
+for (const m of ['connectFolder', 'restoreFolder', 'folderObservation', 'refreshFolder'])
+  assert.ok(new RegExp('nk\\.fs\\.' + m + ' = function').test(adapter) && new RegExp(m + ': function').test(adapter), `fs.${m} exists hosted and standalone`);
 assert.match(html, /indexedDB\.open\(STANDALONE_DB_NAME,\s*STANDALONE_DB_VERSION\)/,
   'standalone library opens a versioned IndexedDB filesystem');
 assert.match(html, /STANDALONE_DB_VERSION\s*=\s*2/,
@@ -109,8 +108,8 @@ assert.match(
 );
 assert.match(html, /useBackend:\s*function/, 'vendored SDK supports host-mediated backend switching');
 assert.match(html, /ai:\s*false/, 'vendored SDK exposes Local AI capability state');
-assert.match(html, /chat:\{\s*completions:\{\s*create:createAiCompletion/, 'vendored SDK exposes streamed chat completions');
-assert.match(html, /beforeCloseAck:true,\s*aiStream:true/, 'Books advertises close durability and AI streaming');
+assert.match(html, /chat:\s*\{\s*completions:\s*\{\s*create:\s*createAiCompletion/, 'vendored SDK exposes streamed chat completions');
+assert.match(html, /beforeCloseAck:\s*true,[\s\S]{0,80}?aiStream:\s*true/, 'Books advertises close durability and AI streaming');
 assert.match(html, /openSettings:\s*function/, 'vendored SDK can open trusted NakliOS settings');
 assert.match(html, /Open Storage settings…/, 'disconnected Books offers a direct storage recovery action');
 assert.match(html, /Nothing is copied or deleted/, 'storage picker explains backend isolation');

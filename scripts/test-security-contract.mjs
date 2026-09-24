@@ -25,10 +25,17 @@ assert.match(
   /assertSafeSidecar[\s\S]*?Refusing a symlink inside \.books[\s\S]*?SAFE_ID\.test\(workId\)/,
   'native reports reject sidecar symlinks and traversal-shaped work ids',
 );
-assert.match(index, /window\.parent\.postMessage\(msg, trustedParentOrigin\)/,
-  'host messages target the verified NakliOS origin');
-assert.match(index, /if \(inNakliOS && e\.origin !== trustedParentOrigin\) return;/,
-  'host replies must come from that same verified origin');
+// The canonical SDK (vendored since 833c267) locks the parent origin on the first naklios:* message
+// and targets it on every later send; before the lock it can only have sent `ready`, which carries no
+// app data. The bespoke SDK this used to pin posted to trustedParentOrigin with no fallback.
+assert.match(index, /window\.parent\.postMessage\(msg, trustedParentOrigin \|\| '\*'\)/,
+  'host messages target the verified NakliOS origin once it is locked');
+assert.match(index, /if \(!trustedParentOrigin\) trustedParentOrigin = e\.origin;\n\s*else if \(e\.origin !== trustedParentOrigin\) return;/,
+  'the origin locks on first contact and a different origin is ignored after');
+assert.match(index, /The only pre-lock send is `ready`, which carries no app data\./,
+  'the pre-lock send is documented as the ready ping only');
+assert.match(index, /if \(inNakliOS && e\.source !== window\.parent\) return;/,
+  'host replies must come from the parent frame (and, per the lock above, from its verified origin)');
 assert.match(
   index,
   /querySelectorAll\([\s\S]*?script,noscript,template,object,embed,iframe[\s\S]*?iframe\.setAttribute\('sandbox', 'allow-same-origin'\)/,

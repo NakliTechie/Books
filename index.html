@@ -3172,6 +3172,551 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
 /* naklios-sdk:end */
 </script>
 
+<!-- Lorewell standalone storage (LW1, 2026-09-24). App code, OUTSIDE the SDK markers: the canonical
+     naklios.js is host-only, so standalone it reports no filesystem. Lorewell's bespoke SDK carried an
+     IndexedDB library ("browser") and a picked-folder library ("fsa") for the standalone case; the SDK
+     adoption (833c267, 2026-08-29) dropped both, and Lorewell opened directly had no library storage
+     from then on. This restores that code verbatim — the same database (naklios-books-library-v1,
+     version 2, stores files + handles), the same folder handle key and preference key — so existing
+     libraries come back as they were. It wraps window.naklios.fs only when there is no host frame. -->
+<script>
+(function () {
+  var nk = window.naklios;
+  if (!nk || !nk.fs) return;
+  var inNakliOS = false;
+  try { inNakliOS = !!(window.parent && window.parent !== window); } catch (_) {}
+  // The folder-library methods the app calls exist only here. Hosted, NakliOS owns Folder and Crate:
+  // the same no-op answers the bespoke SDK gave.
+  if (inNakliOS) {
+    nk.fs.connectFolder = function () { return Promise.reject(new Error('NakliOS manages Folder connections')); };
+    nk.fs.restoreFolder = function () { return Promise.resolve(false); };
+    nk.fs.folderObservation = function () { return { fresh:false, records:[] }; };
+    nk.fs.refreshFolder = function () { return Promise.resolve([]); };
+    return;
+  }
+  var standaloneFsAvailable = typeof indexedDB !== 'undefined';
+  if (!standaloneFsAvailable) return;
+  var capabilities = nk.capabilities;
+  // Standalone the SDK never fires its capability listeners (it has no host to hear from), so this
+  // keeps its own set and forwards registration to the SDK's, which replays the current state.
+  var capListeners = new Set();
+  var sdkOnCapabilitiesChange = nk.onCapabilitiesChange;
+  nk.onCapabilitiesChange = function (cb) {
+    if (typeof cb !== 'function') return function () {};
+    capListeners.add(cb);
+    var off = sdkOnCapabilitiesChange.call(nk, cb);
+    return function () { capListeners.delete(cb); off(); };
+  };
+  capabilities.fs = true;
+  capabilities.fsBackends = ['browser'];
+  capabilities.fsBackend = 'browser';
+
+  // ── verbatim from the bespoke SDK (833c267^:index.html) ──
+  var standaloneDbPromise = null;
+  var STANDALONE_DB_NAME = 'naklios-books-library-v1';
+  var STANDALONE_DB_VERSION = 2;
+  var STANDALONE_DB_STORE = 'files';
+  var STANDALONE_DB_HANDLES = 'handles';
+  var STANDALONE_FOLDER_HANDLE_KEY = 'active-folder';
+  var STANDALONE_FOLDER_PREFERENCE_KEY = 'books.standaloneBackend.v1';
+  var STANDALONE_FOLDER_SIDECAR = '.books';
+  var STANDALONE_FOLDER_BOOK_RE = /\.(epub|pdf|mobi|azw3|fb2|txt|md|html|htm)$/i;
+  var standaloneFolderHandle = null;
+  var standaloneFolderLastObservation = [];
+  var standaloneFolderObservationFresh = false;
+
+  function normaliseStandalonePath(path, allowEmpty) {
+    var value = String(path || '').replace(/\\/g, '/');
+    if (
+      value.startsWith('/') ||
+      value.includes('\0') ||
+      value.split('/').some(function (part) { return part === '.' || part === '..'; })
+    ) {
+      throw new Error('Invalid Lorewell storage path');
+    }
+    value = value.replace(/\/+/g, '/');
+    if (!allowEmpty && !value) throw new Error('Lorewell storage path is required');
+    return value;
+  }
+
+  function openStandaloneDb() {
+    if (!standaloneFsAvailable) {
+      return Promise.reject(new Error('Persistent browser storage is unavailable'));
+    }
+    if (standaloneDbPromise) return standaloneDbPromise;
+    standaloneDbPromise = new Promise(function (resolve, reject) {
+      var request = indexedDB.open(STANDALONE_DB_NAME, STANDALONE_DB_VERSION);
+      request.onupgradeneeded = function () {
+        var db = request.result;
+        if (!db.objectStoreNames.contains(STANDALONE_DB_STORE)) {
+          db.createObjectStore(STANDALONE_DB_STORE);
+        }
+        if (!db.objectStoreNames.contains(STANDALONE_DB_HANDLES)) {
+          db.createObjectStore(STANDALONE_DB_HANDLES);
+        }
+      };
+      request.onsuccess = function () {
+        var db = request.result;
+        db.onversionchange = function () { db.close(); };
+        resolve(db);
+      };
+      request.onerror = function () {
+        standaloneDbPromise = null;
+        reject(request.error || new Error('Could not open persistent browser storage'));
+      };
+      request.onblocked = function () {
+        standaloneDbPromise = null;
+        reject(new Error('Lorewell storage upgrade is blocked by another open tab'));
+      };
+    });
+    return standaloneDbPromise;
+  }
+
+  function standaloneRequest(mode, operation, storeName) {
+    return openStandaloneDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var settled = false;
+        var result;
+        var tx = db.transaction(storeName || STANDALONE_DB_STORE, mode);
+        var request;
+        function fail(error) {
+          if (settled) return;
+          settled = true;
+          reject(error || new Error('Browser storage operation failed'));
+        }
+        try {
+          request = operation(tx.objectStore(storeName || STANDALONE_DB_STORE));
+        } catch (error) {
+          try { tx.abort(); } catch (_) {}
+          fail(error);
+          return;
+        }
+        request.onsuccess = function () { result = request.result; };
+        request.onerror = function () { fail(request.error); };
+        tx.oncomplete = function () {
+          if (settled) return;
+          settled = true;
+          resolve(result);
+        };
+        tx.onerror = function () { fail(tx.error); };
+        tx.onabort = function () { fail(tx.error); };
+      });
+    });
+  }
+
+  function standaloneRecord(data) {
+    if (typeof data === 'string') return { kind:'text', data:data };
+    if (data instanceof ArrayBuffer) {
+      return { kind:'binary', data:data.slice(0) };
+    }
+    if (data && data.buffer instanceof ArrayBuffer) {
+      return {
+        kind:'binary',
+        data:data.buffer.slice(data.byteOffset || 0, (data.byteOffset || 0) + data.byteLength),
+      };
+    }
+    throw new Error('Lorewell storage accepts text or binary data');
+  }
+
+  async function standaloneRead(path) {
+    var key = normaliseStandalonePath(path, false);
+    var record = await standaloneRequest('readonly', function (store) { return store.get(key); });
+    if (!record) throw new Error('Lorewell storage file not found: ' + key);
+    if (record.kind === 'text') return String(record.data || '');
+    return new TextDecoder().decode(record.data);
+  }
+
+  async function standaloneReadBinary(path) {
+    var key = normaliseStandalonePath(path, false);
+    var record = await standaloneRequest('readonly', function (store) { return store.get(key); });
+    if (!record) throw new Error('Lorewell storage file not found: ' + key);
+    if (record.kind === 'text') return new TextEncoder().encode(String(record.data || '')).buffer;
+    return record.data instanceof ArrayBuffer ? record.data.slice(0) : record.data;
+  }
+
+  function standaloneWrite(path, data) {
+    var key = normaliseStandalonePath(path, false);
+    var record = standaloneRecord(data);
+    return standaloneRequest('readwrite', function (store) { return store.put(record, key); })
+      .then(function () { return true; });
+  }
+
+  async function standaloneAppend(path, line) {
+    var key = normaliseStandalonePath(path, false);
+    var existing = '';
+    try { existing = await standaloneRead(key); } catch (_) {}
+    return standaloneWrite(key, existing + String(line || ''));
+  }
+
+  async function standaloneList(prefix) {
+    var safePrefix = normaliseStandalonePath(prefix || '', true);
+    var keys = await standaloneRequest('readonly', function (store) { return store.getAllKeys(); });
+    return (Array.isArray(keys) ? keys : [])
+      .filter(function (key) { return typeof key === 'string' && key.startsWith(safePrefix); })
+      .sort();
+  }
+
+  function standaloneDelete(path) {
+    var key = normaliseStandalonePath(path, false);
+    return standaloneRequest('readwrite', function (store) { return store.delete(key); })
+      .then(function () { return true; });
+  }
+
+  function standaloneExists(path) {
+    var key = normaliseStandalonePath(path, false);
+    return standaloneRequest('readonly', function (store) { return store.count(key); })
+      .then(function (count) { return count > 0; });
+  }
+
+  function emitStandaloneCapabilities() {
+    capListeners.forEach(function (cb) {
+      try { cb(capabilities); } catch (_) {}
+    });
+  }
+
+  function rememberStandaloneFolder(handle) {
+    return standaloneRequest(
+      'readwrite',
+      function (store) { return store.put(handle, STANDALONE_FOLDER_HANDLE_KEY); },
+      STANDALONE_DB_HANDLES,
+    );
+  }
+
+  function recalledStandaloneFolder() {
+    return standaloneRequest(
+      'readonly',
+      function (store) { return store.get(STANDALONE_FOLDER_HANDLE_KEY); },
+      STANDALONE_DB_HANDLES,
+    );
+  }
+
+  function standaloneFolderSegments(path, allowEmpty) {
+    var normalized = normaliseStandalonePath(path || '', !!allowEmpty);
+    return normalized ? normalized.split('/') : [];
+  }
+
+  async function standaloneFolderDirectory(root, segments, create) {
+    var handle = root;
+    for (var i = 0; i < segments.length; i++) {
+      handle = await handle.getDirectoryHandle(segments[i], { create:!!create });
+    }
+    return handle;
+  }
+
+  async function standaloneFolderRoute(path, create) {
+    if (!standaloneFolderHandle) throw new Error('Folder library is disconnected');
+    var key = normaliseStandalonePath(path, false);
+    var source = key.startsWith('library/');
+    var relative = source ? key.slice('library/'.length) : key;
+    if (!relative) throw new Error('Folder-library file path is required');
+    var root = standaloneFolderHandle;
+    if (!source) {
+      root = await root.getDirectoryHandle(
+        STANDALONE_FOLDER_SIDECAR,
+        { create:!!create },
+      );
+    }
+    return {
+      root:root,
+      relative:relative,
+      segments:standaloneFolderSegments(relative, false),
+      source:source,
+    };
+  }
+
+  async function standaloneFolderFileHandle(path, create) {
+    var route = await standaloneFolderRoute(path, create);
+    var filename = route.segments[route.segments.length - 1];
+    var parent = await standaloneFolderDirectory(
+      route.root,
+      route.segments.slice(0, -1),
+      create,
+    );
+    return parent.getFileHandle(filename, { create:!!create });
+  }
+
+  async function standaloneFolderRead(path) {
+    var handle = await standaloneFolderFileHandle(path, false);
+    return (await handle.getFile()).text();
+  }
+
+  async function standaloneFolderReadBinary(path) {
+    var handle = await standaloneFolderFileHandle(path, false);
+    return (await handle.getFile()).arrayBuffer();
+  }
+
+  async function standaloneFolderWrite(path, data) {
+    var handle = await standaloneFolderFileHandle(path, true);
+    var writable = await handle.createWritable();
+    try {
+      await writable.write(data);
+    } finally {
+      await writable.close();
+    }
+    return true;
+  }
+
+  async function standaloneFolderAppend(path, line) {
+    var existing = '';
+    try { existing = await standaloneFolderRead(path); } catch (_) {}
+    return standaloneFolderWrite(path, existing + String(line || ''));
+  }
+
+  function standaloneFolderSkipped(name, kind, atRoot) {
+    if (atRoot && name === STANDALONE_FOLDER_SIDECAR) return true;
+    if (name === 'node_modules' || name === '.git' || name === '.hg' || name === '.svn') {
+      return true;
+    }
+    return kind === 'directory' && name.startsWith('.');
+  }
+
+  async function standaloneFolderWalkSources(handle, prefix, output, observed) {
+    for await (var entry of handle.values()) {
+      var path = prefix ? prefix + '/' + entry.name : entry.name;
+      if (standaloneFolderSkipped(entry.name, entry.kind, !prefix)) continue;
+      if (entry.kind === 'directory') {
+        await standaloneFolderWalkSources(entry, path, output, observed);
+        continue;
+      }
+      if (!STANDALONE_FOLDER_BOOK_RE.test(entry.name)) continue;
+      var file = await entry.getFile();
+      output.push('library/' + path);
+      observed.push({
+        relativePath:path,
+        byteLength:file.size,
+        lastModified:file.lastModified,
+        format:(entry.name.split('.').pop() || '').toLowerCase(),
+        mediaType:file.type || null,
+      });
+    }
+  }
+
+  async function standaloneFolderWalkMetadata(handle, prefix, output) {
+    for await (var entry of handle.values()) {
+      var path = prefix ? prefix + '/' + entry.name : entry.name;
+      if (entry.kind === 'directory') {
+        await standaloneFolderWalkMetadata(entry, path, output);
+      } else {
+        output.push(path);
+      }
+    }
+  }
+
+  async function standaloneFolderList(prefix) {
+    var safePrefix = normaliseStandalonePath(prefix || '', true);
+    if (!standaloneFolderHandle) throw new Error('Folder library is disconnected');
+    if (!safePrefix || safePrefix === 'library' || safePrefix === 'library/') {
+      try {
+        var cachedInventory = JSON.parse(
+          await standaloneFolderRead('inventory/current.json'),
+        );
+        if (
+          cachedInventory
+          && cachedInventory.recordType === 'books.folder-inventory'
+          && Array.isArray(cachedInventory.files)
+        ) {
+          standaloneFolderLastObservation = cachedInventory.files.map(function (record) {
+            return {
+              relativePath:record.relativePath,
+              byteLength:record.byteLength,
+              lastModified:record.lastModified,
+              format:record.format,
+              mediaType:record.mediaType || null,
+            };
+          });
+          standaloneFolderObservationFresh = false;
+          return standaloneFolderLastObservation.map(function (record) {
+            return 'library/' + record.relativePath;
+          });
+        }
+      } catch (_) {}
+      return standaloneRefreshFolder();
+    }
+
+    var sidecar;
+    try {
+      sidecar = await standaloneFolderHandle.getDirectoryHandle(
+        STANDALONE_FOLDER_SIDECAR,
+      );
+    } catch (_) {
+      return [];
+    }
+    var segments = standaloneFolderSegments(safePrefix.replace(/\/$/, ''), true);
+    var directory = sidecar;
+    try {
+      directory = await standaloneFolderDirectory(sidecar, segments, false);
+    } catch (_) {
+      return [];
+    }
+    var output = [];
+    await standaloneFolderWalkMetadata(directory, segments.join('/'), output);
+    return output.sort();
+  }
+
+  async function standaloneRefreshFolder() {
+    if (!standaloneFolderHandle) throw new Error('Folder library is disconnected');
+      var sourceOutput = [];
+      var observed = [];
+      await standaloneFolderWalkSources(
+        standaloneFolderHandle,
+        '',
+        sourceOutput,
+        observed,
+      );
+      sourceOutput.sort();
+      observed.sort(function (left, right) {
+        return left.relativePath.localeCompare(right.relativePath);
+      });
+      standaloneFolderLastObservation = observed;
+      standaloneFolderObservationFresh = true;
+      return sourceOutput;
+  }
+
+  async function standaloneFolderDelete(path) {
+    var route = await standaloneFolderRoute(path, false);
+    var filename = route.segments[route.segments.length - 1];
+    var parent = await standaloneFolderDirectory(
+      route.root,
+      route.segments.slice(0, -1),
+      false,
+    );
+    await parent.removeEntry(filename);
+    return true;
+  }
+
+  async function standaloneFolderExists(path) {
+    try {
+      await standaloneFolderFileHandle(path, false);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function ensureStandaloneFolderManifest() {
+    if (!standaloneFolderHandle) throw new Error('Folder library is disconnected');
+    var sidecar = await standaloneFolderHandle.getDirectoryHandle(
+      STANDALONE_FOLDER_SIDECAR,
+      { create:true },
+    );
+    try {
+      var existing = await sidecar.getFileHandle('library.json');
+      var parsed = JSON.parse(await (await existing.getFile()).text());
+      if (parsed && parsed.recordType === 'books.folder-library' && parsed.libraryId) {
+        return parsed;
+      }
+      throw new Error('The existing .books/library.json is not a Lorewell folder manifest');
+    } catch (error) {
+      if (error && error.name !== 'NotFoundError') throw error;
+    }
+    var timestamp = new Date().toISOString();
+    var manifest = {
+      schemaVersion:1,
+      recordType:'books.folder-library',
+      libraryId:globalThis.crypto && globalThis.crypto.randomUUID
+        ? globalThis.crypto.randomUUID()
+        : 'folder-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2),
+      rootName:standaloneFolderHandle.name || 'Lorewell',
+      sidecarDirectory:STANDALONE_FOLDER_SIDECAR,
+      sourcePolicy:'read-in-place',
+      canonicalMetadata:'sidecar',
+      createdAt:timestamp,
+      updatedAt:timestamp,
+    };
+    var handle = await sidecar.getFileHandle('library.json', { create:true });
+    var writable = await handle.createWritable();
+    try {
+      await writable.write(JSON.stringify(manifest, null, 2));
+    } finally {
+      await writable.close();
+    }
+    return manifest;
+  }
+
+  async function standaloneConnectFolder() {
+    if (inNakliOS) throw new Error('NakliOS manages Folder connections');
+    if (!globalThis.showDirectoryPicker) {
+      throw new Error('This browser does not support folder libraries');
+    }
+    var handle = await globalThis.showDirectoryPicker({ mode:'readwrite' });
+    standaloneFolderHandle = handle;
+    await ensureStandaloneFolderManifest();
+    await rememberStandaloneFolder(handle);
+    capabilities.fsBackends = ['browser', 'fsa'];
+    capabilities.fsBackend = 'fsa';
+    try { localStorage.setItem(STANDALONE_FOLDER_PREFERENCE_KEY, 'fsa'); } catch (_) {}
+    emitStandaloneCapabilities();
+    return { backend:'fsa', name:handle.name || 'Folder' };
+  }
+
+  async function standaloneRestoreFolder() {
+    if (inNakliOS || !standaloneFsAvailable) return false;
+    var handle;
+    try { handle = await recalledStandaloneFolder(); } catch (_) { return false; }
+    if (!handle) return false;
+    standaloneFolderHandle = handle;
+    capabilities.fsBackends = ['browser', 'fsa'];
+    var permission = 'prompt';
+    try { permission = await handle.queryPermission({ mode:'readwrite' }); } catch (_) {}
+    var preference = 'browser';
+    try { preference = localStorage.getItem(STANDALONE_FOLDER_PREFERENCE_KEY) || 'browser'; } catch (_) {}
+    if (permission === 'granted' && preference === 'fsa') {
+      capabilities.fsBackend = 'fsa';
+    }
+    emitStandaloneCapabilities();
+    return true;
+  }
+
+  function standaloneFolderObservation() {
+    var observation = {
+      fresh:standaloneFolderObservationFresh,
+      records:standaloneFolderLastObservation.map(function (record) {
+        return Object.assign({}, record);
+      }),
+    };
+    standaloneFolderObservationFresh = false;
+    return observation;
+  }
+
+  async function standaloneUseBackend(backend) {
+    if (backend === 'browser') {
+      capabilities.fsBackend = 'browser';
+      try { localStorage.setItem(STANDALONE_FOLDER_PREFERENCE_KEY, 'browser'); } catch (_) {}
+      emitStandaloneCapabilities();
+      return true;
+    }
+    if (backend !== 'fsa' || !standaloneFolderHandle) return false;
+    var permission = await standaloneFolderHandle.queryPermission({ mode:'readwrite' });
+    if (permission !== 'granted') {
+      permission = await standaloneFolderHandle.requestPermission({ mode:'readwrite' });
+    }
+    if (permission !== 'granted') throw new Error('Folder access was not granted');
+    await ensureStandaloneFolderManifest();
+    capabilities.fsBackend = 'fsa';
+    capabilities.fsBackends = ['browser', 'fsa'];
+    try { localStorage.setItem(STANDALONE_FOLDER_PREFERENCE_KEY, 'fsa'); } catch (_) {}
+    emitStandaloneCapabilities();
+    return true;
+  }
+
+  // ── the fs surface, routed as the bespoke SDK routed it ──
+  Object.assign(nk.fs, {
+    read: function (path) { return capabilities.fsBackend === 'fsa' ? standaloneFolderRead(path) : standaloneRead(path); },
+    readBinary: function (path) { return capabilities.fsBackend === 'fsa' ? standaloneFolderReadBinary(path) : standaloneReadBinary(path); },
+    write: function (path, data) { return capabilities.fsBackend === 'fsa' ? standaloneFolderWrite(path, data) : standaloneWrite(path, data); },
+    append: function (path, line) { return capabilities.fsBackend === 'fsa' ? standaloneFolderAppend(path, line) : standaloneAppend(path, line); },
+    list: function (prefix) { return capabilities.fsBackend === 'fsa' ? standaloneFolderList(prefix) : standaloneList(prefix); },
+    delete: function (path) { return capabilities.fsBackend === 'fsa' ? standaloneFolderDelete(path) : standaloneDelete(path); },
+    exists: function (path) { return capabilities.fsBackend === 'fsa' ? standaloneFolderExists(path) : standaloneExists(path); },
+    useBackend: function (backend) { return standaloneUseBackend(backend); },
+    connectFolder: function () { return standaloneConnectFolder(); },
+    restoreFolder: function () { return standaloneRestoreFolder(); },
+    folderObservation: function () { return standaloneFolderObservation(); },
+    refreshFolder: function () { return standaloneRefreshFolder(); },
+  });
+})();
+</script>
+
 <!-- Books app boot + engines + persistence -->
 <script type="module">
 'use strict';
