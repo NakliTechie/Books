@@ -23,6 +23,7 @@ for (const asset of [
   'echo-review.js',
   'open-library-metadata.js',
   'embedding-binary.js',
+  'tex-source.js',
   'favicon.svg',
   '_headers',
 ]) {
