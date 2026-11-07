@@ -176,6 +176,10 @@ assert.match(html, /function openWorkDetails\(/,
   'work details load portable metadata and local processing state');
 assert.match(html, /from '\.\/open-library-metadata\.js'/,
   'Books loads its bounded Open Library metadata adapter');
+assert.match(html, /from '\.\/tex-source\.js'/,
+  'Books loads its LaTeX source unpacker');
+assert.equal(html.match(/id="tex-compile-btn"/g)?.length, 2,
+  'compile from source is reachable from an empty library and a full one');
 assert.match(html, /id="work-isbn-input"/,
   'portable work metadata can retain a user-entered ISBN');
 assert.match(

@@ -1078,6 +1078,10 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
   width:150px; background:var(--body); color:var(--ink); border:1px solid var(--line);
   border-radius:6px; padding:6px 8px;
 }
+.tex-source-actions { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+.tex-status { margin:12px 0 8px !important; color:var(--ink) !important; overflow-wrap:anywhere; }
+#tex-progress { width:100%; }
+.tex-diagnostics { max-height:180px; overflow:auto; margin:8px 0 0; padding-left:18px; font-size:12px; line-height:1.45; overflow-wrap:anywhere; }
 .books-dialog-text-field { display:flex; flex-direction:column; gap:6px; margin:14px 0; }
 .books-dialog-text-field label { font-size:12px; color:var(--muted); }
 .books-dialog-text-field input {
@@ -1956,6 +1960,36 @@ dialog.books-dialog::backdrop { background:rgba(20,24,23,.48); backdrop-filter:b
       <button class="primary" type="submit">Save view</button>
     </div>
   </form>
+</dialog>
+
+<dialog class="books-dialog" id="tex-dialog" aria-labelledby="tex-dialog-title">
+  <div class="books-dialog-body">
+    <h3 id="tex-dialog-title">Compile a paper from source</h3>
+    <p>
+      Lorewell builds the PDF on this device and adds it to your library. The source
+      stays in your storage under <code>tex/</code>.
+    </p>
+    <div class="books-dialog-text-field">
+      <label for="tex-arxiv-id">arXiv ID or link</label>
+      <input id="tex-arxiv-id" type="text" autocomplete="off" spellcheck="false" placeholder="2401.12345">
+    </div>
+    <div class="tex-source-actions">
+      <button type="button" id="tex-arxiv-fetch">Fetch source</button>
+      <button type="button" id="tex-file-btn">Choose source file…</button>
+    </div>
+    <input type="file" id="tex-file-input" accept=".gz,.tgz,.tar,.tex,.ltx" hidden>
+    <div class="books-dialog-text-field" id="tex-main-field" hidden>
+      <label for="tex-main-select">Main file</label>
+      <select id="tex-main-select"></select>
+    </div>
+    <p class="tex-status" id="tex-status" role="status" aria-live="polite"></p>
+    <progress id="tex-progress" max="100" hidden></progress>
+    <ul class="tex-diagnostics" id="tex-diagnostics" hidden></ul>
+    <div class="books-dialog-actions">
+      <button type="button" id="tex-cancel">Close</button>
+      <button class="primary" type="button" id="tex-compile" disabled>Compile</button>
+    </div>
+  </div>
 </dialog>
 
 <dialog class="books-dialog work-details-dialog" id="library-tools-dialog"
@@ -4170,6 +4204,13 @@ import {
   normalizeIsbn,
   selectOpenLibraryCover,
 } from './open-library-metadata.js';
+import {
+  arxivSourceUrl,
+  parseArxivId,
+  texMainCandidates,
+  texProjectName,
+  unpackTexSource,
+} from './tex-source.js';
 
 // Cloudflare redirects paths containing `@`; use build-time aliases so dynamic
 // module imports remain direct 200 responses in every supported browser.
@@ -9296,10 +9337,14 @@ function renderLibraryEmpty() {
       '<p>Add one book for the fastest start, or open a folder to keep portable metadata beside a durable collection. Supported: <code>.epub</code>, <code>.pdf</code>, <code>.mobi</code>, <code>.azw3</code>, <code>.fb2</code>, <code>.txt</code>, <code>.md</code>, <code>.html</code>.</p>' +
       '<button class="add-btn" id="add-book-btn-empty" type="button">＋ Add one book · fastest</button>' +
       folderAction +
+      (naklios.capabilities.experimental_tex
+        ? '<button class="add-btn-secondary" id="tex-compile-btn" type="button">Compile a paper from source</button>'
+        : '') +
       '<p style="font-size:11px; margin-top:18px;">Or drag files onto this window.' + sideload + storageNote + '</p>' +
     '</div></div>';
   const btn = document.getElementById('add-book-btn-empty');
   if (btn) btn.addEventListener('click', openLibraryFilePicker);
+  document.getElementById('tex-compile-btn')?.addEventListener('click', openTexDialog);
   document.getElementById('add-folder-btn-empty')?.addEventListener(
     'click',
     () => void connectStandaloneFolder(),
@@ -12732,6 +12777,9 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
               (connectionsReturnState ? '' : ' hidden') + '>Resume connection review</button>' +
             '<button class="library-header-action" id="library-intelligence-btn" type="button">Indexing settings</button>' +
             '<button class="library-header-action" id="library-tools-btn" type="button">Safety &amp; portability</button>' +
+            (naklios.capabilities.experimental_tex
+              ? '<button class="library-header-action" id="tex-compile-btn" type="button">Compile from source…</button>'
+              : '') +
             (!naklios.capabilities.hosted && globalThis.showDirectoryPicker
               ? '<button class="library-header-action" id="add-folder-btn" type="button">Open folder library…</button>'
               : '') +
@@ -12758,6 +12806,7 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
   if (libraryToolsBtn) libraryToolsBtn.addEventListener('click', () => {
     void openLibraryTools();
   });
+  document.getElementById('tex-compile-btn')?.addEventListener('click', openTexDialog);
   document.getElementById('library-intelligence-btn')?.addEventListener(
     'click',
     () => void openLibraryTools().then(() => {
@@ -13147,6 +13196,178 @@ async function addBooksToLibrary(files) {
   }
   return added;
 }
+
+// Compile from source: the host's TeX service builds the PDF in this app's own storage, then it joins the library
+// as an ordinary book.
+const texDialog = document.getElementById('tex-dialog');
+const texArxivId = document.getElementById('tex-arxiv-id');
+const texArxivFetch = document.getElementById('tex-arxiv-fetch');
+const texFileBtn = document.getElementById('tex-file-btn');
+const texFileInput = document.getElementById('tex-file-input');
+const texMainField = document.getElementById('tex-main-field');
+const texMainSelect = document.getElementById('tex-main-select');
+const texStatus = document.getElementById('tex-status');
+const texProgress = document.getElementById('tex-progress');
+const texDiagnostics = document.getElementById('tex-diagnostics');
+const texCancel = document.getElementById('tex-cancel');
+const texCompile = document.getElementById('tex-compile');
+const TEX_STAGES = {
+  queued:'Waiting for another compile to finish…',
+  reading:'Reading the source…',
+  compiling:'Compiling. A long paper can take a few minutes…',
+  writing:'Saving the build…',
+};
+let texSource = null;
+let texJob = null;
+let texBusy = false;
+
+function setTexBusy(busy) {
+  texBusy = busy;
+  for (const control of [texArxivId, texArxivFetch, texFileBtn, texMainSelect]) control.disabled = busy;
+  texCompile.disabled = busy || !texSource;
+  texCancel.textContent = busy ? 'Cancel' : 'Close';
+}
+
+function setTexProgress(percent) {
+  texProgress.hidden = percent === null;
+  if (percent === undefined) texProgress.removeAttribute('value');
+  else if (percent !== null) texProgress.value = percent;
+}
+
+function showTexDiagnostics(lines) {
+  texDiagnostics.replaceChildren(...lines.map((line) => {
+    const item = document.createElement('li');
+    item.textContent = line;
+    return item;
+  }));
+  texDiagnostics.hidden = !lines.length;
+}
+
+function openTexDialog() {
+  document.getElementById('library-options')?.removeAttribute('open');
+  texSource = null;
+  texArxivId.value = '';
+  texMainField.hidden = true;
+  texStatus.textContent = '';
+  setTexProgress(null);
+  showTexDiagnostics([]);
+  setTexBusy(false);
+  texDialog.showModal();
+}
+
+async function loadTexSource(bytes, name) {
+  texSource = null;
+  texMainField.hidden = true;
+  showTexDiagnostics([]);
+  setTexBusy(true);
+  try {
+    const files = await unpackTexSource(bytes, name);
+    const mains = texMainCandidates(files);
+    if (!mains.length) throw new Error('No file here has both \\documentclass and \\begin{document}.');
+    texSource = { files, mains, project:texProjectName(name) };
+    texMainSelect.replaceChildren(...mains.map((main, index) => new Option(main.path, String(index))));
+    texMainField.hidden = mains.length < 2;
+    texStatus.textContent = files.length + ' files in ' + texSource.project + '. Main file: ' + mains[0].path + '.';
+  } catch (err) {
+    texStatus.textContent = String(err && err.message || err);
+  }
+  setTexBusy(false);
+}
+
+async function fetchArxivSource() {
+  const id = parseArxivId(texArxivId.value);
+  if (!id) {
+    texStatus.textContent = 'That is not an arXiv ID. An ID looks like 2401.12345.';
+    return;
+  }
+  setTexBusy(true);
+  texStatus.textContent = 'Fetching the source from arXiv…';
+  try {
+    // arXiv's source route sends CORS headers, so this one explicit request needs no egress backend.
+    const response = await fetch(arxivSourceUrl(id), { credentials:'omit', referrerPolicy:'no-referrer' });
+    if (!response.ok) throw new Error('arXiv answered ' + response.status + '.');
+    await loadTexSource(await response.arrayBuffer(), 'arXiv-' + id.replace('/', '-'));
+  } catch (err) {
+    texStatus.textContent = "Couldn't fetch the source: " + String(err && err.message || err);
+    setTexBusy(false);
+  }
+}
+
+function onTexChunk(chunk) {
+  if (chunk.kind !== 'progress') return;
+  if (chunk.stage === 'download') {
+    const percent = Math.round(chunk.percent || 0);
+    texStatus.textContent = 'Downloading TeX Live, once for this browser: ' + percent + '%. This can take 15 minutes.';
+    setTexProgress(percent);
+  } else {
+    texStatus.textContent = TEX_STAGES[chunk.stage] || texStatus.textContent;
+    setTexProgress(undefined);
+  }
+}
+
+function texDiagnosticLine(item) {
+  const place = item.file ? item.file + (item.line ? ':' + item.line : '') + ' ' : '';
+  return place + item.message;
+}
+
+async function compileTexSource() {
+  if (!texSource || texBusy) return;
+  const { files, mains, project } = texSource;
+  const main = mains[Number(texMainSelect.value) || 0];
+  const folder = 'tex/' + project;
+  const filename = project + '.pdf';
+  showTexDiagnostics([]);
+  setTexBusy(true);
+  setTexProgress(undefined);
+  try {
+    if (await naklios.fs.exists('library/' + filename)) {
+      throw new Error('"' + filename + '" is already in this library. Remove it first to replace it.');
+    }
+    texStatus.textContent = 'Saving the source…';
+    for (const file of files) await naklios.fs.write(folder + '/' + file.path, file.bytes);
+    texJob = naklios.experimental_tex.compile({ folder, main:main.path, engine:main.engine, onChunk:onTexChunk });
+    const result = await texJob;
+    if (!result.ok) {
+      // TeX repeats an error on each pass, and its closing "Fatal error" lines add nothing.
+      const errors = result.diagnostics
+        .filter(item => item.severity === 'error' && !item.message.startsWith('==>') && item.message !== 'Emergency stop.')
+        .map(texDiagnosticLine);
+      texStatus.textContent = 'TeX stopped. No PDF was added.';
+      showTexDiagnostics([...new Set(errors)].slice(0, 20));
+      return;
+    }
+    const pdf = toArrayBuffer(await naklios.fs.readBinary(result.pdf));
+    const added = await addBooksToLibrary([new File([pdf], filename, { type:'application/pdf' })]);
+    if (added.length) {
+      texDialog.close();
+      await listLibrary();
+    }
+  } catch (err) {
+    texStatus.textContent = err && err.code === 'ECANCELED'
+      ? 'Compile cancelled.'
+      : "Couldn't compile: " + String(err && err.message || err);
+  } finally {
+    texJob = null;
+    setTexProgress(null);
+    setTexBusy(false);
+  }
+}
+
+texFileBtn.addEventListener('click', () => texFileInput.click());
+texFileInput.addEventListener('change', (event) => {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = '';
+  if (file) void file.arrayBuffer().then(buffer => loadTexSource(buffer, file.name));
+});
+texArxivFetch.addEventListener('click', () => void fetchArxivSource());
+texCompile.addEventListener('click', () => void compileTexSource());
+texCancel.addEventListener('click', () => {
+  if (texJob) naklios.experimental_tex.cancel(texJob.id);
+  else if (!texBusy) texDialog.close();
+});
+texDialog.addEventListener('cancel', (event) => {
+  if (texBusy) event.preventDefault();
+});
 
 async function recoverOrphanWithFile(file, target) {
   if (!file || !target || !target.sidecar) return;
