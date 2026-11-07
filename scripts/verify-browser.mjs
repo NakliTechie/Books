@@ -100,7 +100,7 @@ function delay(milliseconds) {
 
 async function devtoolsSocket(profilePath, child) {
   const activePortPath = join(profilePath, 'DevToolsActivePort');
-  for (let attempt = 0; attempt < 100; attempt++) {
+  for (let attempt = 0; attempt < 300; attempt++) {
     if (child.exitCode != null) {
       throw new Error('Chrome exited before opening its developer endpoint.');
     }
@@ -110,7 +110,7 @@ async function devtoolsSocket(profilePath, child) {
     } catch (_) {}
     await delay(100);
   }
-  throw new Error('Chrome did not open its developer endpoint within 10 seconds.');
+  throw new Error('Chrome did not open its developer endpoint within 30 seconds.');
 }
 
 function connectCdp(socketUrl) {
