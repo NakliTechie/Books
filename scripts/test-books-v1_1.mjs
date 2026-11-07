@@ -176,6 +176,18 @@ assert.match(html, /function openWorkDetails\(/,
   'work details load portable metadata and local processing state');
 assert.match(html, /from '\.\/open-library-metadata\.js'/,
   'Books loads its bounded Open Library metadata adapter');
+const openBookSource = html.slice(
+  html.indexOf('async function openBookFromFile('),
+  html.indexOf('\n}\n', html.indexOf('async function openBookFromFile(')),
+);
+assert.ok(openBookSource.length > 1000, 'openBookFromFile found');
+for (const line of openBookSource.split('\n').map((text, index, lines) => ({ text, next:lines.slice(index + 1, index + 4).join('\n') }))) {
+  if (/\bawait /.test(line.text) && !/^\s*\/\//.test(line.text) && !/candidateEngine\.load/.test(line.text)) {
+    assert.match(line.text + line.next, /stale\(\)|catch \(error\)/, 'a stale open stops after: ' + line.text.trim());
+  }
+}
+assert.match(html, /readerOpenToken \+= 1;\n  if \(activeEngine\)/,
+  'leaving the reader outdates an open still in flight');
 assert.match(html, /from '\.\/tex-source\.js'/,
   'Books loads its LaTeX source unpacker');
 assert.equal(html.match(/id="tex-compile-btn"/g)?.length, 2,

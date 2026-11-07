@@ -4508,6 +4508,7 @@ bookmarkLabelInput.addEventListener('keydown', (event) => {
 });
 
 let activeEngine = null;
+let readerOpenToken = 0;
 let activeSidecar = null;    // sidecar object for the currently-open book; null if not persisted
 let activeBookId = null;
 let activeSourceFilename = null;
@@ -13742,6 +13743,10 @@ async function cacheActiveCover() {
 
 // persistInfo: { bookId, sourceFilename } for any persistent backend.
 async function openBookFromFile(file, persistInfo) {
+  // Back or another open can land during any await below. A stale open stops
+  // quietly, because the engine and identity now belong to whatever came next.
+  const openToken = ++readerOpenToken;
+  const stale = () => openToken !== readerOpenToken;
   const requestedSourceFilename =
     (persistInfo && persistInfo.sourceFilename) || file.name;
   // Enter reader view first so errors are visible — unsupported-format
@@ -13788,6 +13793,10 @@ async function openBookFromFile(file, persistInfo) {
       try { candidateEngine.destroy(); } catch (_) {}
       throw error;
     }
+    if (stale()) {
+      try { candidateEngine.destroy(); } catch (_) {}
+      return;
+    }
     // Commit active identity only after the new engine has rendered. A failed
     // switch must never leave a phantom active filename that blocks Retry.
     activeEngine = candidateEngine;
@@ -13800,7 +13809,9 @@ async function openBookFromFile(file, persistInfo) {
     const persisted = !!(persistInfo && persistInfo.bookId && naklios.capabilities.fs);
     if (persisted) {
       activeBookId = persistInfo.bookId;
-      activeSidecar = (await readSidecar(activeBookId))
+      const savedSidecar = await readSidecar(activeBookId);
+      if (stale()) return;
+      activeSidecar = savedSidecar
         || makeInitialSidecar({
           bookId: activeBookId,
           sourceFilename: persistInfo.sourceFilename,
@@ -13817,6 +13828,7 @@ async function openBookFromFile(file, persistInfo) {
       if (!activeSidecar.title || !activeSidecar.author) {
         try {
           const meta = await activeEngine.getMetadata();
+          if (stale()) return;
           if (meta && meta.title && !activeSidecar.title) activeSidecar.title = meta.title;
           if (meta && meta.author && !activeSidecar.author) activeSidecar.author = meta.author;
         } catch (_) {}
@@ -13825,6 +13837,7 @@ async function openBookFromFile(file, persistInfo) {
       // Seed engine to last known position
       if (activeSidecar.position) {
         try { await activeEngine.jumpTo(activeSidecar.position); } catch (_) {}
+        if (stale()) return;
       }
 
       // Update the displayed title with the real one if we got it
@@ -13840,6 +13853,7 @@ async function openBookFromFile(file, persistInfo) {
         // faithful reader from opening the original.
         console.warn('Lorewell: semantic metadata sync failed', error);
       }
+      if (stale()) return;
       renderReaderLibrary();
       void cacheActiveCover();
 
@@ -13875,22 +13889,27 @@ async function openBookFromFile(file, persistInfo) {
     // Populate TOC (sidebar Contents section). null/empty hides the section.
     let toc = null;
     try { toc = activeEngine.getTOC ? await activeEngine.getTOC() : null; } catch (_) {}
+    if (stale()) return;
     renderTOC(toc);
 
     // Sidebar toggle is useful whenever there's content in the sidebar —
     // either persistence (bookmarks + note) or a TOC.
     if (persisted || (toc && toc.length)) sidebarToggle.hidden = false;
     const nativeAvailable = await updateReaderModeAvailability();
+    if (stale()) return;
     if (
       persisted
       && nativeAvailable
       && activeSidecar?.preferredMode === 'native'
     ) {
       await loadActiveAnnotations();
+      if (stale()) return;
       await switchToNativeMode();
+      if (stale()) return;
     }
     scheduleReaderAiContextRefresh();
   } catch (err) {
+    if (stale()) return;
     if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
     activeSourceFilename = null;
     activeBookId = null;
@@ -15444,6 +15463,7 @@ function teardownReaderView() {
   readerModeBtn.disabled = false;
   readerModeBtn.textContent = 'Native';
   readerModeBtn.setAttribute('aria-pressed', 'false');
+  readerOpenToken += 1;
   if (activeEngine) { try { activeEngine.destroy(); } catch (_) {} activeEngine = null; }
   readerNavigationTail = Promise.resolve();
   updateReaderAiButton();
