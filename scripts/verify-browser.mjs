@@ -349,8 +349,11 @@ async function runChrome(chromePath, url, profilePath, mode = 'harness') {
       })()`, 'page navigation while the AI sidecar stays open');
       if (moved.error) throw new Error(moved.error);
       await evaluate(`document.getElementById('back-btn').click()`);
+      // The row stays in the DOM behind the reader, and Back closes it only after a save, so wait for the
+      // close: a click before it lands on the open book and is ignored.
       await waitForValue(
-        `document.querySelector('.row[data-filename="Standalone Journey.txt"]')`,
+        `!document.getElementById('reader')?.classList.contains('is-open')
+          && document.querySelector('.row[data-filename="Standalone Journey.txt"]')`,
         'the persisted standalone library row',
       );
       await evaluate(
