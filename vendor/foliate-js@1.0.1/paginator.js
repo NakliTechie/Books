@@ -703,7 +703,7 @@ export class Paginator extends HTMLElement {
     }
     #replaceBackground(background, columnCount) {
         const doc = this.#view?.document
-        if (!doc) return
+        if (!doc?.documentElement) return
         const htmlStyle = doc.defaultView.getComputedStyle(doc.documentElement)
         const themeBgColor = htmlStyle.getPropertyValue('--theme-bg-color')
         if (background && themeBgColor) {
