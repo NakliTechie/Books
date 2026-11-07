@@ -803,7 +803,9 @@ export class Paginator extends HTMLElement {
         return { height, width, margin, gap, columnWidth }
     }
     render() {
-        if (!this.#view) return
+        // A resize can land while the iframe swaps sections, when its document has no root element yet;
+        // the load path renders once the section is in.
+        if (!this.#view?.document?.documentElement) return
         this.#view.render(this.#beforeRender({
             vertical: this.#vertical,
             rtl: this.#rtl,

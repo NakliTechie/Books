@@ -17,7 +17,7 @@ const headers = read('_headers');
 
 assert.match(
   index,
-  /if \(inNakliOS && e\.source !== window\.parent\) return;/,
+  /e\.source !== window\.parent/,
   'embedded capability messages are pinned to the current parent window',
 );
 assert.match(
@@ -26,16 +26,16 @@ assert.match(
   'native reports reject sidecar symlinks and traversal-shaped work ids',
 );
 // The canonical SDK (vendored since 833c267) locks the parent origin on the first naklios:* message
-// and targets it on every later send; before the lock it can only have sent `ready`, which carries no
-// app data. The bespoke SDK this used to pin posted to trustedParentOrigin with no fallback.
+// and targets it on every later send; before the lock it sends only the ready and capabilities pings
+// and queues everything else. The bespoke SDK this used to pin posted to trustedParentOrigin with no fallback.
 assert.match(index, /window\.parent\.postMessage\(msg, trustedParentOrigin \|\| '\*'\)/,
   'host messages target the verified NakliOS origin once it is locked');
 assert.match(index, /if \(!trustedParentOrigin\) trustedParentOrigin = e\.origin;\n\s*else if \(e\.origin !== trustedParentOrigin\) return;/,
   'the origin locks on first contact and a different origin is ignored after');
-assert.match(index, /The only pre-lock send is `ready`, which carries no app data\./,
-  'the pre-lock send is documented as the ready ping only');
-assert.match(index, /if \(inNakliOS && e\.source !== window\.parent\) return;/,
-  'host replies must come from the parent frame (and, per the lock above, from its verified origin)');
+assert.match(index, /if \(!trustedParentOrigin && type !== 'naklios:ready' && type !== 'naklios:capabilities-request'\) \{[\s\S]{0,120}?queuedHostMessages/,
+  'before the lock only the ready and capabilities pings are sent; everything else is queued');
+assert.match(index, /e\.source !== window\.parent \|\| !approvedParentOrigin\(e\.origin\)\) return;/,
+  'host replies must come from the parent frame and from an approved origin');
 assert.match(
   index,
   /querySelectorAll\([\s\S]*?script,noscript,template,object,embed,iframe[\s\S]*?iframe\.setAttribute\('sandbox', 'allow-same-origin'\)/,
