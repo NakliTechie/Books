@@ -1,5 +1,7 @@
 # Lorewell
 
+> **2026-11-12:** Lorewell ships only inside NakliOS, at https://naklios.dev/apps/books/. `lorewell.naklitechie.com` and `books.naklitechie.com` are retired; mentions of them below are history.
+
 > **Lifecycle:** `living` — private semantic-library foundation.
 
 Lorewell is a private semantic library and browser-native reader for ePub,

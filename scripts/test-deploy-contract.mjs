@@ -7,7 +7,6 @@ const read = (relative) =>
 const build = read('scripts/build.mjs');
 const headers = read('_headers');
 const workflow = read('.github/workflows/test.yml');
-const config = JSON.parse(read('wrangler.jsonc'));
 const app = read('index.html');
 
 for (const asset of [
@@ -53,19 +52,9 @@ assert.match(
   'Cloudflare build includes the visual guide and its screenshots',
 );
 
-assert.equal(config.name, 'books');
-assert.equal(config.assets.directory, './dist');
-assert.equal(config.assets.not_found_handling, '404-page');
-assert.match(config.compatibility_date, /^2026-07-/);
-assert.equal(config.preview_urls, false);
-assert.equal(config.send_metrics, false);
-assert.equal(config.dependencies_instrumentation.enabled, false);
-assert.equal(config.observability.enabled, true);
-assert.ok(
-  config.observability.head_sampling_rate > 0
-    && config.observability.head_sampling_rate <= 0.1,
-  'production observability uses a bounded sampling rate',
-);
+// lorewell.naklitechie.com is retired (2026-11-12): Lorewell ships only as the NakliOS mirror at
+// https://naklios.dev/apps/books/, built from the same file layout scripts/build.mjs defines. No Worker config.
+
 
 assert.match(headers, /Content-Security-Policy:/);
 assert.match(headers, /object-src 'none'/);
