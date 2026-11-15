@@ -381,3 +381,100 @@ export function formatLibraryReport(report) {
   }
   return lines.join('\n') + '\n';
 }
+
+// ── Send to Lectella ──────────────────────────────────────────────────────
+// Lectella imports PDF, Markdown and plain text. Lorewell sends those source
+// files as they are; any other format goes as a Markdown export of its text,
+// written under exports/lectella/ beside the library so the host can hand
+// Lectella a read-only copy. NakliOS sends files only from a Folder or Crate.
+
+export const LECTELLA_APP_ID = 'lectella';
+export const LECTELLA_EXPORT_PREFIX = 'exports/lectella/';
+const LECTELLA_DIRECT_FORMATS = new Set(['pdf', 'md', 'markdown', 'txt']);
+const LECTELLA_SEND_BACKENDS = new Set(['fsa', 'crate']);
+
+export function lectellaExportSlug(name) {
+  const slug = String(name || '')
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return slug || 'untitled';
+}
+
+// What sending this library file to Lectella means: the source itself, a
+// Markdown export, or nothing because the library is in Browser storage.
+export function lectellaSendPlan({ filename, backendId }) {
+  const name = String(filename || '');
+  if (!LECTELLA_SEND_BACKENDS.has(backendId)) {
+    return {
+      mode:'unavailable',
+      reason:'Send to Lectella works only for books on a NakliOS Folder or Crate. ' +
+        'Books kept only in Browser storage stay inside this browser; move the library to a Folder or Crate to send them.',
+    };
+  }
+  const format = (name.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
+  if (LECTELLA_DIRECT_FORMATS.has(format)) {
+    return { mode:'direct', format, path:'library/' + name };
+  }
+  return {
+    mode:'markdown',
+    format,
+    path:LECTELLA_EXPORT_PREFIX + lectellaExportSlug(name) + '.md',
+  };
+}
+
+export function lectellaAcceptsImport(targets) {
+  return Array.isArray(targets) && targets.some(
+    (target) => target?.appId === LECTELLA_APP_ID && target?.action === 'import',
+  );
+}
+
+function markdownLine(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function markdownParagraphs(text) {
+  return String(text || '')
+    .replace(/\r\n?/g, '\n')
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/[ \t]*\n[ \t]*/g, ' ').replace(/[ \t]+/g, ' ').trim())
+    .filter(Boolean);
+}
+
+// A Markdown copy of a book's text: title, authors, source, then one heading
+// per section (chapter, page) with its paragraphs.
+export function workMarkdownExport({ title, authors = [], sourceFilename, sections = [] }) {
+  const heading = markdownLine(title) || markdownLine(sourceFilename) || 'Untitled';
+  const lines = ['# ' + heading, ''];
+  const names = authors.map(markdownLine).filter(Boolean);
+  if (names.length) lines.push('By ' + names.join(', '), '');
+  if (sourceFilename) lines.push('Source: ' + markdownLine(sourceFilename) + ' (exported from Lorewell)', '');
+  sections.forEach((section, index) => {
+    const paragraphs = markdownParagraphs(section?.text);
+    if (!paragraphs.length) return;
+    lines.push('## ' + (markdownLine(section?.label) || 'Section ' + (index + 1)), '');
+    for (const paragraph of paragraphs) lines.push(paragraph, '');
+  });
+  return lines.join('\n').replace(/\n+$/, '\n');
+}
+
+// One highlight or note as a small Markdown file.
+export function passageMarkdownExport({ workTitle, authors = [], sourceFilename, annotation = {} }) {
+  const title = markdownLine(workTitle) || 'Untitled';
+  const lines = ['# ' + (annotation.kind === 'note' ? 'Note' : 'Passage') + ' from ' + title, ''];
+  const names = authors.map(markdownLine).filter(Boolean);
+  if (names.length) lines.push('By ' + names.join(', '), '');
+  const exact = String(annotation.target?.exact || '').trim();
+  if (exact) lines.push('> ' + exact.replace(/\r\n?/g, '\n').replace(/\n/g, '\n> '), '');
+  if (annotation.body) lines.push(String(annotation.body).trim(), '');
+  if (sourceFilename) lines.push('Source: ' + markdownLine(sourceFilename) + ' (exported from Lorewell)', '');
+  return lines.join('\n').replace(/\n+$/, '\n');
+}
+
+export function passageExportPath({ workTitle, annotationId }) {
+  const id = String(annotationId || '').replace(/[^A-Za-z0-9_-]+/g, '').slice(0, 24) || 'passage';
+  return LECTELLA_EXPORT_PREFIX + 'passages/' + lectellaExportSlug(workTitle) + '-' + id + '.md';
+}

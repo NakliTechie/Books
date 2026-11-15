@@ -855,6 +855,9 @@ body { display: flex; flex-direction: column; }
 .annotation-browser-list {
   max-height:52vh; overflow:auto; display:grid; gap:7px; margin-top:10px;
 }
+.annotation-browser-item { display:flex; flex-direction:column; gap:4px; }
+.annotation-browser-item > .row-action { align-self:flex-start; background:transparent; color:var(--muted); border:1px solid transparent; border-radius:5px; padding:3px 7px; cursor:pointer; font:11px inherit; }
+.annotation-browser-item > .row-action:hover { color:var(--brand); border-color:var(--brand); background:var(--panel); }
 .annotation-browser-row {
   width:100%; text-align:left; display:grid; gap:4px; padding:9px 10px;
   border:1px solid var(--line); border-radius:7px; background:var(--row);
@@ -4278,7 +4281,13 @@ import {
 import {
   buildLibraryReport,
   formatLibraryReport,
+  lectellaAcceptsImport,
+  lectellaSendPlan,
+  LECTELLA_APP_ID,
+  passageExportPath,
+  passageMarkdownExport,
   processingOutcome,
+  workMarkdownExport,
 } from './library-report.js';
 import {
   applyOpenLibrarySuggestion,
@@ -9738,12 +9747,14 @@ function renderLibraryRows() {
                '</div>' +
                '<div class="row-actions">' +
                  '<button class="row-action" type="button" data-action="details" title="Edit portable work details">Details</button>' +
+                 '<button class="row-action" type="button" data-action="send-lectella" hidden title="Send a copy of this book to Lectella">Send to Lectella</button>' +
                  '<button class="row-action" type="button" data-action="remove" title="Remove this source format">Remove</button>' +
                '</div>' +
              '</div>' +
            '</div>';
   }).join('');
   void hydrateCoverImages(list);
+  void revealLectellaActions(list);
 }
 
 function passageExcerptForQuery(passage, query) {
@@ -9948,6 +9959,7 @@ function renderLibraryAnnotationRows() {
   });
   annotationsBrowserList.innerHTML = rows.length
     ? rows.map((row) =>
+        '<div class="annotation-browser-item">' +
         '<button class="annotation-browser-row" type="button" data-library-annotation="' +
           escapeHtml(row.key) + '">' +
           '<strong>' + escapeHtml(row.workTitle) + '</strong>' +
@@ -9959,13 +9971,19 @@ function renderLibraryAnnotationRows() {
             || row.annotation.label
             || 'Annotation'
           ) + '</p>' +
-        '</button>'
+        '</button>' +
+        (lectellaPassageTargetKnown
+          ? '<button class="row-action" type="button" data-send-passage="' + escapeHtml(row.key) +
+            '" title="Send this passage to Lectella as a Markdown file">Send to Lectella</button>'
+          : '') +
+        '</div>'
       ).join('')
     : '<p class="semantic-search-state">No annotations match.</p>';
 }
 
 async function openAnnotationsBrowser() {
   libraryAnnotationRows = [];
+  lectellaPassageTargetKnown = await lectellaTakes('exports/lectella/passages/probe.md');
   annotationsBrowserSearch.value = '';
   annotationsBrowserList.innerHTML =
     '<p class="semantic-search-state">Loading portable annotations…</p>';
@@ -10018,6 +10036,113 @@ async function openLibraryAnnotation(key) {
       .slice(0, 60);
 }
 
+// ── Send to Lectella ──
+// The host lists Lectella as a target only when it declares `accepts` for the
+// file's extension, so the action stays hidden standalone and in NakliOS
+// builds without Lectella. The host asks the person before any copy is sent.
+let lectellaPassageTargetKnown = false;
+const lectellaTargetCache = new Map();
+
+async function lectellaTakes(path) {
+  if (!naklios.capabilities.hosted || !naklios.files?.experimental_targets) return false;
+  const extension = (String(path).match(/\.[a-z0-9]+$/i)?.[0] || '').toLowerCase();
+  if (!lectellaTargetCache.has(extension)) {
+    lectellaTargetCache.set(extension, naklios.files.experimental_targets(path)
+      .then(lectellaAcceptsImport)
+      .catch(() => false));
+  }
+  return lectellaTargetCache.get(extension);
+}
+
+async function revealLectellaActions(list) {
+  for (const button of list.querySelectorAll('[data-action="send-lectella"]')) {
+    const filename = button.closest('.row[data-filename]')?.getAttribute('data-filename');
+    if (!filename) continue;
+    // A Browser-only library still shows the action, so the person learns why it cannot send.
+    const plan = lectellaSendPlan({ filename, backendId:activeBackendId() });
+    button.hidden = !(await lectellaTakes(plan.mode === 'unavailable' ? 'library/' + filename : plan.path));
+  }
+}
+
+function lectellaWorkInfo(filename) {
+  const work = semanticCatalog ? workForFilename(semanticCatalog, filename) : null;
+  const item = libraryCache.find((entry) => entry.filename === filename);
+  return {
+    title:work?.title || item?.sidecar?.title || filename.replace(/\.[a-z0-9]+$/i, ''),
+    authors:work?.authors?.length
+      ? work.authors.map((entry) => entry.name).filter(Boolean)
+      : [item?.sidecar?.author].filter(Boolean),
+  };
+}
+
+async function deliverToLectella(path, label) {
+  let sent;
+  try {
+    sent = await naklios.files.experimental_sendTo(LECTELLA_APP_ID, [path]);
+  } catch (error) {
+    // The host's Send prompt does not pause the SDK's 30-second clock, so a slow answer times out here
+    // even when the person allowed it and Lectella received the copy.
+    if (!/RPC timeout/.test(String(error?.message))) throw error;
+    showToast('NakliOS did not confirm in time. If you chose Send, Lectella has the copy.', { duration:9000 });
+    return false;
+  }
+  if (sent === false) {
+    showToast(label + ' was not sent.');
+    return false;
+  }
+  showToast(label + ' sent to Lectella.');
+  return true;
+}
+
+async function sendBookToLectella(filename) {
+  const backendId = activeBackendId();
+  const plan = lectellaSendPlan({ filename, backendId });
+  if (plan.mode === 'unavailable') {
+    showToast(plan.reason, { error:true, duration:9000 });
+    return false;
+  }
+  const { title, authors } = lectellaWorkInfo(filename);
+  try {
+    if (plan.mode === 'markdown') {
+      showToast('Preparing a Markdown copy of ' + title + '…', { duration:20000 });
+      const binary = toArrayBuffer(await naklios.fs.readBinary('library/' + filename));
+      const sections = await extractSectionsForAsset({ format:plan.format, sourceFilename:filename }, binary);
+      const markdown = workMarkdownExport({ title, authors, sourceFilename:filename, sections });
+      await naklios.fs.write(plan.path, markdown);
+    }
+    return await deliverToLectella(plan.path, title);
+  } catch (error) {
+    console.error('Send to Lectella failed:', error);
+    showToast('Could not send ' + title + ' to Lectella: ' + (error?.message || error), { error:true, duration:9000 });
+    return false;
+  }
+}
+
+async function sendPassageToLectella(key) {
+  const row = libraryAnnotationRows.find((candidate) => candidate.key === key);
+  if (!row) return false;
+  const plan = lectellaSendPlan({ filename:'passage.md', backendId:activeBackendId() });
+  if (plan.mode === 'unavailable') {
+    showToast(plan.reason, { error:true, duration:9000 });
+    return false;
+  }
+  const { authors } = lectellaWorkInfo(row.filename);
+  const path = passageExportPath({ workTitle:row.workTitle, annotationId:row.annotation.annotationId });
+  try {
+    await naklios.fs.write(path, passageMarkdownExport({
+      workTitle:row.workTitle,
+      authors,
+      sourceFilename:row.filename,
+      annotation:row.annotation,
+    }));
+    return await deliverToLectella(path, 'Passage');
+  } catch (error) {
+    console.error('Send passage to Lectella failed:', error);
+    showToast('Could not send the passage to Lectella: ' + (error?.message || error), { error:true, duration:9000 });
+    return false;
+  }
+}
+
 function exportLibraryAnnotations() {
   const lines = [
     '# Lorewell annotation export',
@@ -10057,6 +10182,11 @@ function exportLibraryAnnotations() {
 
 annotationsBrowserSearch.addEventListener('input', renderLibraryAnnotationRows);
 annotationsBrowserList.addEventListener('click', (event) => {
+  const send = event.target.closest('[data-send-passage]');
+  if (send) {
+    void sendPassageToLectella(send.dataset.sendPassage);
+    return;
+  }
   const row = event.target.closest('[data-library-annotation]');
   if (row) void openLibraryAnnotation(row.dataset.libraryAnnotation);
 });
@@ -12970,6 +13100,10 @@ function renderLibrary(decorated) {  // decorated: [{filename, sidecar}]
     const filename = row.getAttribute('data-filename');
     if (event.target.closest('[data-action="details"]')) {
       void openWorkDetails(filename);
+      return;
+    }
+    if (event.target.closest('[data-action="send-lectella"]')) {
+      void sendBookToLectella(filename);
       return;
     }
     if (event.target.closest('[data-action="remove"]')) {
