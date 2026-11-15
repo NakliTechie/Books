@@ -7,6 +7,7 @@ const read = (relative) =>
 const build = read('scripts/build.mjs');
 const headers = read('_headers');
 const workflow = read('.github/workflows/test.yml');
+const packageJson = read('package.json');
 const app = read('index.html');
 
 for (const asset of [
@@ -98,6 +99,9 @@ assert.match(workflow, /npm test/);
 assert.match(workflow, /npm run build/);
 assert.match(workflow, /test -f dist\/semantic-ai\.js/);
 assert.match(workflow, /test -f dist\/echo-review\.js/);
-assert.match(workflow, /wrangler deploy --dry-run/);
+// Books has no Worker since 2026-11-12, so nothing may try to deploy one: CI ran `wrangler deploy --dry-run` for
+// three days after wrangler.jsonc was removed, and failed on every run.
+assert.doesNotMatch(workflow, /wrangler/, 'CI does not deploy or dry-run a Worker; Books ships as the NakliOS mirror');
+assert.doesNotMatch(packageJson, /wrangler/, 'package.json has no Worker deploy scripts or wrangler dependency');
 
 console.log('Books Cloudflare deploy artifact contract: PASS');

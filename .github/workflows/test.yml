@@ -31,7 +31,6 @@ jobs:
           test -f dist/favicon.svg
           test -f dist/guide/index.html
           test -f dist/guide/screenshots/active-reader/06-ai-reading-companion.png
-      - run: npx wrangler deploy --dry-run
 
   hosted-harness:
     # Runs the hosted/browser regression (test/host-harness.html) in real
