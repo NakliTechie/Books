@@ -323,6 +323,22 @@
     ],
   });
 
+  // Read commands (app-commands.js): the host side of naklios:commands:invoke, as the desktop sends it.
+  let registeredCommands = null;
+  const pendingCommandCalls = new Map();
+  let commandInvokeCounter = 0;
+  function invokeAppCommand(name, args) {
+    const invokeId = 'harness-' + (++commandInvokeCounter);
+    return new Promise((resolve, reject) => {
+      pendingCommandCalls.set(invokeId, { resolve, reject });
+      send({ type:'naklios:commands:invoke', invokeId, name, args, caller:'lectella' });
+      setTimeout(() => {
+        if (!pendingCommandCalls.delete(invokeId)) return;
+        reject(new Error('Command ' + name + ' did not answer'));
+      }, 20000);
+    });
+  }
+
   function send(message) {
     frame.contentWindow.postMessage(message, '*');
   }
@@ -1049,6 +1065,35 @@
           && app.querySelector('.row[data-filename="Sample.md"]'),
         'smart-view reset to all works',
       );
+      await waitFor(
+        () => registeredCommands?.length === 4,
+        'read commands registered with the host',
+      );
+      if (registeredCommands.join(',') !== 'library.list,library.search,passage.get,annotation.list') {
+        throw new Error('Unexpected registered commands: ' + registeredCommands.join(','));
+      }
+      const listedWorks = await invokeAppCommand('library.list', {});
+      const sampleWork = listedWorks.works.find((work) => work.formats.includes('md'));
+      if (!listedWorks.total || !sampleWork) throw new Error('library.list did not list Sample.md');
+      const searched = await invokeAppCommand('library.search', { query:'quiet test book' });
+      const sampleHit = searched.hits.find((hit) => hit.workId === sampleWork.workId);
+      if (!sampleHit?.excerpt.includes('quiet test book')) throw new Error('library.search did not find the passage');
+      const fetched = await invokeAppCommand('passage.get', {
+        workId:sampleHit.workId,
+        passageId:sampleHit.location.passageId,
+        context:1,
+      });
+      if (!fetched.text.includes('quiet test book') || fetched.citation.title !== sampleWork.title) {
+        throw new Error('passage.get did not return the passage with its citation');
+      }
+      const listedAnnotations = await invokeAppCommand('annotation.list', {});
+      if (!listedAnnotations.annotations.some((row) => String(row.quote || '').includes('quiet test book'))) {
+        throw new Error('annotation.list did not return the highlight');
+      }
+      let refused = false;
+      try { await invokeAppCommand('passage.get', { workId:sampleWork.workId, passageId:'missing' }); }
+      catch (error) { refused = /No passage/.test(error.message); }
+      if (!refused) throw new Error('passage.get did not refuse an unknown passage');
       app.getElementById('annotations-browser-btn').click();
       await waitFor(
         () => app.getElementById('annotations-browser-dialog').open
@@ -1710,6 +1755,20 @@
     if (event.source !== frame.contentWindow) return;
     const msg = event.data;
     if (!msg || typeof msg !== 'object') return;
+    if (msg.type === 'naklios:commands:register') {
+      registeredCommands = (msg.commands || []).map((command) => command.name);
+      send({ type:'naklios:commands:reply', requestId:msg.requestId, result:{ ok:true } });
+      return;
+    }
+    if (msg.type === 'naklios:commands:result') {
+      const pending = pendingCommandCalls.get(msg.invokeId);
+      if (pending) {
+        pendingCommandCalls.delete(msg.invokeId);
+        if (msg.error) pending.reject(new Error(msg.error));
+        else pending.resolve(msg.result);
+      }
+      return;
+    }
     if (msg.type === 'naklios:ready' || msg.type === 'naklios:capabilities-request') {
       send(capabilities());
       return;

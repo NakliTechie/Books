@@ -24,6 +24,8 @@ for (const asset of [
   'open-library-metadata.js',
   'embedding-binary.js',
   'tex-source.js',
+  'app-commands.js',
+  'commands.json',
   'favicon.svg',
   '_headers',
 ]) {
