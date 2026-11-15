@@ -9983,7 +9983,12 @@ function renderLibraryAnnotationRows() {
 
 async function openAnnotationsBrowser() {
   libraryAnnotationRows = [];
-  lectellaPassageTargetKnown = await lectellaTakes('exports/lectella/passages/probe.md');
+  // The target check never holds up the list: the buttons appear when the host answers.
+  lectellaPassageTargetKnown = false;
+  void lectellaTakes('exports/lectella/passages/probe.md').then((takes) => {
+    lectellaPassageTargetKnown = takes;
+    if (takes && annotationsBrowserDialog.open) renderLibraryAnnotationRows();
+  });
   annotationsBrowserSearch.value = '';
   annotationsBrowserList.innerHTML =
     '<p class="semantic-search-state">Loading portable annotations…</p>';
