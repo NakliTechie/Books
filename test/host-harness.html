@@ -1066,10 +1066,10 @@
         'smart-view reset to all works',
       );
       await waitFor(
-        () => registeredCommands?.length === 4,
+        () => registeredCommands?.length === 5,
         'read commands registered with the host',
       );
-      if (registeredCommands.join(',') !== 'library.list,library.search,passage.get,annotation.list') {
+      if (registeredCommands.join(',') !== 'library.list,library.search,passage.get,reader.open,annotation.list') {
         throw new Error('Unexpected registered commands: ' + registeredCommands.join(','));
       }
       const listedWorks = await invokeAppCommand('library.list', {});
@@ -1090,6 +1090,20 @@
       if (!listedAnnotations.annotations.some((row) => String(row.quote || '').includes('quiet test book'))) {
         throw new Error('annotation.list did not return the highlight');
       }
+      const shownPassage = await invokeAppCommand('reader.open', {
+        workId:sampleHit.workId,
+        passageId:sampleHit.location.passageId,
+      });
+      await waitFor(
+        () => shownPassage.opened && app.getElementById('reader')?.classList.contains('is-open')
+          && /Cited passage/.test(app.getElementById('reader-status')?.textContent || ''),
+        'reader.open shows the cited passage in the reader',
+      );
+      app.getElementById('back-btn').click();
+      await waitFor(
+        () => !app.getElementById('reader')?.classList.contains('is-open'),
+        'reader closed after reader.open',
+      );
       let refused = false;
       try { await invokeAppCommand('passage.get', { workId:sampleWork.workId, passageId:'missing' }); }
       catch (error) { refused = /No passage/.test(error.message); }

@@ -58,7 +58,9 @@ const annotationRecords = {
 };
 
 let semanticCalls = 0;
+const opened = [];
 const deps = {
+  openPassage:async ({ work, passage, passageCount }) => { opened.push([work.workId, passage.passageId, passageCount]); },
   listWorks:async () => works,
   readPassages:async (workId) => (passages[workId] ? { passages:passages[workId] } : null),
   readLexicalIndex:async (workId) => indexes[workId] || null,
@@ -147,6 +149,18 @@ assert.equal(notes.annotations[0].quote, 'live deliberately');
 assert.equal(notes.annotations[0].title, 'Walden');
 assert.equal((await call('annotation.list', { workId:'work_origin' })).total, 0);
 
+// reader.open: checks the ids, opens the reader at the passage, and is the only command that shows the window
+const shown = await call('reader.open', { workId:'work_origin', passageId:'passage_work_origin_1' });
+assert.deepEqual(opened, [['work_origin', 'passage_work_origin_1', 3]]);
+assert.equal(shown.opened, true);
+assert.equal(shown.location.page, 11);
+await assert.rejects(call('reader.open', { workId:'work_origin', passageId:'missing' }), /No passage/);
+await assert.rejects(call('reader.open', { workId:'missing', passageId:'x' }), /No work/);
+assert.equal(opened.length, 1, 'a refused call opens nothing');
+assert.deepEqual(COMMAND_DEFINITIONS.filter((c) => c.shows).map((c) => c.name), ['reader.open']);
+const noReader = createLibraryCommands({ ...deps, openPassage:undefined });
+await assert.rejects(noReader.find((c) => c.name === 'reader.open').handler({ workId:'work_origin', passageId:'passage_work_origin_1' }), /unavailable/);
+
 // abort: a stopped caller ends the work
 const controller = new AbortController();
 controller.abort();
@@ -165,4 +179,4 @@ assert.ok(bytes(fitted) <= RESULT_BUDGET_BYTES);
 for (const result of [listed, found, got, big, notes]) assert.ok(bytes(result) <= HOST_CAP);
 assert.ok(semanticCalls >= 1);
 
-console.log('app commands: 4 read commands, manifest parity, shapes, 256 KB cap and abort: PASS');
+console.log('app commands: 5 read commands, manifest parity, shapes, 256 KB cap and abort: PASS');
