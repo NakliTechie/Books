@@ -37,6 +37,8 @@ await Promise.all([
   cp(resolve(projectRoot, 'open-library-metadata.js'), resolve(outputDir, 'open-library-metadata.js')),
   cp(resolve(projectRoot, 'embedding-binary.js'), resolve(outputDir, 'embedding-binary.js')),
   cp(resolve(projectRoot, 'tex-source.js'), resolve(outputDir, 'tex-source.js')),
+  cp(resolve(projectRoot, 'app-commands.js'), resolve(outputDir, 'app-commands.js')),
+  cp(resolve(projectRoot, 'commands.json'), resolve(outputDir, 'commands.json')),
   cp(resolve(projectRoot, '_headers'), resolve(outputDir, '_headers')),
   // Cloudflare canonicalizes `@` in URL paths with a redirect. Dynamic module
   // imports do not handle that consistently across browsers, so publish the
