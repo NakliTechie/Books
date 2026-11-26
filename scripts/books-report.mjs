@@ -37,7 +37,7 @@ async function readJson(path, fallback = null) {
     // report surfaces it rather than treating it as missing (M17).
     parseErrors.push(path);
     process.stderr.write(
-      `Lorewell report: unreadable JSON at ${path} (${error.message})\n`,
+      `nBooks report: unreadable JSON at ${path} (${error.message})\n`,
     );
     return fallback;
   }
